@@ -1,0 +1,13 @@
+qstar.subdir("x86_64")
+
+qstar.subdir("aarch64")
+
+qstar.subdir("riscv64")
+
+qstar.group "ribon_arch" {
+  deps = {
+    "//src/arch/x86_64:ribon_arch_x86_64",
+    "//src/arch/aarch64:ribon_arch_aarch64",
+    "//src/arch/riscv64:ribon_arch_riscv64",
+  },
+}

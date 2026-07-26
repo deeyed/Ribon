@@ -1,6 +1,6 @@
-.vscode/
 build/
-esp/
-OVMF/
-img/
-memo/
+.qstar/
+compile_commands.json
+generated/
+stage/
+tools/__pycache__/

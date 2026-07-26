@@ -1,0 +1,7 @@
+qstar.group "ribon_firmware_host" {
+  deps = {
+    "//src/boot:host_smoke_x86_64",
+    "//src/boot:host_smoke_aarch64",
+    "//src/boot:host_smoke_riscv64",
+  },
+}

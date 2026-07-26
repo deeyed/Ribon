@@ -1,0 +1,5 @@
+qstar.group "ribon_firmware_uefi" {
+  deps = {
+    "//tests:uefi_hardening_tests",
+  },
+}

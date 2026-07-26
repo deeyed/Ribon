@@ -12,8 +12,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
 
-#ifndef __BASE_H__
-#define __BASE_H__
+#pragma once
 
 //
 // Include processor specific binding
@@ -309,16 +308,14 @@ struct _LIST_ENTRY {
 ///
 /// NULL pointer (VOID *)
 ///
-#ifndef NULL
-  #if defined (__cplusplus)
-    #if defined (_MSC_EXTENSIONS)
-      #define NULL  nullptr
-    #else
-      #define NULL  __null
-    #endif
+#if defined (__cplusplus)
+  #if defined (_MSC_EXTENSIONS)
+#define NULL  nullptr
   #else
-    #define NULL  ((VOID *) 0)
+#define NULL  __null
   #endif
+#else
+#define NULL  ((VOID *) 0)
 #endif
 
 //
@@ -580,7 +577,7 @@ struct _LIST_ENTRY {
 **/
 #define _INT_SIZE_OF(n)  ((sizeof (n) + sizeof (UINTN) - 1) &~(sizeof (UINTN) - 1))
 
-#if defined (_M_ARM) || defined (_M_ARM64)
+#if defined (_M_ARM64)
 //
 // MSFT ARM variable argument list support.
 //
@@ -1393,5 +1390,3 @@ _ReturnAddress (
 
 **/
 #define ARRAY_SIZE(Array)  (sizeof (Array) / sizeof ((Array)[0]))
-
-#endif

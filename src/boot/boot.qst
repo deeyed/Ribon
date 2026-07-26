@@ -1,0 +1,247 @@
+local ribon = qstar.import_module("qstar/modules/ribon")
+
+local uefi_common_sources = {
+  "src/firmware/common.c",
+  "src/firmware/freestanding/string.c",
+  "src/firmware/uefi/hardening.c",
+  "src/loader/elf64.c",
+  "src/core/arena.c",
+  "src/core/context.c",
+  "src/core/memory.c",
+  "src/core/platform.c",
+  "src/core/profile.c",
+  "src/core/ribon.c",
+  "src/modes/normal.c",
+  "src/profiles/parus.c",
+  "src/profiles/parus/rph1_builder.c",
+  "src/profiles/parus/rph1_parser.c",
+  "src/boot/uefi_main.c",
+}
+
+local rpi_common_sources = {
+  "src/boot/rpi_entry.S",
+  "src/boot/rpi_main.c",
+  "src/arch/common.c",
+  "src/arch/aarch64/arch.c",
+  "src/firmware/common.c",
+  "src/firmware/freestanding/string.c",
+  "src/firmware/rpi/rpi.c",
+  "src/loader/elf64.c",
+  "src/core/arena.c",
+  "src/core/context.c",
+  "src/core/memory.c",
+  "src/core/platform.c",
+  "src/core/profile.c",
+  "src/core/ribon.c",
+  "src/modes/normal.c",
+  "src/profiles/parus.c",
+  "src/profiles/parus/rph1_builder.c",
+  "src/profiles/parus/rph1_parser.c",
+}
+
+local function uefi_sources(variant)
+  return qstar.append(
+    {
+      "src/arch/common.c",
+      qstar.join("src/arch", ribon.uefi_arch(variant), "arch.c"),
+    },
+    uefi_common_sources)
+end
+
+local function rpi_sources()
+  return qstar.copy(rpi_common_sources)
+end
+
+qstar.target_family "ribon_boot" {
+  variants = ribon.host_arches(),
+  allow_shared_sources = true,
+}
+
+for _, arch in ipairs(ribon.host_arches()) do
+  qstar.executable("ribon_boot_" .. arch) {
+    sources = {
+      "src/boot/main.c",
+    },
+    deps = {
+      "//src/core:ribon_core_" .. arch,
+    },
+    configs = {
+      "//qstar/policies:ribon_test_c",
+    },
+  }
+
+  qstar.run_target("host_smoke_" .. arch) {
+    toolset = "//qstar/policies:host",
+    deps = {
+      "//src/boot:ribon_boot_" .. arch,
+    },
+    command = qstar.cli {
+      "python3",
+      "tools/qstar_host_smoke.py",
+      arch,
+      qstar.target_file("//src/boot:ribon_boot_" .. arch),
+      "build/qstar/generated/qstar-host-" .. arch .. ".elf",
+    },
+    description = qstar.status("Running Ribon host smoke for " .. arch),
+    timeout = 15,
+    expect = {
+      contains = "handoff-artifact-format=rph1",
+    },
+  }
+end
+
+for _, variant in ipairs(ribon.uefi_variants()) do
+  qstar.custom_target("ribon_uefi_kernel_fixture_" .. variant) {
+    toolset = "//qstar/policies:uefi_" .. variant,
+    outputs = {
+      qstar.output(ribon.uefi_fixture_path(variant)),
+    },
+    command = qstar.cli {
+      "python3",
+      "tools/make_elf64_fixture.py",
+      "--arch",
+      ribon.uefi_fixture_arch(variant),
+      "--output",
+      qstar.output(0),
+    },
+    description = qstar.status("Generating Ribon UEFI kernel fixture for " .. variant),
+  }
+
+  qstar.executable("ribon_uefi_" .. variant) {
+    artifact_name = ribon.uefi_boot_file(variant),
+    sources = uefi_sources(variant),
+    configs = {
+      "//qstar/policies:ribon_uefi_" .. variant .. "_c",
+    },
+    link_options = {
+      "/subsystem:efi_application",
+      "/entry:efi_main",
+      "/nodefaultlib",
+    },
+  }
+
+  qstar.stage("ribon_uefi_esp_" .. variant) {
+    root = ribon.uefi_stage_root(variant),
+    files = {
+      qstar.stage_file(
+        qstar.target_file("//src/boot:ribon_uefi_" .. variant),
+        qstar.join("EFI/BOOT", ribon.uefi_boot_file(variant))),
+      qstar.stage_file(
+        qstar.target_file("//src/boot:ribon_uefi_kernel_fixture_" .. variant),
+        "kernel/kernel.elf"),
+    },
+    description = qstar.status("Staging Ribon UEFI ESP for " .. variant),
+  }
+end
+
+for _, variant in ipairs(ribon.rpi_variants()) do
+  qstar.custom_target("ribon_rpi_kernel_fixture_" .. variant) {
+    toolset = "//qstar/policies:rpi_" .. variant,
+    outputs = {
+      qstar.output(ribon.rpi_kernel_fixture_path(variant)),
+    },
+    command = qstar.cli {
+      "python3",
+      "tools/make_elf64_fixture.py",
+      "--arch",
+      "aarch64",
+      "--base",
+      ribon.rpi_fixture_base(variant),
+      "--output",
+      qstar.output(0),
+    },
+    description = qstar.status("Generating Ribon RPi kernel fixture for " .. variant),
+  }
+
+  qstar.custom_target("ribon_rpi_payload_embed_object_" .. variant) {
+    toolset = "//qstar/policies:rpi_" .. variant,
+    inputs = {
+      qstar.target_file("//src/boot:ribon_rpi_kernel_fixture_" .. variant),
+      ribon.rpi_cmdline_path(),
+      "src/boot/rpi_payload_embed.S",
+    },
+    outputs = {
+      qstar.output(ribon.rpi_payload_embed_object_path(variant), {
+        format = "object",
+      }),
+    },
+    command = qstar.cli(qstar.append(
+      {
+        "clang",
+      },
+      ribon.rpi_clang_target_options(variant),
+      {
+        "-ffreestanding",
+        "-x",
+        "assembler-with-cpp",
+        "-c",
+        qstar.input(2),
+        "-o",
+        qstar.output(0),
+        "-I",
+        "include/freestanding",
+        "-I",
+        "include",
+      },
+      ribon.rpi_payload_embed_compile_options(variant))),
+    description = qstar.status("Embedding Ribon RPi boot media for " .. variant),
+  }
+
+  qstar.executable("ribon_rpi_payload_" .. variant) {
+    artifact_name = ribon.rpi_payload_artifact_name(variant),
+    sources = qstar.append(
+      rpi_sources(),
+      qstar.output(ribon.rpi_payload_embed_object_path(variant))),
+    configs = {
+      "//qstar/policies:ribon_rpi_" .. variant .. "_c",
+    },
+    link_inputs = {
+      "linker/rpi5-aarch64.ld",
+    },
+    link_options = qstar.append(
+      {
+        "-T",
+        "linker/rpi5-aarch64.ld",
+      },
+      ribon.rpi_defsym_link_options(variant)),
+    lang = {
+      c = {
+        compile_options = ribon.rpi_c_compile_options(variant),
+      },
+    },
+  }
+
+  qstar.custom_target("ribon_rpi_image_" .. variant) {
+    toolset = "//qstar/policies:rpi_" .. variant,
+    inputs = {
+      qstar.target_file("//src/boot:ribon_rpi_payload_" .. variant),
+    },
+    outputs = {
+      qstar.output(ribon.rpi_image_path(variant), {
+        group = "images",
+      }),
+    },
+    command = qstar.cli {
+      "llvm-objcopy",
+      "-O",
+      "binary",
+      qstar.input(0),
+      qstar.output(0),
+    },
+    description = qstar.status("Generating Ribon RPi image for " .. variant),
+  }
+
+  qstar.stage("ribon_rpi_package_" .. variant) {
+    root = ribon.rpi_stage_root(variant),
+    files = {
+      qstar.stage_file(qstar.target_file("//src/boot:ribon_rpi_image_" .. variant), "kernel8.img"),
+      qstar.stage_file(qstar.target_file("//src/boot:ribon_rpi_image_" .. variant), "ribon-rpi5.img"),
+      qstar.stage_file(ribon.rpi_config_path(), "config.txt"),
+      qstar.stage_file(ribon.rpi_cmdline_path(), "cmdline.txt"),
+      qstar.stage_file(
+        qstar.target_file("//src/boot:ribon_rpi_kernel_fixture_" .. variant),
+        "kernel/kernel.elf"),
+    },
+    description = qstar.status("Staging Ribon RPi package for " .. variant),
+  }
+end

@@ -1,0 +1,7 @@
+qstar.subdir("parus")
+
+qstar.group "ribon_profiles" {
+  deps = {
+    "//src/profiles/parus:ribon_profile_parus",
+  },
+}

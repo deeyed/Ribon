@@ -1,0 +1,6 @@
+qstar.group "ribon_arch_riscv64" {
+  deps = {
+    "//src/core:ribon_core_riscv64",
+    "//src/boot:host_smoke_riscv64",
+  },
+}

@@ -1,0 +1,147 @@
+local function uefi_include_dirs(binding_dir)
+  return {
+    "include/freestanding",
+    qstar.join("include/uefi", binding_dir),
+    "include/uefi",
+    "include",
+  }
+end
+
+qstar.config "ribon_host_c" {
+  toolset = "//qstar/policies:host",
+  lang = {
+    c = {
+      public_include_dirs = {
+        "include",
+      },
+      compile_options = {
+        "-std=c11",
+        "-O2",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+      },
+    },
+  },
+}
+
+qstar.config "ribon_test_c" {
+  toolset = "//qstar/policies:host",
+  lang = {
+    c = {
+      include_dirs = {
+        "include",
+      },
+      compile_options = {
+        "-std=c11",
+        "-O2",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+      },
+    },
+  },
+}
+
+qstar.config "ribon_uefi_x64_c" {
+  toolset = "//qstar/policies:uefi_x64",
+  lang = {
+    c = {
+      include_dirs = uefi_include_dirs("X64"),
+      compile_options = {
+        "-std=c11",
+        "-O2",
+        "-ffreestanding",
+        "-fshort-wchar",
+        "-fno-builtin",
+        "-fno-stack-protector",
+        "-mno-red-zone",
+        "-mno-stack-arg-probe",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+      },
+    },
+  },
+}
+
+qstar.config "ribon_uefi_aa64_c" {
+  toolset = "//qstar/policies:uefi_aa64",
+  lang = {
+    c = {
+      include_dirs = uefi_include_dirs("AArch64"),
+      compile_options = {
+        "-std=c11",
+        "-O2",
+        "-ffreestanding",
+        "-fshort-wchar",
+        "-fno-builtin",
+        "-fno-stack-protector",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+      },
+    },
+  },
+}
+
+local function rpi_c_lang()
+  return {
+    include_dirs = {
+      "include/freestanding",
+      "include",
+    },
+    compile_options = {
+      "-std=c11",
+      "-O2",
+      "-ffreestanding",
+      "-fno-builtin",
+      "-fno-stack-protector",
+      "-fno-pic",
+      "-mgeneral-regs-only",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+    },
+  }
+end
+
+local function rpi_asm_lang()
+  return {
+    include_dirs = {
+      "include/freestanding",
+      "include",
+    },
+    compile_options = {
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+    },
+    preprocess = true,
+  }
+end
+
+qstar.config "ribon_rpi_rpi5_c" {
+  toolset = "//qstar/policies:rpi_rpi5",
+  link_options = {
+    "-nostdlib",
+  },
+  lang = {
+    c = rpi_c_lang(),
+    asm = rpi_asm_lang(),
+  },
+}
+
+qstar.config "ribon_rpi_qemu_virt_c" {
+  toolset = "//qstar/policies:rpi_qemu_virt",
+  link_options = {
+    "-nostdlib",
+  },
+  lang = {
+    c = rpi_c_lang(),
+    asm = rpi_asm_lang(),
+  },
+}

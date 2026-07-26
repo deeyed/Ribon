@@ -1,0 +1,7 @@
+qstar.group "ribon_arch_x86_64" {
+  deps = {
+    "//src/core:ribon_core_x86_64",
+    "//src/boot:host_smoke_x86_64",
+    "//tests:x86_64_direct_high_tests",
+  },
+}

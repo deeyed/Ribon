@@ -1,0 +1,3 @@
+qstar.group "ribon_firmware_rpi" {
+  deps = {},
+}

@@ -1,0 +1,24 @@
+PROJECT_NAME           = "Ribon"
+PROJECT_BRIEF          = "Generic deterministic boot and recovery framework"
+OUTPUT_DIRECTORY       = build/docs/doxygen
+INPUT                  = include/Ribon src
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.c *.S
+EXTENSION_MAPPING      = S=C
+GENERATE_HTML          = NO
+GENERATE_XML           = YES
+GENERATE_LATEX         = NO
+MARKDOWN_SUPPORT       = YES
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+WARN_IF_UNDOCUMENTED   = YES
+WARN_AS_ERROR          = NO
+QUIET                  = YES
+JAVADOC_AUTOBRIEF      = NO
+FULL_PATH_NAMES        = YES
+STRIP_FROM_PATH        = .
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = RIBON_NORETURN=

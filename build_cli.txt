@@ -1,4 +1,0 @@
-cmake -B build -G "Unix Makefiles" \
-  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain_x86_64.cmake \
-  -DARCH=x86_64 \
-  -DBOOTLOADER=ON

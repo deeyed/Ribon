@@ -1,0 +1,75 @@
+qstar.toolset "host" {
+  tools = {
+    c = { compiler = qstar.cli {"cc"} },
+    archive = qstar.cli {"llvm-ar"},
+    link = qstar.cli {"cc"},
+  },
+  path_tools = {
+    "clang",
+    "llvm-ar",
+    "python3",
+    "llvm-objcopy",
+  },
+}
+
+qstar.toolset "uefi_x64" {
+  tools = {
+    c = { compiler = qstar.cli {"clang", "-target", "x86_64-pc-windows-msvc"} },
+    archive = qstar.cli {"llvm-ar"},
+    link = qstar.cli {"lld-link"},
+  },
+  response_style = "msvc",
+  path_tools = {
+    "clang",
+    "python3",
+    "llvm-objcopy",
+  },
+}
+
+qstar.toolset "uefi_aa64" {
+  tools = {
+    c = { compiler = qstar.cli {"clang", "-target", "aarch64-pc-windows-msvc"} },
+    archive = qstar.cli {"llvm-ar"},
+    link = qstar.cli {"lld-link"},
+  },
+  response_style = "msvc",
+  path_tools = {
+    "clang",
+    "python3",
+    "llvm-objcopy",
+  },
+}
+
+qstar.toolset "rpi_rpi5" {
+  tools = {
+    c = { compiler = qstar.cli {"clang", "-target", "aarch64-none-elf", "-mcpu=cortex-a76"} },
+    asm = { compiler = qstar.cli {"clang", "-target", "aarch64-none-elf", "-mcpu=cortex-a76"} },
+    archive = qstar.cli {"llvm-ar"},
+    link = qstar.cli {"ld.lld"},
+  },
+  response_files = "on",
+  response_style = "posix",
+  path_tools = {
+    "clang",
+    "llvm-ar",
+    "llvm-objcopy",
+    "python3",
+  },
+}
+
+qstar.toolset "rpi_qemu_virt" {
+  tools = {
+    c = { compiler = qstar.cli {"clang", "-target", "aarch64-none-elf", "-mcpu=cortex-a72"} },
+    asm = { compiler = qstar.cli {"clang", "-target", "aarch64-none-elf", "-mcpu=cortex-a72"} },
+    archive = qstar.cli {"llvm-ar"},
+    link = qstar.cli {"ld.lld"},
+  },
+  response_files = "on",
+  response_style = "posix",
+  path_tools = {
+    "clang",
+    "llvm-ar",
+    "llvm-objcopy",
+    "python3",
+  },
+}

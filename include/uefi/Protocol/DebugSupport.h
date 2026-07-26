@@ -13,8 +13,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
 
-#ifndef __DEBUG_SUPPORT_H__
-#define __DEBUG_SUPPORT_H__
+#pragma once
 
 #include <IndustryStandard/PeImage.h>
 
@@ -687,7 +686,7 @@ typedef struct {
 /// register offset 16 bits, width 6 bits.
 ///
 /// If you want to register an exception hook, you can
-/// shfit the number left by 16 bits, and the exception
+/// shift the number left by 16 bits, and the exception
 /// handler will know the types.
 ///
 /// For example:
@@ -849,7 +848,6 @@ typedef enum {
   IsaX64     = IMAGE_FILE_MACHINE_X64,            ///< 0x8664
   IsaIpf     = IMAGE_FILE_MACHINE_IA64,           ///< 0x0200
   IsaEbc     = IMAGE_FILE_MACHINE_EBC,            ///< 0x0EBC
-  IsaArm     = IMAGE_FILE_MACHINE_ARMTHUMB_MIXED, ///< 0x01c2
   IsaAArch64 = IMAGE_FILE_MACHINE_ARM64           ///< 0xAA64
 } EFI_INSTRUCTION_SET_ARCHITECTURE;
 
@@ -962,5 +960,3 @@ struct _EFI_DEBUG_SUPPORT_PROTOCOL {
 };
 
 extern EFI_GUID  gEfiDebugSupportProtocolGuid;
-
-#endif

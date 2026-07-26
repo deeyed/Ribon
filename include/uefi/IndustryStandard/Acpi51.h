@@ -9,8 +9,7 @@
   SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 
-#ifndef _ACPI_5_1_H_
-#define _ACPI_5_1_H_
+#pragma once
 
 #include <IndustryStandard/Acpi50.h>
 
@@ -826,8 +825,8 @@ typedef struct {
 ///
 /// ACPI RASF Platform RAS Capabilities
 ///
-#define EFI_ACPI_5_1_RASF_PLATFORM_RAS_CAPABILITY_HARDWARE_BASED_PATROL_SCRUB_SUPPOTED                          0x01
-#define EFI_ACPI_5_1_RASF_PLATFORM_RAS_CAPABILITY_HARDWARE_BASED_PATROL_SCRUB_SUPPOTED_AND_EXPOSED_TO_SOFTWARE  0x02
+#define EFI_ACPI_5_1_RASF_PLATFORM_RAS_CAPABILITY_HARDWARE_BASED_PATROL_SCRUB_SUPPORTED                          BIT0
+#define EFI_ACPI_5_1_RASF_PLATFORM_RAS_CAPABILITY_HARDWARE_BASED_PATROL_SCRUB_SUPPORTED_AND_EXPOSED_TO_SOFTWARE  BIT1
 
 ///
 /// ACPI RASF Parameter Block structure for PATROL_SCRUB
@@ -1835,6 +1834,25 @@ typedef struct {
 } EFI_ACPI_5_1_EINJ_TRIGGER_ACTION_TABLE;
 
 ///
+/// Windows ACPI Emulated devices Table
+///
+typedef struct {
+  EFI_ACPI_DESCRIPTION_HEADER    Header;
+  ///
+  /// Container of a bitmask of Windows behavior that this system requires
+  /// Bit 0 - RTC good
+  /// Bit 1 - ACPI PM timer good
+  ///
+  UINT32                         EmulatedDeviceFlags;
+} EFI_ACPI_5_1_WAET_TABLE;
+
+///
+/// WAET Flags. All other bits are reserved and must be 0.
+///
+#define EFI_ACPI_5_1_WAET_FLAGS_RTC_GOOD            BIT0
+#define EFI_ACPI_5_1_WAET_FLAGS_ACPI_PM_TIMER_GOOD  BIT1
+
+///
 /// Platform Communications Channel Table (PCCT)
 ///
 typedef struct {
@@ -2163,5 +2181,3 @@ typedef struct {
 #define EFI_ACPI_5_1_PLATFORM_BINARY_TABLE_SIGNATURE  SIGNATURE_32('W', 'P', 'B', 'T')
 
 #pragma pack()
-
-#endif

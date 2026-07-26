@@ -1,0 +1,7 @@
+qstar.group "ribon_profile_parus" {
+  deps = {
+    "//tests:rph1_builder_tests",
+    "//src/boot:host_smoke_x86_64",
+    "//src/boot:host_smoke_aarch64",
+  },
+}
