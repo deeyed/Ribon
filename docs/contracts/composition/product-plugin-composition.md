@@ -6,9 +6,9 @@ last_verified: 2026-07-26
 code_paths:
   - qstar.lua
   - qstar/
-  - products/
+  - products/bootmgr/manifests/
   - targets/
-  - build/generated/
+  - tools/generate_plugin_registry.py
 tests:
   - ribon-plugin-graph-lint
   - ribon-product-composition-test
@@ -21,20 +21,23 @@ supersedes:
 
 # Product와 Plugin 조합 계약
 
-QStar는 Ribon component graph의 정본 build composer다. Makefile은 개발 편의 wrapper일
-수 있지만 source ownership, plugin dependency, target identity를 별도로 정의하지 않는다.
+Source-owned product manifest는 Ribon component graph의 정본 tuple이다. QStar는 해당
+tuple과 target closure를 검사하고, Makefile target recipe는 같은 manifest에서 생성한
+registry를 링크한다. C source list가 product identity를 암묵적으로 새로 정의해서는 안
+된다.
 
 ## Metadata 계층
 
 | Metadata | 역할 |
 | --- | --- |
-| `plugin.qst` | 한 plugin의 ABI, source, capability, dependency |
-| `package.qst` | 외부에 공개할 header, plugin, license 묶음 |
-| `product.qst` | bootloader 또는 firmware 기능 조합 |
-| `target.qst` | architecture, environment, platform, product 선택 |
-| `image.qst` | linker, header, padding, signing, package recipe |
+| `RibonPluginDescriptor` | 한 plugin의 ABI, capability, dependency와 budget |
+| `products/*/manifests/*.json` | product ID, 정확한 frontend tuple, plugin set과 limit |
+| `targets/*.qst` | QStar target closure와 generated artifact |
+| `targets/<target>/` | native entry, linker, image와 package recipe |
+| `qstar/*.qst` | library, plugin, test dependency graph |
 
-한 metadata 계층의 값을 C preprocessor macro로 중복 정의하지 않는다.
+Architecture-specific host fixture 외에는 product tuple을 C preprocessor macro로
+중복 정의하지 않는다.
 
 ## Product tuple
 
@@ -55,14 +58,13 @@ evidence policy
 
 ## Generated output
 
-Composer는 최소 다음을 `build/generated/` 아래 생성한다.
+Composer는 `build/` 아래 최소 다음을 생성한다.
 
 - plugin registry
 - product descriptor
-- capability and phase report
 - selected object manifest
-- public ABI compatibility report
-- image input manifest
+- final link map
+- target artifact 또는 package manifest
 
 Generated output은 정본 source가 아니며 build directory 밖에 기록하지 않는다.
 
@@ -73,13 +75,14 @@ Product는 다음 provider 수를 만족한다.
 | Provider | 수량 |
 | --- | ---: |
 | architecture backend | 1 |
-| entry environment 또는 firmware personality root | 1 |
-| boot policy | 1 |
-| selected mode policy | 1 |
+| entry environment | 1 |
+| platform facts | 1 |
+| selected mode object | 1 |
 | stable plugin ID | 1 이하 |
 
-Boot Protocol은 menu 또는 product policy가 허용한 수만큼 포함할 수 있다. 선택되지 않은
-protocol은 실행 중 검색하거나 로드하지 않는다.
+Boot manager product는 하나 이상의 Boot Protocol을 정적으로 포함할 수 있으나 한 boot
+session은 정확히 하나를 선택한다. 선택되지 않은 protocol은 실행 중 검색하거나
+동적으로 로드하지 않는다.
 
 ## Plugin phase
 

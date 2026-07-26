@@ -6,6 +6,8 @@ qstar.staticlib "libribon_boot" {
     "src/common/environment.c",
     "src/common/protocol.c",
     "src/common/boot.c",
+    "src/common/image.c",
+    "src/common/platform.c",
   },
   configs = {
     "//qstar/policies:ribon_host_c",

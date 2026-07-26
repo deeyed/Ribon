@@ -1,0 +1,1 @@
+protocol=parus environment=raw-fdt target=raspberrypi-rpi5

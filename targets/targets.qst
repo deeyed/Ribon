@@ -1,0 +1,50 @@
+local target_commands = {
+  {
+    name = "ribon_qemu_aarch64_raw_fdt",
+    make_target = "qemu-aarch64-virt-raw-fdt",
+    output = "build/qstar/generated/r4/targets/qemu-aarch64-virt-raw-fdt/ribon.bin",
+  },
+  {
+    name = "ribon_x86_64_uefi_app",
+    make_target = "x86_64-uefi-app",
+    output = "build/qstar/generated/r4/targets/x86_64-uefi-app/esp/EFI/BOOT/BOOTX64.EFI",
+  },
+  {
+    name = "ribon_rpi5_raw_fdt_package",
+    make_target = "rpi5-aarch64-raw-fdt-package",
+    output = "build/qstar/generated/r4/targets/rpi5-aarch64-raw-fdt/package/manifest.json",
+  },
+  {
+    name = "ribon_x86_bios_compile",
+    make_target = "bios-compile",
+    output = "build/qstar/generated/r4/targets/x86-bios-client/generated/plugin_registry.c",
+  },
+}
+
+for _, target in ipairs(target_commands) do
+  qstar.custom_target(target.name) {
+    toolset = "//qstar/policies:host",
+    inputs = {
+      "Makefile",
+    },
+    outputs = {
+      qstar.output(target.output),
+    },
+    command = qstar.cli {
+      "make",
+      "--no-print-directory",
+      "BUILD_ROOT=build/qstar/generated/r4",
+      target.make_target,
+    },
+    description = qstar.status("Building " .. target.make_target),
+  }
+end
+
+qstar.group "ribon_boot_targets" {
+  deps = {
+    "//targets:ribon_qemu_aarch64_raw_fdt",
+    "//targets:ribon_x86_64_uefi_app",
+    "//targets:ribon_rpi5_raw_fdt_package",
+    "//targets:ribon_x86_bios_compile",
+  },
+}

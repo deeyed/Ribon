@@ -1,0 +1,61 @@
+{
+  "product_id": "bootmgr.qemu-aarch64-virt-parus",
+  "architecture": "aarch64",
+  "environment": "raw-fdt",
+  "mode": "normal",
+  "max_plugins": 16,
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "ENTRY_CONTRACT",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "MONOTONIC_TIMER",
+    "PLATFORM_FACTS"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "ENTRY_CONTRACT",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "MONOTONIC_TIMER",
+    "PLATFORM_FACTS"
+  ],
+  "limits": {
+    "max_memory_regions": 256,
+    "max_load_segments": 32,
+    "max_components": 32,
+    "max_retries": 2,
+    "max_input_bytes": 67108864,
+    "max_handoff_bytes": 65536,
+    "arena_bytes": 262144,
+    "operation_deadline_ms": 30000
+  },
+  "plugins": [
+    {
+      "id": "arch.aarch64",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "environment.raw-fdt",
+      "symbol": "ribon_raw_fdt_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.elf64",
+      "symbol": "ribon_elf64_image_plugin_descriptor"
+    },
+    {
+      "id": "platform.virt-aarch64",
+      "symbol": "ribon_platform_plugin_descriptor"
+    },
+    {
+      "id": "protocol.parus",
+      "symbol": "ribon_parus_protocol_plugin_descriptor"
+    }
+  ]
+}

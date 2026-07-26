@@ -81,13 +81,25 @@ static _Noreturn void riscv64_halt(void) {
     }
 }
 
+/** @brief RISC-V time CSR을 allocation 없이 읽는다. */
+static uint64_t riscv64_monotonic_counter(void) {
+#if defined(__riscv) && __riscv_xlen == 64
+    uint64_t value;
+    __asm__ __volatile__("rdtime %0" : "=r"(value));
+    return value;
+#else
+    return 1u;
+#endif
+}
+
 static const struct RibonArchOps riscv64_ops = {
     .size = sizeof(riscv64_ops),
     .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
     .capabilities =
         RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
         RIBON_ARCH_CAP_CACHE_SYNC |
-        RIBON_ARCH_CAP_HALT,
+        RIBON_ARCH_CAP_HALT |
+        RIBON_ARCH_CAP_MONOTONIC_COUNTER,
     .descriptor = &riscv64_arch,
     .validate_payload = ribon_arch_validate_loaded_payload,
     .cache_sync = riscv64_cache_sync,
@@ -97,6 +109,7 @@ static const struct RibonArchOps riscv64_ops = {
     .enter_kernel = 0,
     .halt = riscv64_halt,
     .reset = 0,
+    .monotonic_counter = riscv64_monotonic_counter,
 };
 
 /** @brief 선택된 RISC-V 64 architecture operation table을 반환한다. */

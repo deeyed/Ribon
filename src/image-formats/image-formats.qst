@@ -1,0 +1,24 @@
+qstar.staticlib "ribon_image_elf64" {
+  sources = {
+    "src/image-formats/elf64.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.staticlib "ribon_image_pe_coff" {
+  sources = {
+    "src/image-formats/pe_coff.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.group "ribon_image_formats" {
+  deps = {
+    "//src/image-formats:ribon_image_elf64",
+    "//src/image-formats:ribon_image_pe_coff",
+  },
+}

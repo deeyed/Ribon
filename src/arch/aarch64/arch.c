@@ -117,6 +117,17 @@ static _Noreturn void aarch64_halt(void) {
     }
 }
 
+/** @brief AArch64 virtual counter를 allocation 없이 읽는다. */
+static uint64_t aarch64_monotonic_counter(void) {
+#if defined(__aarch64__)
+    uint64_t value;
+    __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(value));
+    return value;
+#else
+    return 1u;
+#endif
+}
+
 static const struct RibonArchOps aarch64_ops = {
     .size = sizeof(aarch64_ops),
     .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
@@ -125,7 +136,8 @@ static const struct RibonArchOps aarch64_ops = {
         RIBON_ARCH_CAP_CACHE_SYNC |
         RIBON_ARCH_CAP_DIRECT_HIGH_ENTRY |
         RIBON_ARCH_CAP_ENTRY_BRIDGE |
-        RIBON_ARCH_CAP_HALT,
+        RIBON_ARCH_CAP_HALT |
+        RIBON_ARCH_CAP_MONOTONIC_COUNTER,
     .descriptor = &aarch64_arch,
     .validate_payload = ribon_arch_validate_loaded_payload,
     .cache_sync = aarch64_cache_sync,
@@ -135,6 +147,7 @@ static const struct RibonArchOps aarch64_ops = {
     .enter_kernel = ribon_arch_enter_kernel,
     .halt = aarch64_halt,
     .reset = 0,
+    .monotonic_counter = aarch64_monotonic_counter,
 };
 
 /** @brief 선택된 AArch64 architecture operation table을 반환한다. */

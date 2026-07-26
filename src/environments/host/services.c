@@ -145,6 +145,9 @@ const struct RibonPluginDescriptor ribon_host_environment_plugin_descriptor = {
     .provides =
         RIBON_CAP_BOOT_SOURCE_READ |
         RIBON_CAP_MONOTONIC_TIMER,
+    .requires =
+        RIBON_CAP_ARCHITECTURE |
+        RIBON_CAP_PLATFORM_FACTS,
     .architecture_mask = RIBON_ARCH_MASK_ALL,
     .environment_mask = RIBON_ENV_MASK_HOST,
     .mode_mask = RIBON_MODE_MASK_ALL,

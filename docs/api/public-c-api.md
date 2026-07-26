@@ -10,6 +10,7 @@ code_paths:
   - include/Ribon/protocol/
   - include/Ribon/firmware/
   - include/Ribon/arch/
+  - include/Ribon/platform/
 tests:
   - ribon-public-api-lint
   - ribon-doxygen
@@ -94,6 +95,17 @@ Ribon/arch/entry.h
 
 Architecture operation은 machine, canonical address, cache, privilege, transfer를
 제공한다. Board resource와 OS permanent page table을 노출하지 않는다.
+
+## Platform API
+
+```text
+Ribon/platform/facts.h
+```
+
+Platform fact는 target이 선택한 architecture와 environment, diagnostic resource,
+native input 상한, payload load window를 고정한다. Runtime-discovered FDT 또는 firmware
+fact와 충돌하면 environment capture가 fail-closed한다. Platform API는 OS wire
+artifact를 포함하지 않는다.
 
 ## ABI 규칙
 

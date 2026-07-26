@@ -24,19 +24,9 @@ qstar.staticlib "ribon_protocol_parus" {
   },
 }
 
-qstar.staticlib "ribon_image_elf64" {
-  sources = {
-    "src/loader/elf64.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_host_c",
-  },
-}
-
 qstar.group "ribon_protocol_plugins" {
   deps = {
     "//src/protocols:ribon_protocol_synthetic",
     "//src/protocols:ribon_protocol_parus",
-    "//src/protocols:ribon_image_elf64",
   },
 }

@@ -1,1 +1,0 @@
-firmware=rpi boot_media=fat:/ kernel=kernel/kernel.elf handoff=rph1

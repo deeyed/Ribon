@@ -8,9 +8,8 @@ code_paths:
   - src/common/
   - src/arch/
   - src/environments/
+  - src/image-formats/
   - src/protocols/
-  - src/plugins/
-  - src/firmware/
   - platforms/
   - products/
   - targets/
@@ -175,21 +174,33 @@ Source scan, weak symbol, constructor side effect로 plugin을 발견하지 않�
 
 ## Plugin 종류
 
-Ribon plugin ABI는 최소 다음 종류를 구분한다.
+활성 plugin descriptor ABI는 다음 종류를 구분한다.
 
 | Kind | 예 |
 | --- | --- |
-| `BOOT_PROTOCOL` | Parus, Linux, FreeBSD, Multiboot, chainload |
-| `IMAGE_FORMAT` | ELF, PE/COFF, Linux Image |
-| `ARCH_BACKEND` | x86_64, AArch64, RISC-V 64 |
-| `ENVIRONMENT` | UEFI application, BIOS client, raw-FDT, SBI |
+| `ARCHITECTURE` | x86_64, AArch64, RISC-V 64 |
+| `ENVIRONMENT` | UEFI application, BIOS client, raw-FDT, host |
+| `IMAGE_FORMAT` | ELF64, PE/COFF |
+| `BOOT_PROTOCOL` | Parus, synthetic contract fixture |
+| `PLATFORM` | QEMU virt, RPi5, PC UEFI, PC BIOS |
+
+`POLICY`와 `FIRMWARE_PERSONALITY` 값은 해당 operation ABI가 승인될 때까지 reserved
+kind다. Mode descriptor는 plugin descriptor와 별도 계약이다.
+
+Driver, filesystem, transport, security와 firmware service는 SDK 확장에서 독립 kind가
+될 수 있다. 해당 kind가 public descriptor ABI에 추가되기 전에는 product가 선택한
+private object이며 runtime plugin으로 간주하지 않는다.
+
+향후 kind의 역할 예시는 다음과 같다.
+
+| 예정 경계 | 예 |
+| --- | --- |
 | `DRIVER` | PL011, block controller, NIC |
 | `FILESYSTEM` | FAT, ISO9660 |
 | `TRANSPORT` | firmware HTTP, TFTP, native Ethernet |
 | `SECURITY` | digest, signature, anti-rollback provider |
 | `UPDATE_POLICY` | slot journal과 recovery transition |
 | `BOOT_POLICY` | entry selection과 retry |
-| `FIRMWARE_PERSONALITY` | UEFI-compatible, BIOS-compatible |
 | `FIRMWARE_SERVICE` | variable, time, reset, image, protocol database |
 
 Plugin은 build-time에 선택되는 정적 component다. Runtime-loadable plugin은 별도의

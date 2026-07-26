@@ -38,6 +38,8 @@ const char *ribon_plugin_kind_name(enum RibonPluginKind kind) {
         return "policy";
     case RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY:
         return "firmware-personality";
+    case RIBON_PLUGIN_KIND_PLATFORM:
+        return "platform";
     default:
         return "unknown";
     }
@@ -56,7 +58,7 @@ int ribon_plugin_descriptor_is_valid(const struct RibonPluginDescriptor *descrip
         descriptor->abi_major != RIBON_PLUGIN_ABI_MAJOR ||
         descriptor->abi_minor > RIBON_PLUGIN_ABI_MINOR ||
         descriptor->kind < RIBON_PLUGIN_KIND_ARCHITECTURE ||
-        descriptor->kind > RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY ||
+        descriptor->kind > RIBON_PLUGIN_KIND_PLATFORM ||
         descriptor->phase < RIBON_PLUGIN_PHASE_EARLY ||
         descriptor->phase > RIBON_PLUGIN_PHASE_RUNTIME ||
         descriptor->id == 0 ||

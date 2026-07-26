@@ -121,4 +121,14 @@ int ribon_boot_prepare(
 /** @brief Prepared attempt의 durable metadata commit 경계를 전진시킨다. */
 int ribon_boot_commit(struct RibonBootSession *session);
 
+/**
+ * @brief Commit 뒤 갱신된 final platform fact로 handoff plan만 다시 만든다.
+ *
+ * Source, payload, protocol 선택은 바꾸지 않으며 session은 `COMMITTED`를 유지한다.
+ */
+int ribon_boot_refresh_after_commit(
+    struct RibonBootSession *session,
+    const struct RibonBootRequest *request,
+    struct RibonBootPlan *out);
+
 #endif

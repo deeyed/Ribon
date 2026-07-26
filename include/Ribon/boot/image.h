@@ -13,6 +13,7 @@ struct RibonPluginDescriptor;
 enum RibonExecutableFormat {
     RIBON_EXECUTABLE_FORMAT_UNKNOWN = 0,
     RIBON_EXECUTABLE_FORMAT_ELF64 = 1,
+    RIBON_EXECUTABLE_FORMAT_PE_COFF = 2,
 };
 
 /** @brief Image format을 protocol allowlist bit로 변환한다. */
@@ -126,5 +127,8 @@ int ribon_image_plugin_operations_are_valid(
 
 /** @brief ELF64 image-format plugin descriptor다. */
 extern const struct RibonPluginDescriptor ribon_elf64_image_plugin_descriptor;
+
+/** @brief PE32+ image-format plugin descriptor다. */
+extern const struct RibonPluginDescriptor ribon_pe_coff_image_plugin_descriptor;
 
 #endif

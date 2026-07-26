@@ -64,10 +64,11 @@ enum RibonArchCapability {
     RIBON_ARCH_CAP_ENTRY_BRIDGE = 1ull << 4,
     RIBON_ARCH_CAP_HALT = 1ull << 5,
     RIBON_ARCH_CAP_RESET = 1ull << 6,
+    RIBON_ARCH_CAP_MONOTONIC_COUNTER = 1ull << 7,
 };
 
 /** @brief 알려진 architecture operation bit 전체다. */
-#define RIBON_ARCH_CAP_ALL ((1ull << 7) - 1ull)
+#define RIBON_ARCH_CAP_ALL ((1ull << 8) - 1ull)
 
 /** @brief Architecture operation의 결과다. */
 enum RibonArchOperationStatus {
@@ -124,6 +125,9 @@ typedef void (*RibonArchHaltFn)(void);
 /** @brief Architecture reset primitive를 요청한다. */
 typedef int (*RibonArchResetFn)(uint32_t reason);
 
+/** @brief Preboot에서 읽을 수 있는 architecture monotonic counter다. */
+typedef uint64_t (*RibonArchMonotonicCounterFn)(void);
+
 /** @brief 한 architecture backend의 immutable operation table이다. */
 struct RibonArchOps {
     uint32_t size; /**< Operation table byte 크기다. */
@@ -138,6 +142,7 @@ struct RibonArchOps {
     RibonArchEnterKernelFn enter_kernel; /**< Terminal transfer callback이다. */
     RibonArchHaltFn halt; /**< Terminal halt callback이다. */
     RibonArchResetFn reset; /**< Optional reset callback이다. */
+    RibonArchMonotonicCounterFn monotonic_counter; /**< Allocation-free counter read다. */
 };
 
 /** @brief Build target가 선택한 architecture descriptor를 반환한다. */

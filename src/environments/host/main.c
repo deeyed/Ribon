@@ -4,6 +4,7 @@
 #include <Ribon/boot/plan.h>
 #include <Ribon/boot/transfer.h>
 #include <Ribon/core/context.h>
+#include <Ribon/platform/facts.h>
 #include <Ribon/plugin/registry.h>
 
 #include <stdio.h>
@@ -63,6 +64,7 @@ static void print_plan(
     printf("core-library=libribon-core\n");
     printf("boot-library=libribon-boot\n");
     printf("environment=%s\n", ribon_environment_name(plan->environment));
+    printf("platform=%s\n", ribon_platform_selected()->id);
     printf("arch=%s\n", plan->arch->canonical_name);
     printf("protocol=%s\n", plan->protocol_id);
     printf("image-format=%s\n", ribon_executable_format_name(plan->kernel_format));

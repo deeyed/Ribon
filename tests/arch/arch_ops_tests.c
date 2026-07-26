@@ -11,7 +11,8 @@ static int expected_arch(
     *capabilities_out =
         RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
         RIBON_ARCH_CAP_CACHE_SYNC |
-        RIBON_ARCH_CAP_HALT;
+        RIBON_ARCH_CAP_HALT |
+        RIBON_ARCH_CAP_MONOTONIC_COUNTER;
     if (strcmp(name, "x86_64") == 0) {
         *machine_out = 62u;
         *capabilities_out |=

@@ -37,14 +37,17 @@ static int address_is_canonical(uint64_t address, uint32_t virtual_address_bits)
 }
 
 /** @brief Architecture 이름에 대응하는 ELF machine 값을 반환한다. */
-static uint16_t expected_machine(const struct RibonArchDescriptor *arch) {
+static uint16_t expected_machine(
+    const struct RibonArchDescriptor *arch,
+    enum RibonExecutableFormat format) {
     if (arch_streq(arch->canonical_name, "x86_64")) {
-        return 62u;
+        return format == RIBON_EXECUTABLE_FORMAT_PE_COFF ? 0x8664u : 62u;
     }
     if (arch_streq(arch->canonical_name, "aarch64")) {
-        return 183u;
+        return format == RIBON_EXECUTABLE_FORMAT_PE_COFF ? 0xaa64u : 183u;
     }
-    if (arch_streq(arch->canonical_name, "riscv64")) {
+    if (arch_streq(arch->canonical_name, "riscv64") &&
+        format == RIBON_EXECUTABLE_FORMAT_ELF64) {
         return 243u;
     }
     return 0u;
@@ -126,6 +129,10 @@ int ribon_arch_ops_are_valid(const struct RibonArchOps *ops) {
         (ops->reset != 0)) {
         return 0;
     }
+    if (((ops->capabilities & RIBON_ARCH_CAP_MONOTONIC_COUNTER) != 0u) !=
+        (ops->monotonic_counter != 0)) {
+        return 0;
+    }
     return 1;
 }
 
@@ -157,13 +164,14 @@ int ribon_arch_validate_loaded_payload(
         arch->canonical_name == 0 ||
         arch->word_bits != 64u ||
         arch->page_size == 0u ||
-        payload->format != RIBON_EXECUTABLE_FORMAT_ELF64 ||
+        (payload->format != RIBON_EXECUTABLE_FORMAT_ELF64 &&
+         payload->format != RIBON_EXECUTABLE_FORMAT_PE_COFF) ||
         payload->segments == 0 ||
         payload->segment_count == 0u ||
         payload->segment_count > payload->segment_capacity) {
         return RIBON_ARCH_OPERATION_BAD_ARGUMENT;
     }
-    machine = expected_machine(arch);
+    machine = expected_machine(arch, payload->format);
     if (machine == 0u || payload->machine != machine ||
         !address_is_canonical(payload->entry_point, arch->virtual_address_bits)) {
         return RIBON_ARCH_OPERATION_INVALID_PAYLOAD;

@@ -36,6 +36,7 @@ for _, architecture in ipairs(architectures) do
       "src/environments/host/main.c",
       "src/environments/host/services.c",
       "src/modes/normal.c",
+      qstar.join("platforms/host", architecture .. ".c"),
       qstar.output(generated_registry),
     },
     deps = {
@@ -43,7 +44,7 @@ for _, architecture in ipairs(architectures) do
       "//src/common:libribon_boot",
       "//src/arch:ribon_arch_" .. architecture,
       "//src/protocols:ribon_protocol_synthetic",
-      "//src/protocols:ribon_image_elf64",
+      "//src/image-formats:ribon_image_elf64",
     },
     configs = {
       "//qstar/policies:ribon_host_c",

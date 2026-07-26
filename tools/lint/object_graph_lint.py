@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the R3 core and boot library object ownership boundary."""
+"""Audit the Core and generic boot-library object ownership boundary."""
 
 from __future__ import annotations
 
@@ -9,7 +9,15 @@ from pathlib import Path
 
 
 CORE_MEMBERS = {"arena.o", "context.o", "plugin.o", "registry.o"}
-BOOT_MEMBERS = {"boot.o", "environment.o", "memory.o", "protocol.o", "services.o"}
+BOOT_MEMBERS = {
+    "boot.o",
+    "environment.o",
+    "image.o",
+    "memory.o",
+    "platform.o",
+    "protocol.o",
+    "services.o",
+}
 CORE_FORBIDDEN_SYMBOLS = (
     "ribon_arch_",
     "ribon_boot_protocol_",
@@ -88,7 +96,7 @@ def main() -> int:
         for failure in failures:
             print(f"object_graph_lint: {failure}")
         return 1
-    print("RIBON-R3-LIBRARY-OBJECT-GRAPH-OK")
+    print("RIBON-R4-LIBRARY-OBJECT-GRAPH-OK")
     return 0
 
 

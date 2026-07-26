@@ -267,6 +267,18 @@ static _Noreturn void x86_64_halt(void) {
     }
 }
 
+/** @brief x86 TSC를 allocation 없이 읽는다. */
+static uint64_t x86_64_monotonic_counter(void) {
+#if defined(__x86_64__) || defined(_M_X64)
+    uint32_t low;
+    uint32_t high;
+    __asm__ __volatile__("rdtsc" : "=a"(low), "=d"(high));
+    return ((uint64_t)high << 32u) | low;
+#else
+    return 1u;
+#endif
+}
+
 static const struct RibonArchOps x86_64_ops = {
     .size = sizeof(x86_64_ops),
     .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
@@ -275,7 +287,8 @@ static const struct RibonArchOps x86_64_ops = {
         RIBON_ARCH_CAP_CACHE_SYNC |
         RIBON_ARCH_CAP_DIRECT_HIGH_ENTRY |
         RIBON_ARCH_CAP_ENTRY_BRIDGE |
-        RIBON_ARCH_CAP_HALT,
+        RIBON_ARCH_CAP_HALT |
+        RIBON_ARCH_CAP_MONOTONIC_COUNTER,
     .descriptor = &x86_64_arch,
     .validate_payload = ribon_arch_validate_loaded_payload,
     .cache_sync = x86_64_cache_sync,
@@ -285,6 +298,7 @@ static const struct RibonArchOps x86_64_ops = {
     .enter_kernel = ribon_arch_enter_kernel,
     .halt = x86_64_halt,
     .reset = 0,
+    .monotonic_counter = x86_64_monotonic_counter,
 };
 
 /** @brief 선택된 x86_64 architecture operation table을 반환한다. */

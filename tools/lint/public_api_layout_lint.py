@@ -30,6 +30,7 @@ REQUIRED = {
     "firmware/personality.h",
     "arch/ops.h",
     "arch/entry.h",
+    "platform/facts.h",
 }
 FORBIDDEN_FLAT = {
     "arch.h",

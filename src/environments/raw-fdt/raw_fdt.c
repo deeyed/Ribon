@@ -1,0 +1,274 @@
+#include "raw_fdt.h"
+
+#include "../../common/sys/fdt/fdt.h"
+
+#define RIBON_RAW_FDT_MAX_RESERVATIONS 8u
+
+static struct RibonRawFdtEntry *raw_fdt_entry;
+static struct RibonServiceTable raw_fdt_services;
+static int raw_fdt_services_initialized;
+
+/** @brief Memory boot source에서 bounded byte range를 복사한다. */
+static int raw_fdt_boot_source_read(
+    void *context,
+    const struct RibonBootSource *source,
+    uint64_t offset,
+    void *buffer,
+    uint64_t size,
+    uint64_t deadline_ticks) {
+    const struct RibonRawFdtEntry *entry =
+        (const struct RibonRawFdtEntry *)context;
+    const unsigned char *input;
+    unsigned char *output;
+    (void)deadline_ticks;
+    if (entry == 0 || source == 0 || source->kind != RIBON_BOOT_MEDIA_MEMORY ||
+        buffer == 0 || size == 0u || source->size != entry->payload_size ||
+        offset > entry->payload_size || size > entry->payload_size - offset) {
+        return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+    }
+    input = (const unsigned char *)entry->payload + offset;
+    output = (unsigned char *)buffer;
+    for (uint64_t index = 0u; index < size; ++index) {
+        output[index] = input[index];
+    }
+    return RIBON_SERVICE_STATUS_OK;
+}
+
+/** @brief Architecture backend의 monotonic counter를 service ABI로 변환한다. */
+static int raw_fdt_timer_now(void *context, uint64_t *ticks_out) {
+    const struct RibonRawFdtEntry *entry =
+        (const struct RibonRawFdtEntry *)context;
+    if (entry == 0 || ticks_out == 0 || entry->arch_ops == 0 ||
+        entry->arch_ops->monotonic_counter == 0) {
+        return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+    }
+    *ticks_out = entry->arch_ops->monotonic_counter();
+    return RIBON_SERVICE_STATUS_OK;
+}
+
+/** @brief 한 reserved range의 end를 overflow 없이 계산한다. */
+static int raw_fdt_range_end(
+    const struct RibonRawFdtReservation *range,
+    uint64_t *out) {
+    if (range == 0 || out == 0 || range->size == 0u ||
+        range->base > UINT64_MAX - range->size) {
+        return 0;
+    }
+    *out = range->base + range->size;
+    return 1;
+}
+
+/** @brief Reserved range를 physical start 순서로 정렬한다. */
+static void raw_fdt_sort_reservations(
+    struct RibonRawFdtReservation *ranges,
+    uint32_t count) {
+    for (uint32_t index = 1u; index < count; ++index) {
+        struct RibonRawFdtReservation value = ranges[index];
+        uint32_t cursor = index;
+        while (cursor > 0u && ranges[cursor - 1u].base > value.base) {
+            ranges[cursor] = ranges[cursor - 1u];
+            --cursor;
+        }
+        ranges[cursor] = value;
+    }
+}
+
+/** @brief Caller-owned memory-map storage에 한 region을 append한다. */
+static int raw_fdt_append_region(
+    struct RibonRawFdtEntry *entry,
+    uint32_t *count,
+    uint64_t base,
+    uint64_t size,
+    enum RibonMemoryRegionKind kind) {
+    uint64_t attributes = RIBON_MEMORY_ATTR_READ;
+    if (size == 0u) {
+        return RIBON_RAW_FDT_STATUS_OK;
+    }
+    if (*count >= entry->memory_region_capacity) {
+        return RIBON_RAW_FDT_STATUS_OUT_OF_CAPACITY;
+    }
+    if (kind == RIBON_MEMORY_REGION_USABLE ||
+        kind == RIBON_MEMORY_REGION_BOOTLOADER ||
+        kind == RIBON_MEMORY_REGION_KERNEL_IMAGE) {
+        attributes |= RIBON_MEMORY_ATTR_WRITE;
+    }
+    entry->memory_regions[*count] = (struct RibonMemoryRegion){
+        .base = base,
+        .length = size,
+        .kind = kind,
+        .attributes = attributes,
+    };
+    ++(*count);
+    return RIBON_RAW_FDT_STATUS_OK;
+}
+
+/** @brief FDT memory range에서 target reservation을 제외한 memory map을 만든다. */
+static int raw_fdt_build_memory_map(
+    struct RibonRawFdtEntry *entry,
+    const struct RibonFdtFacts *facts,
+    uint32_t *region_count_out) {
+    struct RibonRawFdtReservation ranges[RIBON_RAW_FDT_MAX_RESERVATIONS];
+    uint32_t range_count = entry->reservation_count;
+    uint32_t region_count = 0u;
+    uint64_t memory_end;
+    uint64_t cursor;
+
+    if (range_count + 1u > RIBON_RAW_FDT_MAX_RESERVATIONS ||
+        facts->memory_size == 0u ||
+        facts->memory_base > UINT64_MAX - facts->memory_size) {
+        return RIBON_RAW_FDT_STATUS_BAD_RESERVATION;
+    }
+    memory_end = facts->memory_base + facts->memory_size;
+    for (uint32_t index = 0u; index < range_count; ++index) {
+        ranges[index] = entry->reservations[index];
+    }
+    ranges[range_count++] = (struct RibonRawFdtReservation){
+        .base = (uint64_t)(uintptr_t)entry->fdt,
+        .size = facts->total_size,
+        .kind = RIBON_MEMORY_REGION_FIRMWARE,
+    };
+    raw_fdt_sort_reservations(ranges, range_count);
+    cursor = facts->memory_base;
+    for (uint32_t index = 0u; index < range_count; ++index) {
+        uint64_t range_end;
+        int status;
+        if (!raw_fdt_range_end(&ranges[index], &range_end) ||
+            ranges[index].base < facts->memory_base ||
+            range_end > memory_end ||
+            ranges[index].base < cursor) {
+            return RIBON_RAW_FDT_STATUS_BAD_RESERVATION;
+        }
+        status = raw_fdt_append_region(
+            entry,
+            &region_count,
+            cursor,
+            ranges[index].base - cursor,
+            RIBON_MEMORY_REGION_USABLE);
+        if (status != RIBON_RAW_FDT_STATUS_OK) {
+            return status;
+        }
+        status = raw_fdt_append_region(
+            entry,
+            &region_count,
+            ranges[index].base,
+            ranges[index].size,
+            ranges[index].kind);
+        if (status != RIBON_RAW_FDT_STATUS_OK) {
+            return status;
+        }
+        cursor = range_end;
+    }
+    if (cursor < memory_end) {
+        int status = raw_fdt_append_region(
+            entry,
+            &region_count,
+            cursor,
+            memory_end - cursor,
+            RIBON_MEMORY_REGION_USABLE);
+        if (status != RIBON_RAW_FDT_STATUS_OK) {
+            return status;
+        }
+    }
+    *region_count_out = region_count;
+    return RIBON_RAW_FDT_STATUS_OK;
+}
+
+/** @brief Native FDT와 target reservation을 firmware-neutral environment로 동결한다. */
+int ribon_raw_fdt_environment_capture(
+    struct RibonRawFdtEntry *entry,
+    struct RibonBootEnvironment *out) {
+    struct RibonFdtFacts facts;
+    uint32_t region_count;
+    int status;
+    if (entry == 0 || out == 0 || entry->fdt == 0 ||
+        entry->arch_ops == 0 || entry->payload == 0 ||
+        entry->payload_size == 0u || entry->timer_frequency_hz == 0u ||
+        entry->memory_regions == 0 || entry->memory_region_capacity == 0u ||
+        (entry->reservation_count != 0u && entry->reservations == 0)) {
+        return RIBON_RAW_FDT_STATUS_BAD_ARGUMENT;
+    }
+    status = ribon_fdt_parse(entry->fdt, entry->fdt_capacity, &facts);
+    if (status != RIBON_FDT_STATUS_OK) {
+        return RIBON_RAW_FDT_STATUS_BAD_FDT;
+    }
+    status = raw_fdt_build_memory_map(entry, &facts, &region_count);
+    if (status != RIBON_RAW_FDT_STATUS_OK) {
+        return status;
+    }
+    ribon_boot_environment_init(
+        out,
+        RIBON_ENVIRONMENT_RAW_FDT,
+        entry->architecture);
+    out->memory_map.regions = entry->memory_regions;
+    out->memory_map.region_count = region_count;
+    out->device_tree.physical_address = (uint64_t)(uintptr_t)entry->fdt;
+    out->device_tree.size = facts.total_size;
+    out->device_tree.data = entry->fdt;
+    out->boot_media.kind = RIBON_BOOT_MEDIA_MEMORY;
+    out->boot_media.path = entry->payload_name;
+    out->boot_media.physical_address = (uint64_t)(uintptr_t)entry->payload;
+    out->boot_media.size = entry->payload_size;
+    out->flags =
+        RIBON_BOOT_ENV_HAS_MEMORY_MAP |
+        RIBON_BOOT_ENV_HAS_DEVICE_TREE |
+        RIBON_BOOT_ENV_HAS_BOOT_MEDIA;
+    if (facts.boot_arguments != 0) {
+        out->command_line.text = facts.boot_arguments;
+        out->command_line.length = facts.boot_arguments_size;
+        out->flags |= RIBON_BOOT_ENV_HAS_COMMAND_LINE;
+    }
+    raw_fdt_entry = entry;
+    ribon_service_table_init_unsupported(&raw_fdt_services, entry);
+    raw_fdt_services.capabilities =
+        RIBON_CAP_BOOT_SOURCE_READ |
+        RIBON_CAP_MONOTONIC_TIMER;
+    raw_fdt_services.timer_frequency_hz = entry->timer_frequency_hz;
+    raw_fdt_services.boot_source_read = raw_fdt_boot_source_read;
+    raw_fdt_services.timer_now = raw_fdt_timer_now;
+    raw_fdt_services_initialized = 1;
+    return RIBON_RAW_FDT_STATUS_OK;
+}
+
+/** @brief 초기화된 raw-FDT service table을 반환한다. */
+const struct RibonServiceTable *ribon_raw_fdt_services(void) {
+    return raw_fdt_services_initialized && raw_fdt_entry != 0 ?
+        &raw_fdt_services :
+        0;
+}
+
+/** @brief raw-FDT descriptor와 live service table의 방향을 검증한다. */
+static int raw_fdt_environment_validate(
+    const struct RibonPluginDescriptor *descriptor) {
+    return raw_fdt_services_initialized &&
+           descriptor != 0 &&
+           descriptor->operations == &raw_fdt_services &&
+           ribon_environment_plugin_operations_are_valid(descriptor);
+}
+
+/** @brief raw-FDT environment consumer plugin descriptor다. */
+const struct RibonPluginDescriptor ribon_raw_fdt_environment_plugin_descriptor = {
+    .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_raw_fdt_environment_plugin_descriptor),
+    .abi_major = RIBON_PLUGIN_ABI_MAJOR,
+    .abi_minor = RIBON_PLUGIN_ABI_MINOR,
+    .kind = RIBON_PLUGIN_KIND_ENVIRONMENT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "environment.raw-fdt",
+    .provides =
+        RIBON_CAP_BOOT_SOURCE_READ |
+        RIBON_CAP_MONOTONIC_TIMER,
+    .requires =
+        RIBON_CAP_ARCHITECTURE |
+        RIBON_CAP_PLATFORM_FACTS,
+    .architecture_mask = RIBON_ARCH_MASK_AARCH64 | RIBON_ARCH_MASK_RISCV64,
+    .environment_mask = RIBON_ENV_MASK_RAW_FDT,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 8192u,
+    .input_budget = 64ull * 1024ull * 1024ull,
+    .output_budget = 8192u,
+    .deadline_ms = 30000u,
+    .operations = &raw_fdt_services,
+    .operations_size = sizeof(raw_fdt_services),
+    .operations_abi = RIBON_SERVICE_TABLE_ABI_VERSION,
+    .validate_operations = raw_fdt_environment_validate,
+};

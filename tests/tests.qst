@@ -34,10 +34,34 @@ qstar.test "rph1_builder_tests" {
   },
 }
 
+qstar.test "pe_coff_loader_tests" {
+  sources = {
+    "tests/loader/pe_coff_loader_tests.c",
+  },
+  deps = {
+    "//src/image-formats:ribon_image_pe_coff",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.test "fdt_parser_tests" {
+  sources = {
+    "tests/fdt/fdt_parser_tests.c",
+    "src/common/sys/fdt/fdt.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
     "//tests:protocol_free_embed_tests",
     "//tests:rph1_builder_tests",
+    "//tests:pe_coff_loader_tests",
+    "//tests:fdt_parser_tests",
   },
 }

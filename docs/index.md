@@ -48,6 +48,7 @@ canonical/lifecycle/boot-update-recovery-model
 
 contracts/core/library-plugin-protocol-boundary
 contracts/composition/product-plugin-composition
+contracts/frontends/environment-platform-image-boundary
 contracts/firmware/firmware-personality-plugin
 api/public-c-api
 ```
@@ -115,4 +116,5 @@ log/2026-07-26-r0-documentation-hard-cut
 log/2026-07-26-r1-parus-profile-and-rph1
 log/2026-07-26-r2-core-service-boundary
 log/2026-07-26-r3-library-plugin-protocol-hard-cut
+log/2026-07-26-r4-environment-protocol-targets
 ```

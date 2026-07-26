@@ -101,17 +101,20 @@ static void boot_copy_image_plan(
 }
 
 /** @brief Input을 검증하고 durable state를 바꾸지 않는 immutable plan을 만든다. */
-int ribon_boot_prepare(
+static int boot_build_plan(
     struct RibonBootSession *session,
     const struct RibonBootRequest *request,
-    struct RibonBootPlan *out) {
+    struct RibonBootPlan *out,
+    int update_session_state) {
     struct RibonBootPlan candidate = {0};
     int status;
 
     if (session == 0 ||
         session->size != sizeof(*session) ||
         session->abi_version != RIBON_CORE_ABI_VERSION ||
-        session->state != RIBON_BOOT_SESSION_INITIALIZED ||
+        (update_session_state ?
+             session->state != RIBON_BOOT_SESSION_INITIALIZED :
+             session->state != RIBON_BOOT_SESSION_COMMITTED) ||
         request == 0 ||
         out == 0 ||
         request->environment == 0 ||
@@ -218,8 +221,18 @@ int ribon_boot_prepare(
     candidate.handoff_artifact_sections =
         request->handoff_artifact->section_count;
     *out = candidate;
-    session->state = RIBON_BOOT_SESSION_PREPARED;
+    if (update_session_state) {
+        session->state = RIBON_BOOT_SESSION_PREPARED;
+    }
     return RIBON_BOOT_STATUS_OK;
+}
+
+/** @brief Input을 검증하고 durable state를 바꾸지 않는 immutable plan을 만든다. */
+int ribon_boot_prepare(
+    struct RibonBootSession *session,
+    const struct RibonBootRequest *request,
+    struct RibonBootPlan *out) {
+    return boot_build_plan(session, request, out, 1);
 }
 
 /** @brief Prepared attempt의 durable metadata commit 경계를 전진시킨다. */
@@ -229,6 +242,14 @@ int ribon_boot_commit(struct RibonBootSession *session) {
     }
     session->state = RIBON_BOOT_SESSION_COMMITTED;
     return RIBON_BOOT_STATUS_OK;
+}
+
+/** @brief Commit 뒤 final environment fact로 handoff만 bounded하게 재생성한다. */
+int ribon_boot_refresh_after_commit(
+    struct RibonBootSession *session,
+    const struct RibonBootRequest *request,
+    struct RibonBootPlan *out) {
+    return boot_build_plan(session, request, out, 0);
 }
 
 /** @brief Environment service 종료와 final memory-map freeze 경계를 전진시킨다. */

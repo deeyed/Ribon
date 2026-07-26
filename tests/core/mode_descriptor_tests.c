@@ -35,7 +35,8 @@ static int expected_descriptor(
             RIBON_CAP_IMAGE_ELF64 |
             RIBON_CAP_BOOT_PROTOCOL |
             RIBON_CAP_HANDOFF |
-            RIBON_CAP_ENTRY_CONTRACT;
+            RIBON_CAP_ENTRY_CONTRACT |
+            RIBON_CAP_PLATFORM_FACTS;
         *forbidden_out =
             RIBON_CAP_INACTIVE_SLOT_WRITE |
             RIBON_CAP_INACTIVE_SLOT_ERASE |

@@ -28,10 +28,12 @@ enum RibonCapability {
     RIBON_CAP_HANDOFF = 1ull << 19,
     RIBON_CAP_ENTRY_CONTRACT = 1ull << 20,
     RIBON_CAP_BOOT_CONFIRMATION = 1ull << 21,
+    RIBON_CAP_IMAGE_PE_COFF = 1ull << 22,
+    RIBON_CAP_PLATFORM_FACTS = 1ull << 23,
 };
 
-/** @brief R3 public ABI가 정의하는 capability 전체다. */
-#define RIBON_CAP_ALL ((1ull << 22) - 1ull)
+/** @brief Public plugin ABI가 정의하는 capability 전체다. */
+#define RIBON_CAP_ALL ((1ull << 24) - 1ull)
 
 /** @brief Ribon product의 실행 정책 mode다. */
 enum RibonMode {

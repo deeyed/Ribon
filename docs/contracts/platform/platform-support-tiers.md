@@ -6,7 +6,7 @@ last_verified: 2026-07-26
 code_paths:
   - src/arch/
   - src/environments/
-  - src/firmware/
+  - src/image-formats/
   - platforms/
   - products/
   - targets/
