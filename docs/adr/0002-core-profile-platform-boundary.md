@@ -1,7 +1,7 @@
 ---
 doc_type: adr
-status: accepted
-authority: normative
+status: superseded
+authority: historical
 last_verified: 2026-07-26
 code_paths:
   - include/Ribon/
@@ -15,6 +15,8 @@ hardware:
   - none
 supersedes:
   - handoff-builder-only profile interface
+superseded_by:
+  - 0009-limine-library-plugin-hard-cut
 ---
 
 # ADR: Generic Core와 OS·Platform module을 분리한다

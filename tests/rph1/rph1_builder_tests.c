@@ -1,7 +1,7 @@
-#include <Ribon/firmware.h>
-#include <Ribon/memory.h>
-#include <Ribon/profiles/parus/rph1.h>
-#include <Ribon/ribon.h>
+#include <Ribon/arch/entry.h>
+#include <Ribon/boot/plan.h>
+#include <Ribon/core/memory.h>
+#include <Ribon/protocols/parus/rph1.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -58,6 +58,9 @@ static void refresh_checksum(unsigned char *bytes) {
 
 static int build_fixture(unsigned char *buffer, struct RibonHandoffArtifact *artifact) {
     static const struct RibonArchDescriptor arch = {
+        .size = sizeof(arch),
+        .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+        .id = RIBON_ARCHITECTURE_X86_64,
         .canonical_name = "x86_64",
     };
     static const struct RibonLoadSegment segments[] = {
@@ -94,22 +97,24 @@ static int build_fixture(unsigned char *buffer, struct RibonHandoffArtifact *art
         .capacity = 2u,
     };
     struct RibonBootEnvironment environment = {
-        .firmware = RIBON_FIRMWARE_UEFI,
-        .arch = &arch,
+        .size = sizeof(environment),
+        .abi_version = RIBON_CORE_ABI_VERSION,
+        .kind = RIBON_ENVIRONMENT_UEFI,
+        .architecture = RIBON_ARCHITECTURE_X86_64,
         .boot_media = {
             .kind = RIBON_BOOT_MEDIA_FILE,
             .size = 0x900u,
         },
         .command_line = {
-            .text = "profile=parus",
-            .length = 13u,
+            .text = "protocol=parus",
+            .length = 14u,
         },
         .flags = RIBON_BOOT_ENV_HAS_MEMORY_MAP |
                  RIBON_BOOT_ENV_HAS_BOOT_MEDIA |
                  RIBON_BOOT_ENV_HAS_COMMAND_LINE,
     };
     struct RibonBootPlan plan = {
-        .firmware = RIBON_FIRMWARE_UEFI,
+        .environment = RIBON_ENVIRONMENT_UEFI,
         .arch = &arch,
         .kernel_load_segment_count = 1u,
         .kernel_entry_point = 0xffffffff80000080ull,
@@ -155,7 +160,7 @@ int main(void) {
     expect(RIBON_KERNEL_ENTRY_FLAG_DIRECT_DTB == 0x2u, "direct DTB entry flag is bit 1");
     expect(RIBON_KERNEL_ENTRY_FLAG_ENTERED_HIGH == 0x4u, "entered-high entry flag is bit 2");
     expect(RIBON_KERNEL_ENTRY_FLAG_DIRECT_HIGH == 0x8u, "direct-high entry flag is bit 3");
-    expect(build_fixture(valid, &artifact) == RIBON_PROFILE_HANDOFF_STATUS_OK, "builder accepts fixture");
+    expect(build_fixture(valid, &artifact) == RIBON_PROTOCOL_HANDOFF_STATUS_OK, "builder accepts fixture");
     total_size = read_u32(valid, RIBON_PARUS_RPH1_HEADER_TOTAL_SIZE_OFFSET);
     table_offset = read_u32(valid, RIBON_PARUS_RPH1_HEADER_SECTION_TABLE_OFFSET);
     first_payload = read_u64(

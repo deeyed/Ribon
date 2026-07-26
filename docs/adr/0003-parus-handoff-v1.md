@@ -1,7 +1,7 @@
 ---
 doc_type: adr
-status: accepted
-authority: normative
+status: superseded
+authority: historical
 last_verified: 2026-07-26
 code_paths:
   - include/Ribon/profiles/parus/
@@ -15,6 +15,8 @@ hardware:
   - none
 supersedes:
   - legacy previous handoff wire semantics
+superseded_by:
+  - 0009-limine-library-plugin-hard-cut
 ---
 
 # ADR: Parus Handoff v1을 새 wire ABI로 채택한다

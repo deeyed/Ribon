@@ -1,0 +1,42 @@
+qstar.staticlib "ribon_protocol_synthetic" {
+  sources = {
+    "src/protocols/synthetic/protocol.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.staticlib "ribon_protocol_parus" {
+  sources = {
+    "src/protocols/parus/protocol.c",
+    "src/protocols/parus/rph1_builder.c",
+    "src/protocols/parus/rph1_parser.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.staticlib "ribon_image_elf64" {
+  sources = {
+    "src/loader/elf64.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.group "ribon_protocol_plugins" {
+  deps = {
+    "//src/protocols:ribon_protocol_synthetic",
+    "//src/protocols:ribon_protocol_parus",
+    "//src/protocols:ribon_image_elf64",
+  },
+}

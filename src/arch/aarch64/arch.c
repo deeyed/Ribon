@@ -1,5 +1,7 @@
-#include <Ribon/arch.h>
-#include <Ribon/loader.h>
+#include <Ribon/arch/entry.h>
+#include <Ribon/arch/ops.h>
+#include <Ribon/boot/image.h>
+#include <Ribon/plugin/descriptor.h>
 
 #define RIBON_AARCH64_PAGE_SIZE 4096ull
 #define RIBON_AARCH64_ENTRIES 512u
@@ -22,9 +24,11 @@
 #define RIBON_AARCH64_DIRECT_HIGH_TABLE_PAGES (5ull + RIBON_AARCH64_HIGH_L3_TABLES)
 
 static const struct RibonArchDescriptor aarch64_arch = {
+    .size = sizeof(aarch64_arch),
+    .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+    .id = RIBON_ARCHITECTURE_AARCH64,
     .canonical_name = "aarch64",
     .family_name = "aarch",
-    .uefi_binding_dir = "AArch64",
     .word_bits = 64,
     .physical_address_bits = 48,
     .virtual_address_bits = 48,
@@ -35,9 +39,6 @@ static const struct RibonArchDescriptor aarch64_arch = {
     .boot_module_alignment = 4096,
     .endian = RIBON_ARCH_ENDIAN_LITTLE,
     .tier = RIBON_ARCH_TIER_PRIMARY,
-    .firmware_mask = RIBON_ARCH_FIRMWARE_HOST_TEST |
-                     RIBON_ARCH_FIRMWARE_UEFI |
-                     RIBON_ARCH_FIRMWARE_RASPBERRY_PI,
 };
 
 /** @brief 선택된 AArch64 architecture descriptor를 반환한다. */
@@ -108,7 +109,7 @@ static int aarch64_cache_sync(uint64_t address, uint64_t size) {
 }
 
 /** @brief AArch64 CPU를 terminal wait loop로 전환한다. */
-static RIBON_NORETURN void aarch64_halt(void) {
+static _Noreturn void aarch64_halt(void) {
     for (;;) {
 #if defined(__aarch64__)
         __asm__ __volatile__("msr daifset, #0xf; wfe");
@@ -117,6 +118,7 @@ static RIBON_NORETURN void aarch64_halt(void) {
 }
 
 static const struct RibonArchOps aarch64_ops = {
+    .size = sizeof(aarch64_ops),
     .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
     .capabilities =
         RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
@@ -331,7 +333,7 @@ static uint32_t current_pa_bits(void) {
 }
 #endif
 
-RIBON_NORETURN void ribon_arch_enter_kernel(
+_Noreturn void ribon_arch_enter_kernel(
     uint64_t entry,
     uint64_t handoff,
     uint64_t entry_flags,
@@ -394,3 +396,26 @@ RIBON_NORETURN void ribon_arch_enter_kernel(
 #endif
     }
 }
+
+/** @brief Selected AArch64 architecture plugin descriptor다. */
+const struct RibonPluginDescriptor ribon_arch_plugin_descriptor = {
+    .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_arch_plugin_descriptor),
+    .abi_major = RIBON_PLUGIN_ABI_MAJOR,
+    .abi_minor = RIBON_PLUGIN_ABI_MINOR,
+    .kind = RIBON_PLUGIN_KIND_ARCHITECTURE,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "arch.aarch64",
+    .provides = RIBON_CAP_ARCHITECTURE,
+    .architecture_mask = RIBON_ARCH_MASK_AARCH64,
+    .environment_mask = RIBON_ENV_MASK_ALL,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 4096u,
+    .input_budget = 4096u,
+    .output_budget = 4096u,
+    .deadline_ms = 30000u,
+    .operations = &aarch64_ops,
+    .operations_size = sizeof(aarch64_ops),
+    .operations_abi = RIBON_ARCH_OPS_ABI_VERSION,
+    .validate_operations = ribon_arch_plugin_operations_are_valid,
+};

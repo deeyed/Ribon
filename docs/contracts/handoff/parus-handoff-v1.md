@@ -4,9 +4,8 @@ status: accepted
 authority: normative
 last_verified: 2026-07-26
 code_paths:
-  - include/Ribon/profiles/parus/
-  - src/profiles/parus/
-  - src/boot/
+  - src/protocols/parus/
+  - include/Ribon/protocol/
   - ../../../../sys/include/parus/boot/
   - ../../../../sys/kern/boot/
 tests:
@@ -16,12 +15,12 @@ tests:
 hardware:
   - none
 supersedes:
-  - legacy previous handoff profile artifact
+  - legacy previous handoff artifact
 ---
 
 # Parus Handoff v1 계약
 
-Parus Handoff v1은 Ribon의 Parus profile이 생성하고 Parus `xibalba()` 경계가 소비하는
+Parus Handoff v1은 Ribon의 Parus Boot Protocol이 생성하고 Parus `xibalba()` 경계가 소비하는
 wire artifact다. Ribon Core는 이 형식을 알지 않는다.
 
 ## Wire 규칙
@@ -192,7 +191,7 @@ payload overlap, singleton duplication, required section 존재, section별 payl
 | RISC-V 64 | `a0` | `a1` |
 
 Entry flag bit 0은 `RPH1`, bit 1은 direct-DTB 예약, bit 2는 `ENTERED_HIGH`, bit 3은
-`DIRECT_HIGH`다. Normal Parus profile은 bit 0만 설정한다. Direct-high mode는 bit 0, 2,
+`DIRECT_HIGH`다. Normal Parus protocol은 bit 0만 설정한다. Direct-high mode는 bit 0, 2,
 3을 함께 설정한다.
 
 Flag는 pointer와 CPU state 검증을 대체하지 않는다. Malformed RPH1을 DTB 또는 다른

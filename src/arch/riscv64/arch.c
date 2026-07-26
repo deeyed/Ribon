@@ -1,9 +1,14 @@
-#include <Ribon/arch.h>
+#include <Ribon/arch/entry.h>
+#include <Ribon/arch/ops.h>
+#include <Ribon/boot/image.h>
+#include <Ribon/plugin/descriptor.h>
 
 static const struct RibonArchDescriptor riscv64_arch = {
+    .size = sizeof(riscv64_arch),
+    .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+    .id = RIBON_ARCHITECTURE_RISCV64,
     .canonical_name = "riscv64",
     .family_name = "riscv",
-    .uefi_binding_dir = "RiscV64",
     .word_bits = 64,
     .physical_address_bits = 56,
     .virtual_address_bits = 39,
@@ -14,8 +19,6 @@ static const struct RibonArchDescriptor riscv64_arch = {
     .boot_module_alignment = 4096,
     .endian = RIBON_ARCH_ENDIAN_LITTLE,
     .tier = RIBON_ARCH_TIER_FUTURE,
-    .firmware_mask = RIBON_ARCH_FIRMWARE_HOST_TEST |
-                     RIBON_ARCH_FIRMWARE_UEFI,
 };
 
 /** @brief 선택된 RISC-V 64 architecture descriptor를 반환한다. */
@@ -44,7 +47,7 @@ int ribon_arch_prepare_direct_high_entry(
     return RIBON_ARCH_DIRECT_HIGH_UNSUPPORTED;
 }
 
-RIBON_NORETURN void ribon_arch_enter_kernel(
+_Noreturn void ribon_arch_enter_kernel(
     uint64_t entry,
     uint64_t handoff,
     uint64_t entry_flags,
@@ -70,7 +73,7 @@ static int riscv64_cache_sync(uint64_t address, uint64_t size) {
 }
 
 /** @brief RISC-V hart를 terminal wait loop로 전환한다. */
-static RIBON_NORETURN void riscv64_halt(void) {
+static _Noreturn void riscv64_halt(void) {
     for (;;) {
 #if defined(__riscv)
         __asm__ __volatile__("wfi");
@@ -79,6 +82,7 @@ static RIBON_NORETURN void riscv64_halt(void) {
 }
 
 static const struct RibonArchOps riscv64_ops = {
+    .size = sizeof(riscv64_ops),
     .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
     .capabilities =
         RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
@@ -99,3 +103,26 @@ static const struct RibonArchOps riscv64_ops = {
 const struct RibonArchOps *ribon_arch_selected_ops(void) {
     return &riscv64_ops;
 }
+
+/** @brief Selected RISC-V 64 architecture plugin descriptor다. */
+const struct RibonPluginDescriptor ribon_arch_plugin_descriptor = {
+    .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_arch_plugin_descriptor),
+    .abi_major = RIBON_PLUGIN_ABI_MAJOR,
+    .abi_minor = RIBON_PLUGIN_ABI_MINOR,
+    .kind = RIBON_PLUGIN_KIND_ARCHITECTURE,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "arch.riscv64",
+    .provides = RIBON_CAP_ARCHITECTURE,
+    .architecture_mask = RIBON_ARCH_MASK_RISCV64,
+    .environment_mask = RIBON_ENV_MASK_ALL,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 4096u,
+    .input_budget = 4096u,
+    .output_budget = 4096u,
+    .deadline_ms = 30000u,
+    .operations = &riscv64_ops,
+    .operations_size = sizeof(riscv64_ops),
+    .operations_abi = RIBON_ARCH_OPS_ABI_VERSION,
+    .validate_operations = ribon_arch_plugin_operations_are_valid,
+};

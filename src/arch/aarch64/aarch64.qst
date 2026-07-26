@@ -1,7 +1,0 @@
-qstar.group "ribon_arch_aarch64" {
-  deps = {
-    "//src/core:ribon_core_aarch64",
-    "//src/boot:host_smoke_aarch64",
-    "//tests:aarch64_direct_high_tests",
-  },
-}

@@ -1,7 +1,7 @@
 ---
 doc_type: adr
-status: accepted
-authority: normative
+status: superseded
+authority: historical
 last_verified: 2026-07-26
 code_paths:
   - src/core/
@@ -14,6 +14,8 @@ hardware:
   - none
 supersedes:
   - none
+superseded_by:
+  - 0009-limine-library-plugin-hard-cut
 ---
 
 # ADR: Ribon overseer는 reboot-time 권한으로 둔다

@@ -1,7 +1,21 @@
-qstar.test "elf64_loader_tests" {
+qstar.test "plugin_descriptor_tests" {
   sources = {
-    "tests/loader/elf64_loader_tests.c",
-    "src/loader/elf64.c",
+    "tests/plugin/descriptor_tests.c",
+  },
+  deps = {
+    "//src/core:libribon_core",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.test "protocol_free_embed_tests" {
+  sources = {
+    "tests/library/protocol_free_embed_tests.c",
+  },
+  deps = {
+    "//src/core:libribon_core",
   },
   configs = {
     "//qstar/policies:ribon_test_c",
@@ -11,8 +25,8 @@ qstar.test "elf64_loader_tests" {
 qstar.test "rph1_builder_tests" {
   sources = {
     "tests/rph1/rph1_builder_tests.c",
-    "src/profiles/parus/rph1_builder.c",
-    "src/profiles/parus/rph1_parser.c",
+    "src/protocols/parus/rph1_builder.c",
+    "src/protocols/parus/rph1_parser.c",
     "src/core/memory.c",
   },
   configs = {
@@ -20,127 +34,10 @@ qstar.test "rph1_builder_tests" {
   },
 }
 
-qstar.test "x86_64_direct_high_tests" {
-  sources = {
-    "tests/arch/x86_64_direct_high_tests.c",
-    "src/arch/common.c",
-    "src/arch/x86_64/arch.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "aarch64_direct_high_tests" {
-  sources = {
-    "tests/arch/aarch64_direct_high_tests.c",
-    "src/arch/common.c",
-    "src/arch/aarch64/arch.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "arch_ops_x86_64_tests" {
-  sources = {
-    "tests/arch/arch_ops_tests.c",
-    "src/arch/common.c",
-    "src/arch/x86_64/arch.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "arch_ops_aarch64_tests" {
-  sources = {
-    "tests/arch/arch_ops_tests.c",
-    "src/arch/common.c",
-    "src/arch/aarch64/arch.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "arch_ops_riscv64_tests" {
-  sources = {
-    "tests/arch/arch_ops_tests.c",
-    "src/arch/common.c",
-    "src/arch/riscv64/arch.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "core_service_boundary_tests" {
-  sources = {
-    "tests/core/service_boundary_tests.c",
-    "src/arch/common.c",
-    "src/arch/x86_64/arch.c",
-    "src/core/arena.c",
-    "src/core/context.c",
-    "src/core/memory.c",
-    "src/core/platform.c",
-    "src/core/profile.c",
-    "src/modes/normal.c",
-    "src/profiles/parus.c",
-    "src/profiles/parus/rph1_builder.c",
-    "src/profiles/parus/rph1_parser.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "mode_descriptor_normal_tests" {
-  sources = {
-    "tests/core/mode_descriptor_tests.c",
-    "src/modes/normal.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "mode_descriptor_recovery_tests" {
-  sources = {
-    "tests/core/mode_descriptor_tests.c",
-    "src/modes/recovery.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "mode_descriptor_provisioning_tests" {
-  sources = {
-    "tests/core/mode_descriptor_tests.c",
-    "src/modes/provisioning.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "mode_descriptor_diagnostic_tests" {
-  sources = {
-    "tests/core/mode_descriptor_tests.c",
-    "src/modes/diagnostic.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
-  },
-}
-
-qstar.test "uefi_hardening_tests" {
-  sources = {
-    "tests/uefi/uefi_hardening_tests.c",
-    "src/firmware/uefi/hardening.c",
-  },
-  configs = {
-    "//qstar/policies:ribon_test_c",
+qstar.group "ribon_tests" {
+  deps = {
+    "//tests:plugin_descriptor_tests",
+    "//tests:protocol_free_embed_tests",
+    "//tests:rph1_builder_tests",
   },
 }

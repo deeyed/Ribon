@@ -1,0 +1,23 @@
+{
+  "product_id": "host-reference",
+  "environment": "host",
+  "mode": "normal",
+  "plugins": [
+    {
+      "id": "arch.selected",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "environment.host",
+      "symbol": "ribon_host_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.elf64",
+      "symbol": "ribon_elf64_image_plugin_descriptor"
+    },
+    {
+      "id": "protocol.synthetic",
+      "symbol": "ribon_synthetic_protocol_plugin_descriptor"
+    }
+  ]
+}

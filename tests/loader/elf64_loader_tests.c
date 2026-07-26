@@ -1,5 +1,6 @@
-#include <Ribon/arch.h>
-#include <Ribon/loader.h>
+#include <Ribon/arch/ops.h>
+#include <Ribon/boot/image.h>
+#include <Ribon/plugin/descriptor.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -24,9 +25,11 @@ struct TestElfSegment {
 };
 
 static const struct RibonArchDescriptor kX86_64Arch = {
+    .size = sizeof(kX86_64Arch),
+    .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+    .id = RIBON_ARCHITECTURE_X86_64,
     .canonical_name = "x86_64",
     .family_name = "x86",
-    .uefi_binding_dir = "X64",
     .word_bits = 64,
     .physical_address_bits = 52,
     .virtual_address_bits = 48,
@@ -37,13 +40,14 @@ static const struct RibonArchDescriptor kX86_64Arch = {
     .boot_module_alignment = 4096,
     .endian = RIBON_ARCH_ENDIAN_LITTLE,
     .tier = RIBON_ARCH_TIER_PRIMARY,
-    .firmware_mask = RIBON_ARCH_FIRMWARE_HOST_TEST | RIBON_ARCH_FIRMWARE_UEFI,
 };
 
 static const struct RibonArchDescriptor kAArch64Arch = {
+    .size = sizeof(kAArch64Arch),
+    .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+    .id = RIBON_ARCHITECTURE_AARCH64,
     .canonical_name = "aarch64",
     .family_name = "aarch",
-    .uefi_binding_dir = "AArch64",
     .word_bits = 64,
     .physical_address_bits = 48,
     .virtual_address_bits = 48,
@@ -54,7 +58,6 @@ static const struct RibonArchDescriptor kAArch64Arch = {
     .boot_module_alignment = 4096,
     .endian = RIBON_ARCH_ENDIAN_LITTLE,
     .tier = RIBON_ARCH_TIER_PRIMARY,
-    .firmware_mask = RIBON_ARCH_FIRMWARE_HOST_TEST | RIBON_ARCH_FIRMWARE_UEFI,
 };
 
 static void write_le16(unsigned char *data, uint64_t offset, uint16_t value) {
@@ -142,7 +145,10 @@ static int analyze_image(
     memset(segments, 0, sizeof(segments[0]) * segment_capacity);
     out->segments = segments;
     out->segment_capacity = segment_capacity;
-    return ribon_loader_analyze_elf64(&payload, arch, out);
+    const struct RibonImageFormatOps *ops =
+        (const struct RibonImageFormatOps *)
+            ribon_elf64_image_plugin_descriptor.operations;
+    return ops->analyze(&payload, arch, out);
 }
 
 static int expect_status(const char *name, int actual, int expected) {

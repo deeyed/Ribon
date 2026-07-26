@@ -1,5 +1,6 @@
-#include <Ribon/arch.h>
-#include <Ribon/loader.h>
+#include <Ribon/arch/entry.h>
+#include <Ribon/arch/ops.h>
+#include <Ribon/boot/image.h>
 
 #include <stdint.h>
 #include <stdio.h>

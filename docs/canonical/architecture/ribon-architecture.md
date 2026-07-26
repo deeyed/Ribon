@@ -5,108 +5,291 @@ authority: normative
 last_verified: 2026-07-26
 code_paths:
   - include/Ribon/
-  - src/core/
-  - src/loader/
+  - src/common/
   - src/arch/
+  - src/environments/
+  - src/protocols/
+  - src/plugins/
   - src/firmware/
-  - src/profiles/
+  - platforms/
+  - products/
+  - targets/
 tests:
-  - core_service_boundary_tests
-  - object_graph_lint
-  - ribon-documentation-quality-lint
+  - ribon-library-boundary-lint
+  - ribon-plugin-graph-lint
+  - ribon-product-composition-test
+  - ribon-docs
 hardware:
   - none
 supersedes:
-  - docs/ARCHITECTURE.md
+  - core-profile-platform architecture
+  - monolithic frontend architecture
 ---
 
-# Ribon 구조
+# Ribon 구조와 최종 비전
 
-Ribon은 OS에 중립적인 결정론적 Core, architecture backend, platform adapter,
-공통 service, OS profile, 실행 mode를 분리한다.
+Ribon은 architecture, firmware, board, OS에 종속되지 않는 결정론적 boot runtime
+library다. Ribon Core와 Boot Library는 정적으로 검증된 plugin을 조합하여 독립 실행
+bootloader, 기존 firmware 위의 boot application, firmware product를 생성한다.
 
-## 책임 계층
+Ribon의 독립성은 저장소에 architecture 또는 OS 코드가 없다는 뜻이 아니다. Generic
+library와 public plugin ABI가 native ABI를 알지 않고, 선택된 component만 해당 ABI를
+소유한다는 뜻이다.
 
-### Core
+## 제품 정체성
 
-Core는 고정 용량 boot state machine, normalized memory map, component plan, slot 선택,
-검증 순서, 실패 전이를 소유한다. Core는 OS handoff의 wire field와 platform protocol을
-직접 해석하지 않는다.
+Ribon 저장소는 다음 산출물을 독립된 product로 제공한다.
 
-### Architecture backend
+| Product | 목적 | 소유하지 않는 것 |
+| --- | --- | --- |
+| `libribon-core` | 상태 전이, memory map, capability, fixed arena | entry, OS handoff, firmware native ABI |
+| `libribon-boot` | boot source, image load, plan, commit, transfer orchestration | OS별 wire format, board MMIO |
+| `libribon-sdk` | plugin descriptor, service ABI, product composition | 선택된 plugin 정책 |
+| `ribon-bootmgr` | 독립 실행 boot manager | 특정 OS의 고정 의미론 |
+| environment application | UEFI, BIOS, SBI, raw-FDT를 Ribon service로 변환 | firmware service 제공자 역할 |
+| firmware product | 선택된 firmware personality와 driver를 조립 | Ribon Core의 OS 특수화 |
 
-Architecture backend는 CPU entry state, canonical address, cache maintenance, privilege
-level, 최소 entry bridge를 소유한다. OS의 permanent virtual-memory 정책은 소유하지
+하나의 product가 다른 product의 권한을 암묵적으로 획득하지 않는다. UEFI application은
+UEFI firmware를 소비하며 UEFI firmware를 구현하지 않는다. UEFI firmware product는
+별도의 personality와 lifecycle을 통해 UEFI-compatible service를 제공한다.
+
+## 계층
+
+### Core Library
+
+Core Library는 다음만 소유한다.
+
+- caller-owned fixed arena
+- normalized physical memory map
+- immutable product 및 plugin descriptor 검증
+- bounded state transition과 failure vocabulary
+- capability graph와 operation deadline
+- prepare, commit, point-of-no-return 순서
+
+Core는 OS protocol, executable format, architecture instruction, firmware header,
+device MMIO, network packet을 해석하지 않는다. Core에는 `main`, `_start`, selected
+protocol global, native firmware handle이 없다.
+
+### Boot Library
+
+Boot Library는 OS 중립적인 boot orchestration을 소유한다.
+
+- boot source의 bounded byte-range read
+- image format plugin을 통한 load plan
+- component와 destination overlap 검증
+- trust result와 provenance의 immutable snapshot
+- slot 선택과 journal service 호출 순서
+- 선택된 boot protocol의 prepare와 handoff 호출
+- environment quiesce 뒤 architecture transfer 호출
+
+Boot Library는 RPH1, Linux `boot_params`, FreeBSD metadata, Multiboot tag를 직접 알지
 않는다.
 
-### Platform adapter
+### Boot Protocol
 
-Platform adapter는 UEFI, BIOS, board firmware, SBI 같은 실행 환경을 typed service로
-번역한다. Core는 firmware header와 MMIO address를 직접 include하지 않는다.
+Boot Protocol은 OS 또는 다음 실행 단계가 요구하는 부팅 계약이다. Protocol은 기존
+`Profile` 경계를 대체한다.
 
-### 공통 service
+Protocol은 다음을 소유한다.
 
-공통 service는 image format, cryptographic verification, block I/O, slot journal,
-network transport, watchdog, reset reason을 제공한다. 각 service는 명시적으로 선택되어
-정상 boot 또는 recovery object graph에 포함된다.
+- kernel과 component 역할
+- protocol manifest와 configuration 의미론
+- 허용 executable 또는 image format 조합
+- handoff wire artifact
+- architecture별 register ABI와 entry precondition
+- boot confirmation의 OS별 payload 의미론
 
-### OS profile
+Parus Handoff, Linux boot protocol, FreeBSD boot metadata, Multiboot, EFI chainload는
+서로 다른 protocol plugin이다. Protocol은 block, network, watchdog, firmware
+protocol, MMIO를 직접 호출하지 않는다.
 
-OS profile은 kernel component 조합, entry contract, handoff format, boot confirmation
-의미론을 소유한다. Parus 규칙은 Parus profile에만 존재한다.
+### Architecture Backend
 
-## 의존성 방향
+Architecture Backend는 CPU와 instruction ABI만 소유한다.
+
+- executable machine 및 canonical address 검증
+- cache와 instruction synchronization
+- privilege state와 interrupt mask 정규화
+- 최소 translation bridge
+- protocol이 선택한 register ABI 적용
+- terminal transfer, halt, reset primitive
+
+Permanent OS page table, runtime interrupt policy, SMP runtime, board resource map은
+architecture backend의 boot 책임이 아니다.
+
+### Environment Consumer
+
+Environment Consumer는 이미 존재하는 실행환경을 Ribon service로 변환한다.
+
+- `uefi-app`: UEFI Boot Services와 protocol 소비
+- `bios-client`: BIOS interrupt와 table 소비
+- `raw-fdt`: 초기 register와 FDT 소비
+- `sbi`: SBI service와 FDT 소비
+- `host`: 테스트용 caller service 소비
+
+Environment native type은 adapter 밖으로 나가지 않는다. UEFI handle, BIOS register
+frame, SBI extension ID는 generic Core 또는 Boot Protocol에 노출하지 않는다.
+
+### Firmware Personality
+
+Firmware Personality는 Ribon service를 외부 firmware ABI로 제공하는 선택적 product
+계층이다.
+
+- UEFI personality는 System Table, Boot Services, 선택적 Runtime Services를 제공한다.
+- BIOS personality는 명시적으로 선택된 legacy interrupt와 table ABI를 제공한다.
+- 다른 personality는 별도 specification과 product contract를 가진다.
+
+Handle/protocol database, event dispatch, variable service처럼 firmware ABI가 요구하는
+registry는 personality가 소유한다. Generic Core는 범용 service locator를 제공하지
+않는다.
+
+### Driver와 Service Plugin
+
+Driver와 Service Plugin은 재사용 가능한 기능을 제공한다.
+
+- block, filesystem, console, timer
+- network transport
+- executable and image format
+- cryptographic verification
+- update journal과 metadata
+- watchdog와 reset reason
+
+Board는 resource와 wiring을 기술하고 driver 구현을 복제하지 않는다. Driver는 특정
+board 이름을 policy 분기로 사용하지 않는다.
+
+### Product와 Target
+
+Product manifest는 기능 조합을 정의하고 Target은 실행 가능한 구체 조합을 정의한다.
 
 ```text
-frontend -> platform/arch services -> Core -> selected OS profile
-                                  \-> image/trust/update services
+product
+  = core + boot manager + protocol set + policy set
+
+target
+  = product + architecture + environment or firmware personality
+            + platform + image recipe + evidence policy
 ```
 
-Core는 Parus header, UEFI header, BIOS declaration, SBI declaration을 include하지 않는다.
-Profile은 Core public contract에 의존할 수 있지만 Core가 profile 구현에 역으로
-의존하지 않는다.
+QStar는 검증된 조합만 허용하고 immutable registry와 product descriptor를 생성한다.
+Source scan, weak symbol, constructor side effect로 plugin을 발견하지 않는다.
 
-## 실행 mode
+## Plugin 종류
 
-Ribon은 다음 mode를 구분한다.
+Ribon plugin ABI는 최소 다음 종류를 구분한다.
 
-| Mode | 네트워크 | mutable storage | 목적 |
-| --- | --- | --- | --- |
-| normal boot | disabled | boot-attempt journal만 허용 | 검증된 slot을 bounded time 안에 실행 |
-| recovery | 명시적으로 허용 | inactive/recovery slot만 허용 | 정상 slot 실패 복구 |
-| provisioning | build 및 physical-presence 정책으로 제한 | trust anchor와 초기 metadata | 제조·등록 |
-| diagnostic | 별도 object graph | evidence 전용 | 개발 및 검증 |
+| Kind | 예 |
+| --- | --- |
+| `BOOT_PROTOCOL` | Parus, Linux, FreeBSD, Multiboot, chainload |
+| `IMAGE_FORMAT` | ELF, PE/COFF, Linux Image |
+| `ARCH_BACKEND` | x86_64, AArch64, RISC-V 64 |
+| `ENVIRONMENT` | UEFI application, BIOS client, raw-FDT, SBI |
+| `DRIVER` | PL011, block controller, NIC |
+| `FILESYSTEM` | FAT, ISO9660 |
+| `TRANSPORT` | firmware HTTP, TFTP, native Ethernet |
+| `SECURITY` | digest, signature, anti-rollback provider |
+| `UPDATE_POLICY` | slot journal과 recovery transition |
+| `BOOT_POLICY` | entry selection과 retry |
+| `FIRMWARE_PERSONALITY` | UEFI-compatible, BIOS-compatible |
+| `FIRMWARE_SERVICE` | variable, time, reset, image, protocol database |
 
-Mode 선택은 Core boot state machine의 입력인 동시에 link object graph의 입력이다.
-Binary는 정확히 한 mode descriptor를 제공한다. Diagnostic 코드가 normal boot의
-정책이나 storage authority를 대신하지 않는다.
+Plugin은 build-time에 선택되는 정적 component다. Runtime-loadable plugin은 별도의
+signature, relocation, W^X, dependency authenticity, rollback, lifetime 계약이 승인되기
+전에는 지원하지 않는다.
+
+## Plugin graph 불변식
+
+각 plugin descriptor는 ABI version, kind, stable ID, init phase, provided capability,
+required capability, memory budget, operation deadline, operation table을 선언한다.
+
+QStar composition은 다음을 fail-closed로 거부한다.
+
+- 같은 kind와 ID의 중복 provider
+- 지원되지 않는 ABI major
+- 충족되지 않는 required capability
+- dependency cycle과 phase 역전
+- architecture, environment, product의 불가능한 조합
+- normal product에 recovery network 또는 inactive-slot writer 포함
+- budget을 초과하는 arena, input, output
+- product에서 선택하지 않은 board, protocol, personality object
+
+Registry는 generated C source와 descriptor로 고정하며 실행 중 임의로 확장하지 않는다.
+
+## Lifecycle
+
+Bootloader product는 다음 lifecycle을 따른다.
+
+```text
+native entry
+  -> architecture early normalization
+  -> environment capture
+  -> product and plugin graph validation
+  -> platform facts and services freeze
+  -> boot policy and source selection
+  -> image load and trust validation
+  -> boot protocol handoff preparation
+  -> journal commit and environment quiesce
+  -> architecture transfer
+```
+
+Firmware product는 다음 확장 phase를 사용할 수 있다.
+
+```text
+EARLY -> FOUNDATION -> DRIVER -> BOOT -> QUIESCE -> RUNTIME
+```
+
+`RUNTIME`은 firmware personality가 명시적으로 제공한 service만 유지한다. Ribon
+bootloader product는 커널 entry 뒤 상주하는 hypervisor가 아니다.
+
+## OS 독립성과 Parus
+
+Parus protocol은 Ribon plugin ABI를 소비하는 한 개의 OS-specific component다. RPH1,
+Parus entry flag, Parus confirmation semantics는 Parus protocol 밖으로 나오지 않는다.
+
+Parus overseer, fleet update policy, health policy는 generic Core가 아니라 OS-specific
+policy plugin 또는 companion package가 소유한다. Linux와 FreeBSD product에는 해당
+object가 링크되지 않는다.
+
+OS 독립성은 최소 두 개의 서로 다른 protocol product와 protocol-free library embed
+test로 검증한다. Parus-only fixture 성공은 OS 독립성의 충분한 증거가 아니다.
+
+## Board와 실행환경
+
+RPi5는 architecture나 firmware 종류가 아니다. 다음 component 조합이다.
+
+```text
+AArch64 + raw-FDT 또는 VideoCore environment
+        + BCM2712/RPi5 platform
+        + Raspberry Pi image recipe
+```
+
+QEMU `virt`는 별도의 machine target이다. RPi5와 QEMU는 AArch64, FDT, PL011 같은
+component를 공유할 수 있지만 identity, memory fallback, linker, package, evidence
+claim을 공유하지 않는다.
 
 ## 결정성
 
-모든 parser, loader, network transaction, journal operation은 다음 상한을 갖는다.
+Parser, loader, plugin init, network transaction, journal operation은 다음 상한을
+descriptor로 선언한다.
 
-- 입력 byte 수
-- table 및 component 수
-- allocation 또는 arena 사용량
+- 입력과 출력 byte 수
+- table, component, plugin 수
+- arena 사용량과 alignment
 - retry 수
-- deadline
-- output 크기
+- operation deadline
+- quiesce와 transfer 전 허용 상태
 
-정상 boot는 네트워크 가용성에 의존하지 않는다. 손상된 입력과 지원되지 않는
-capability는 명시적 오류를 내고 fail-closed 전이한다.
-
-Core의 동적 storage는 caller-owned fixed arena 하나로 제한한다. Mode descriptor는
-arena, input, handoff, table, component, retry, deadline 상한을 함께 제공한다.
-Platform service는 supported와 unsupported capability를 전부 분류하며 callback만
-보고 지원 여부를 추론하지 않는다.
+Normal boot는 network 가용성에 의존하지 않는다. 손상된 입력, 미지원 capability,
+불완전한 plugin graph는 명시적 오류로 종료한다.
 
 ## 비목표
 
-Ribon Core는 다음 책임을 갖지 않는다.
+Generic Ribon Core는 다음을 소유하지 않는다.
 
-- flight control과 actuator 제어
-- Parus scheduler, driver, executor 정책
-- 범용 shell과 server
-- permanent kernel page table
-- fleet rollout 정책
+- 특정 OS의 permanent virtual-memory 정책
+- Parus scheduler, executor, driver 정책
+- Linux 또는 FreeBSD runtime policy
+- fleet rollout과 장기 repository client
+- actuator와 flight-control 안전
+- 범용 shell 또는 server
 - 장기 resident hypervisor
+- UEFI 또는 BIOS 전체 specification의 무조건적 기본 구현

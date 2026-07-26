@@ -5,63 +5,86 @@ authority: normative
 last_verified: 2026-07-26
 code_paths:
   - src/arch/
+  - src/environments/
   - src/firmware/
-  - src/boot/
+  - platforms/
+  - products/
   - targets/
 tests:
-  - ribon-platform-tier-lint
+  - ribon-target-tier-lint
+  - ribon-product-composition-test
 hardware:
   - none
 supersedes:
-  - primary-future architecture labels
+  - architecture-firmware support tier
 ---
 
-# 플랫폼 지원 등급 계약
+# Product Target 지원 등급 계약
 
-지원 등급은 architecture와 firmware 조합의 완료 의무를 정의한다. 등급은 실행 성공
-주장이 아니며 각 조합은 독립된 evidence를 요구한다.
+지원 등급은 architecture 하나나 firmware 이름이 아니라 완전한 product target의
+유지 의무를 정의한다.
+
+```text
+product + architecture + environment 또는 personality
+        + platform + protocol set + image recipe
+```
+
+등급은 실행 성공 주장이 아니며 target마다 독립 evidence를 요구한다.
 
 ## 등급
 
-| 등급 | 의미 |
+| 등급 | 유지 의무 |
 | --- | --- |
-| `PRIMARY` | release와 회귀 gate가 요구하는 주력 경로 |
-| `STRATEGIC` | 1급 architecture 경계를 유지하고 독립 acceptance gate를 닫는 경로 |
-| `COMPATIBILITY` | 제한된 호환 목적이며 platform security 제약을 명시하는 경로 |
-| `EXPERIMENTAL` | build 또는 research 전용, production claim 금지 |
+| `PRIMARY` | release build와 상시 회귀 gate |
+| `STRATEGIC` | 1급 ABI 경계와 독립 acceptance |
+| `COMPATIBILITY` | 제한된 호환 목적과 명시적 보안 제약 |
+| `EXPERIMENTAL` | build 또는 research, production claim 금지 |
 
-## 조합
+## 기준 target
 
-| Architecture | Firmware/platform | 등급 | 소유 경계 |
-| --- | --- | --- | --- |
-| x86_64 | UEFI | `PRIMARY` | UEFI Boot Services와 minimal entry bridge |
-| AArch64 | UEFI | `PRIMARY` | UEFI와 AArch64 entry normalization |
-| AArch64 | Raspberry Pi 5 native | `PRIMARY` | firmware handoff, DTB, package, live UART |
-| RISC-V 64 | OpenSBI | `STRATEGIC` | S-mode entry, FDT, SBI extension |
-| RISC-V 64 | UEFI | `STRATEGIC` | UEFI application과 Parus profile |
-| x86_64 | legacy BIOS | `COMPATIBILITY` | EDD, E820, long-mode bridge, optional PXE |
+| Target | 등급 | 핵심 경계 |
+| --- | --- | --- |
+| x86_64 UEFI application boot manager | `PRIMARY` | UEFI consumer와 x86_64 transfer |
+| AArch64 UEFI application boot manager | `PRIMARY` | UEFI consumer와 AArch64 normalization |
+| AArch64 RPi5 raw-FDT boot manager | `PRIMARY` | RPi image recipe, FDT, live UART |
+| AArch64 QEMU virt raw-FDT boot manager | `PRIMARY` | independent QEMU machine target |
+| RISC-V 64 SBI boot manager | `STRATEGIC` | S-mode, FDT, SBI |
+| RISC-V 64 UEFI application | `STRATEGIC` | UEFI consumer와 RISC-V transfer |
+| x86 legacy BIOS client boot manager | `COMPATIBILITY` | EDD, E820, long-mode bridge |
+| Ribon UEFI-compatible firmware product | 별도 target별 지정 | firmware provider evidence |
+| Ribon BIOS-compatible firmware product | 별도 target별 지정 | firmware provider evidence |
 
-## 공통 acceptance
+Boot Protocol 지원 등급은 target과 별도로 matrix에 기록한다. Parus protocol 성공이
+Linux, FreeBSD, Multiboot 지원을 의미하지 않는다.
 
-각 조합은 다음 증거를 독립적으로 닫는다.
+## Acceptance
 
-1. architecture 및 platform unit
-2. artifact build와 graph 검증
-3. 실제 Parus payload load
-4. Parus Handoff v1 consumer acceptance
-5. bounded boot marker와 raw evidence
-6. 대상이 물리 board면 fresh hardware capture
+각 target은 다음을 독립적으로 닫는다.
 
-UEFI QEMU 결과는 BIOS, RPi5, RISC-V board 결과를 대신하지 않는다.
+1. plugin graph와 object graph
+2. architecture와 environment 또는 personality unit
+3. artifact build와 image recipe 검증
+4. 선택된 Boot Protocol의 실제 payload acceptance
+5. bounded marker와 raw execution evidence
+6. 물리 platform이면 fresh hardware capture
+
+UEFI application QEMU 결과는 Ribon UEFI firmware provider, BIOS, RPi5, RISC-V physical
+board 결과를 대신하지 않는다.
+
+## Firmware consumer와 provider evidence
+
+기존 EDK II 또는 SeaBIOS 위에서 Ribon application을 실행한 결과는 consumer evidence다.
+Ribon이 생성한 firmware image가 service ABI와 conformance test를 통과해야 provider
+evidence가 된다.
 
 ## BIOS 보안 경계
 
-BIOS Ribon이 boot bundle을 검증해도 Ribon 자신에 대한 hardware root of trust는 자동으로
-생기지 않는다. TPM measurement, verified firmware, write protection 같은 platform
-보호가 없으면 secure-boot production claim을 열지 않는다.
+BIOS client가 boot bundle을 검증해도 Ribon 자신에 대한 hardware root of trust는
+자동으로 생기지 않는다. TPM measurement, verified firmware, write protection이 없으면
+secure-boot production claim을 열지 않는다.
 
 ## RISC-V 권한
 
-OpenSBI가 M-mode와 SBI를 소유한다. Ribon은 S-mode 또는 UEFI application으로 동작하고
-Parus secondary hart 정책을 대신하지 않는다. HSM을 통한 secondary 시작은 Parus runtime
-책임이다.
+SBI target에서는 OpenSBI 또는 선택된 SBI firmware가 M-mode를 소유한다. Ribon
+bootloader product는 S-mode 또는 UEFI application으로 동작한다. Ribon firmware
+personality가 M-mode를 소유하려면 별도 product와 threat model을 요구한다.

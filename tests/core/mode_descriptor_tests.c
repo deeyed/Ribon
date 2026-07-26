@@ -1,6 +1,4 @@
-#include <Ribon/arch.h>
-#include <Ribon/core.h>
-#include <Ribon/platform.h>
+#include <Ribon/core/capability.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -23,27 +21,25 @@ static int expected_descriptor(
     const char **name_out,
     uint64_t *required_out,
     uint64_t *forbidden_out,
-    uint64_t *required_arch_out,
     struct RibonResourceLimits *limits_out) {
     *required_out = 0u;
     *forbidden_out = 0u;
-    *required_arch_out = 0u;
     *limits_out = (struct RibonResourceLimits){0};
     switch (mode) {
     case RIBON_MODE_NORMAL:
         *name_out = "normal";
         *required_out =
-            RIBON_PLATFORM_CAP_BOOT_SOURCE_READ |
-            RIBON_PLATFORM_CAP_MONOTONIC_TIMER;
+            RIBON_CAP_BOOT_SOURCE_READ |
+            RIBON_CAP_MONOTONIC_TIMER |
+            RIBON_CAP_ARCHITECTURE |
+            RIBON_CAP_IMAGE_ELF64 |
+            RIBON_CAP_BOOT_PROTOCOL |
+            RIBON_CAP_HANDOFF |
+            RIBON_CAP_ENTRY_CONTRACT;
         *forbidden_out =
-            RIBON_PLATFORM_CAP_INACTIVE_SLOT_WRITE |
-            RIBON_PLATFORM_CAP_INACTIVE_SLOT_ERASE |
-            RIBON_PLATFORM_CAP_NETWORK_TRANSPORT;
-        *required_arch_out =
-            RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
-            RIBON_ARCH_CAP_CACHE_SYNC |
-            RIBON_ARCH_CAP_ENTRY_BRIDGE |
-            RIBON_ARCH_CAP_HALT;
+            RIBON_CAP_INACTIVE_SLOT_WRITE |
+            RIBON_CAP_INACTIVE_SLOT_ERASE |
+            RIBON_CAP_NETWORK_TRANSPORT;
         *limits_out = (struct RibonResourceLimits){
             .max_memory_regions = 256u,
             .max_load_segments = 32u,
@@ -58,18 +54,16 @@ static int expected_descriptor(
     case RIBON_MODE_RECOVERY:
         *name_out = "recovery";
         *required_out =
-            RIBON_PLATFORM_CAP_BOOT_SOURCE_READ |
-            RIBON_PLATFORM_CAP_INACTIVE_SLOT_WRITE |
-            RIBON_PLATFORM_CAP_INACTIVE_SLOT_ERASE |
-            RIBON_PLATFORM_CAP_STORAGE_FLUSH |
-            RIBON_PLATFORM_CAP_MONOTONIC_TIMER |
-            RIBON_PLATFORM_CAP_PERSISTENT_METADATA |
-            RIBON_PLATFORM_CAP_RANDOM_NONCE;
-        *required_arch_out =
-            RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
-            RIBON_ARCH_CAP_CACHE_SYNC |
-            RIBON_ARCH_CAP_ENTRY_BRIDGE |
-            RIBON_ARCH_CAP_HALT;
+            RIBON_CAP_BOOT_SOURCE_READ |
+            RIBON_CAP_INACTIVE_SLOT_WRITE |
+            RIBON_CAP_INACTIVE_SLOT_ERASE |
+            RIBON_CAP_STORAGE_FLUSH |
+            RIBON_CAP_MONOTONIC_TIMER |
+            RIBON_CAP_PERSISTENT_METADATA |
+            RIBON_CAP_RANDOM_NONCE |
+            RIBON_CAP_ARCHITECTURE |
+            RIBON_CAP_IMAGE_ELF64 |
+            RIBON_CAP_BOOT_PROTOCOL;
         *limits_out = (struct RibonResourceLimits){
             .max_memory_regions = 256u,
             .max_load_segments = 32u,
@@ -84,14 +78,12 @@ static int expected_descriptor(
     case RIBON_MODE_PROVISIONING:
         *name_out = "provisioning";
         *required_out =
-            RIBON_PLATFORM_CAP_INACTIVE_SLOT_WRITE |
-            RIBON_PLATFORM_CAP_STORAGE_FLUSH |
-            RIBON_PLATFORM_CAP_MONOTONIC_TIMER |
-            RIBON_PLATFORM_CAP_PERSISTENT_METADATA |
-            RIBON_PLATFORM_CAP_RANDOM_NONCE;
-        *required_arch_out =
-            RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
-            RIBON_ARCH_CAP_HALT;
+            RIBON_CAP_INACTIVE_SLOT_WRITE |
+            RIBON_CAP_STORAGE_FLUSH |
+            RIBON_CAP_MONOTONIC_TIMER |
+            RIBON_CAP_PERSISTENT_METADATA |
+            RIBON_CAP_RANDOM_NONCE |
+            RIBON_CAP_ARCHITECTURE;
         *limits_out = (struct RibonResourceLimits){
             .max_memory_regions = 256u,
             .max_load_segments = 32u,
@@ -106,15 +98,13 @@ static int expected_descriptor(
     case RIBON_MODE_DIAGNOSTIC:
         *name_out = "diagnostic";
         *required_out =
-            RIBON_PLATFORM_CAP_MONOTONIC_TIMER |
-            RIBON_PLATFORM_CAP_DIAGNOSTIC_SINK;
+            RIBON_CAP_MONOTONIC_TIMER |
+            RIBON_CAP_DIAGNOSTIC_SINK |
+            RIBON_CAP_ARCHITECTURE;
         *forbidden_out =
-            RIBON_PLATFORM_CAP_INACTIVE_SLOT_WRITE |
-            RIBON_PLATFORM_CAP_INACTIVE_SLOT_ERASE |
-            RIBON_PLATFORM_CAP_PERSISTENT_METADATA;
-        *required_arch_out =
-            RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
-            RIBON_ARCH_CAP_HALT;
+            RIBON_CAP_INACTIVE_SLOT_WRITE |
+            RIBON_CAP_INACTIVE_SLOT_ERASE |
+            RIBON_CAP_PERSISTENT_METADATA;
         *limits_out = (struct RibonResourceLimits){
             .max_memory_regions = 512u,
             .max_load_segments = 64u,
@@ -136,25 +126,23 @@ int main(void) {
     const char *expected_name = 0;
     uint64_t expected_required = 0u;
     uint64_t expected_forbidden = 0u;
-    uint64_t expected_required_arch = 0u;
     struct RibonResourceLimits expected_limits;
 
     if (mode == 0 ||
+        mode->size != sizeof(*mode) ||
         mode->abi_version != RIBON_CORE_ABI_VERSION ||
         !expected_descriptor(
             mode->mode,
             &expected_name,
             &expected_required,
             &expected_forbidden,
-            &expected_required_arch,
             &expected_limits) ||
         strcmp(mode->name, expected_name) != 0 ||
-        mode->required_platform_capabilities != expected_required ||
-        mode->forbidden_platform_capabilities != expected_forbidden ||
-        mode->required_arch_capabilities != expected_required_arch ||
-        mode->forbidden_arch_capabilities != 0u ||
+        mode->required_capabilities != expected_required ||
+        mode->forbidden_capabilities != expected_forbidden ||
         (expected_required & expected_forbidden) != 0u ||
-        !limits_match(&mode->limits, &expected_limits)) {
+        !limits_match(&mode->limits, &expected_limits) ||
+        !ribon_mode_descriptor_is_valid(mode)) {
         fputs("mode_descriptor_tests: contract mismatch\n", stderr);
         return 1;
     }

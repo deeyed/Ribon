@@ -1,72 +1,12 @@
-local host_arches = {
-  "x86_64",
-  "aarch64",
-  "riscv64",
-}
-
-local firmware_sources = {
-  "src/firmware/common.c",
-  "src/firmware/host/host.c",
-}
-
-local core_sources = {
-  "src/loader/elf64.c",
-  "src/core/arena.c",
-  "src/core/context.c",
-  "src/core/memory.c",
-  "src/core/platform.c",
-  "src/core/profile.c",
-  "src/core/ribon.c",
-  "src/profiles/parus.c",
-  "src/profiles/parus/rph1_builder.c",
-  "src/profiles/parus/rph1_parser.c",
-}
-
-local modes = {
-  "normal",
-  "recovery",
-  "provisioning",
-  "diagnostic",
-}
-
-local function host_core_sources(arch, mode)
-  local sources = {
-    "src/arch/common.c",
-    qstar.join("src/arch", arch, "arch.c"),
-    qstar.join("src/modes", mode .. ".c"),
-  }
-  return qstar.append(sources, firmware_sources, core_sources)
-end
-
-for _, arch in ipairs(host_arches) do
-  qstar.staticlib("ribon_core_" .. arch) {
-    sources = host_core_sources(arch, "normal"),
-    configs = {
-      "//qstar/policies:ribon_host_c",
-    },
-  }
-  for _, mode in ipairs(modes) do
-    if mode ~= "normal" then
-      qstar.staticlib("ribon_core_" .. mode .. "_" .. arch) {
-        sources = host_core_sources(arch, mode),
-        configs = {
-          "//qstar/policies:ribon_host_c",
-        },
-      }
-    end
-  end
-end
-
-qstar.group "ribon_non_normal_mode_cores" {
-  deps = {
-    "//src/core:ribon_core_recovery_x86_64",
-    "//src/core:ribon_core_recovery_aarch64",
-    "//src/core:ribon_core_recovery_riscv64",
-    "//src/core:ribon_core_provisioning_x86_64",
-    "//src/core:ribon_core_provisioning_aarch64",
-    "//src/core:ribon_core_provisioning_riscv64",
-    "//src/core:ribon_core_diagnostic_x86_64",
-    "//src/core:ribon_core_diagnostic_aarch64",
-    "//src/core:ribon_core_diagnostic_riscv64",
+qstar.staticlib "libribon_core" {
+  artifact_name = "libribon-core.a",
+  sources = {
+    "src/core/arena.c",
+    "src/core/context.c",
+    "src/core/plugin.c",
+    "src/core/registry.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
   },
 }

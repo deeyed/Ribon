@@ -1,5 +1,0 @@
-qstar.group "ribon_firmware_bios" {
-  deps = {
-    "//src/core:ribon_core_x86_64",
-  },
-}

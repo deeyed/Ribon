@@ -1,4 +1,4 @@
-#include <Ribon/memory.h>
+#include <Ribon/core/memory.h>
 
 static int ribon_u64_add_overflows(uint64_t lhs, uint64_t rhs) {
     return lhs > UINT64_MAX - rhs;

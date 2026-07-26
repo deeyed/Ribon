@@ -7,98 +7,89 @@ code_paths:
   - docs/
   - include/Ribon/
   - src/
-  - tests/
-  - tools/
+  - platforms/
+  - products/
+  - targets/
+  - sdk/
 tests:
   - ribon-documentation-quality-lint
 hardware:
   - none
 supersedes:
-  - round-based Ribon roadmaps
+  - R0-R9 profile-centered development program
 ---
 
 # Ribon 개발 프로그램
 
-이 roadmap은 의존 순서를 설명하며 구현 또는 검증 성공을 뜻하지 않는다.
+이 roadmap은 capability 의존 순서를 설명하며 implementation status, round cursor,
+release evidence를 정의하지 않는다.
 
-## R0 설계 결정 동결
+## Library foundation
 
-- 문서 위계와 품질 gate
-- legacy OS semantic hard cut
-- Core·Profile·Platform 경계
-- Parus Handoff v1
-- kernel-owned higher-half
-- OTA authority
-- overseer와 watchdog
-- recovery network
-- BIOS와 RISC-V support tier
+- Core와 Boot Library의 caller-owned context
+- stable plugin descriptor와 capability graph
+- generated immutable registry
+- protocol-free embed example
+- public ABI와 object graph lint
 
-## R1 Parus profile 전환
+## Multiprotocol boot manager
 
-- Legacy profile source와 marker 제거
-- Parus profile registry
-- RPH1 producer와 Parus consumer
-- entry flag 및 register ABI
-- malformed corpus
+- Parus Boot Protocol
+- EFI chainload
+- Multiboot2
+- Linux architecture별 protocol
+- FreeBSD architecture별 protocol
+- protocol과 image-format parser 분리
 
-## R2 Core service 경계
+한 protocol의 성공으로 다른 protocol의 지원을 주장하지 않는다.
 
-- Platform operation table
-- Architecture operation table
-- fixed arena와 resource limit
-- mode별 object graph
-- profile capability와 confirmation API
+## Environment coverage
 
-## R3 Entry bridge
+- host embed harness
+- x86_64와 AArch64 UEFI application
+- x86 BIOS client
+- AArch64 raw-FDT
+- RISC-V SBI
+- environment별 quiesce와 final memory-map transaction
 
-- AMD64 UEFI identity bridge
-- AMD64 BIOS long-mode bridge
-- AArch64 entry normalization
-- RISC-V S-mode entry
-- Parus permanent higher-half 인수
+## Platform coverage
 
-## R4 Verified update
+- QEMU PC
+- QEMU AArch64 `virt`
+- QEMU RISC-V `virt`
+- Raspberry Pi 5
+- 재사용 driver와 board resource package 분리
 
-- Signed boot bundle
-- redundant slot metadata
-- anti-rollback
-- pending, confirmation, rollback
+QEMU와 physical hardware evidence를 독립적으로 닫는다.
+
+## Firmware SDK
+
+- plugin, package, product, target, image metadata
+- external plugin template와 host contract harness
+- firmware lifecycle와 service publication
+- UEFI-compatible personality
+- BIOS-compatible personality
+- firmware provider conformance evidence
+
+기존 firmware 위의 Ribon application 성공은 firmware personality 구현 성공을 뜻하지
+않는다.
+
+## Resilient product
+
+- signed manifest와 anti-rollback
+- redundant slot journal
+- bounded recovery network
+- watchdog와 reset reason
+- OS-specific overseer companion plugin
 - power-loss fault injection
 
-## R5 UEFI recovery network
+Normal boot product에는 recovery network와 update writer를 링크하지 않는다.
 
-- SNP 또는 firmware HTTP adapter
-- bounded address configuration과 download
-- streaming write와 digest
-- timeout과 malformed packet corpus
+## Product hardening
 
-## R6 BIOS
-
-- stage0와 stage1
-- EDD, E820, ACPI
-- GPT 또는 fixed slot
-- Parus Handoff v1
-- optional PXE
-
-## R7 RISC-V
-
-- QEMU virt와 OpenSBI
-- FDT와 SBI extension
-- Parus Handoff v1
-- UEFI application
-
-## R8 RPi5 복구와 감독
-
-- Native storage A/B
-- watchdog와 reset reason
-- recovery transport
-- external safety controller protocol
-- live power-loss와 UART evidence
-
-## R9 제품 hardening
-
-- parser fuzzing
-- cryptographic and key-rotation validation
-- reproducible build와 SBOM
-- signed release
-- board별 evidence matrix
+- parser fuzzing과 malformed corpus
+- reproducible build와 selected-object manifest
+- ABI compatibility report
+- SBOM과 signed release
+- architecture, environment, protocol, platform별 evidence matrix
+- physical hardware capture provenance

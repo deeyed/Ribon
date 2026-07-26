@@ -1,5 +1,0 @@
-qstar.group "ribon_loader" {
-  deps = {
-    "//tests:elf64_loader_tests",
-  },
-}

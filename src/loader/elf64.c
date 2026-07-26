@@ -1,5 +1,6 @@
-#include <Ribon/arch.h>
-#include <Ribon/loader.h>
+#include <Ribon/arch/ops.h>
+#include <Ribon/boot/image.h>
+#include <Ribon/plugin/descriptor.h>
 
 #include <stddef.h>
 #include <string.h>
@@ -191,23 +192,7 @@ const char *ribon_loader_status_name(enum RibonLoaderStatus status) {
     }
 }
 
-int ribon_loader_analyze(
-    const struct RibonPayloadImage *image,
-    const struct RibonArchDescriptor *arch,
-    struct RibonLoadedPayload *out) {
-    if (image == 0 || image->data == 0 || image->size < 4u) {
-        return RIBON_LOADER_STATUS_BAD_ARGUMENT;
-    }
-    if (((const unsigned char *)image->data)[0] == 0x7fu &&
-        ((const unsigned char *)image->data)[1] == 'E' &&
-        ((const unsigned char *)image->data)[2] == 'L' &&
-        ((const unsigned char *)image->data)[3] == 'F') {
-        return ribon_loader_analyze_elf64(image, arch, out);
-    }
-    return RIBON_LOADER_STATUS_BAD_FORMAT;
-}
-
-int ribon_loader_analyze_elf64(
+static int elf64_analyze(
     const struct RibonPayloadImage *image,
     const struct RibonArchDescriptor *arch,
     struct RibonLoadedPayload *out) {
@@ -436,3 +421,59 @@ int ribon_loader_analyze_elf64(
     out->high_entry_load_address = high_entry_load_address;
     return RIBON_LOADER_STATUS_OK;
 }
+
+/** @brief Image-format operation table의 ABI와 callback을 검사한다. */
+int ribon_image_format_ops_are_valid(const struct RibonImageFormatOps *ops) {
+    return ops != 0 &&
+           ops->size == sizeof(*ops) &&
+           ops->abi_version == RIBON_IMAGE_FORMAT_OPS_ABI_VERSION &&
+           ops->format != RIBON_EXECUTABLE_FORMAT_UNKNOWN &&
+           ops->analyze != 0;
+}
+
+static const struct RibonImageFormatOps elf64_ops = {
+    .size = sizeof(elf64_ops),
+    .abi_version = RIBON_IMAGE_FORMAT_OPS_ABI_VERSION,
+    .format = RIBON_EXECUTABLE_FORMAT_ELF64,
+    .analyze = elf64_analyze,
+};
+
+/** @brief Image-format plugin descriptor와 operation table을 함께 검사한다. */
+int ribon_image_plugin_operations_are_valid(
+    const struct RibonPluginDescriptor *descriptor) {
+    const struct RibonImageFormatOps *ops;
+    if (descriptor == 0 ||
+        descriptor->kind != RIBON_PLUGIN_KIND_IMAGE_FORMAT ||
+        descriptor->operations_size != sizeof(struct RibonImageFormatOps) ||
+        descriptor->operations_abi != RIBON_IMAGE_FORMAT_OPS_ABI_VERSION ||
+        descriptor->provides != RIBON_CAP_IMAGE_ELF64) {
+        return 0;
+    }
+    ops = (const struct RibonImageFormatOps *)descriptor->operations;
+    return ribon_image_format_ops_are_valid(ops) &&
+           ops->format == RIBON_EXECUTABLE_FORMAT_ELF64;
+}
+
+/** @brief ELF64 image-format plugin descriptor다. */
+const struct RibonPluginDescriptor ribon_elf64_image_plugin_descriptor = {
+    .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_elf64_image_plugin_descriptor),
+    .abi_major = RIBON_PLUGIN_ABI_MAJOR,
+    .abi_minor = RIBON_PLUGIN_ABI_MINOR,
+    .kind = RIBON_PLUGIN_KIND_IMAGE_FORMAT,
+    .phase = RIBON_PLUGIN_PHASE_BOOT,
+    .id = "image.elf64",
+    .provides = RIBON_CAP_IMAGE_ELF64,
+    .requires = RIBON_CAP_ARCHITECTURE,
+    .architecture_mask = RIBON_ARCH_MASK_ALL,
+    .environment_mask = RIBON_ENV_MASK_ALL,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 4096u,
+    .input_budget = 64ull * 1024ull * 1024ull,
+    .output_budget = 4096u,
+    .deadline_ms = 30000u,
+    .operations = &elf64_ops,
+    .operations_size = sizeof(elf64_ops),
+    .operations_abi = RIBON_IMAGE_FORMAT_OPS_ABI_VERSION,
+    .validate_operations = ribon_image_plugin_operations_are_valid,
+};

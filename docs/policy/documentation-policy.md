@@ -118,7 +118,7 @@ Sphinx는 Breathe로 XML을 포함한다. 문서 빌드는 Ribon 실행 산출�
  * @param buffer 호출자가 소유하는 고정 용량 출력 버퍼.
  * @return 계약을 만족하면 `RIBON_STATUS_OK`를 반환한다.
  */
-int ribon_profile_build_handoff(
+int ribon_protocol_prepare_handoff(
     const struct RibonBootPlan *plan,
     struct RibonBuffer *buffer);
 ```

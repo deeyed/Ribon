@@ -7,20 +7,25 @@ code_paths:
   - docs/
   - include/Ribon/
   - src/
+  - products/
+  - targets/
 tests:
   - ribon-documentation-quality-lint
   - ribon-docs
 hardware:
   - none
 supersedes:
-  - flat Ribon documentation tree
+  - profile-centered Ribon documentation index
 ---
 
 # Ribon 문서
 
-Ribon 문서는 설계 정본, 코드 계약, 결정 기록, 개발 순서, 구현 증거를 서로 다른
-권위로 분리한다. 일반 문서는 MyST Markdown으로 작성하고 공개 C API는 Doxygen XML과
-Breathe를 통해 같은 Sphinx 문서에 포함한다.
+Ribon은 generic boot runtime library, multiprotocol boot manager, firmware/plugin SDK다.
+문서는 상태 없는 정본, ABI 계약, 결정 기록, 개발 순서, 실행 증거를 서로 다른 권위로
+분리한다.
+
+일반 문서는 MyST Markdown으로 작성하고 public C API는 Doxygen XML과 Breathe를 통해
+Sphinx 문서에 통합한다.
 
 ```{toctree}
 :maxdepth: 2
@@ -39,13 +44,22 @@ canonical/lifecycle/boot-update-recovery-model
 
 ```{toctree}
 :maxdepth: 2
-:caption: 계약
+:caption: Library와 Plugin 계약
 
-contracts/core/core-profile-platform-boundary
+contracts/core/library-plugin-protocol-boundary
+contracts/composition/product-plugin-composition
+contracts/firmware/firmware-personality-plugin
+api/public-c-api
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Boot와 복구 계약
+
 contracts/handoff/parus-handoff-v1
-contracts/entry/higher-half-ownership
-contracts/update/ota-update-authority
-contracts/recovery/overseer-watchdog-model
+contracts/entry/os-entry-ownership
+contracts/update/update-authority
+contracts/recovery/overseer-plugin-boundary
 contracts/network/recovery-network-surface
 contracts/platform/platform-support-tiers
 contracts/documentation/documentation-quality-gate
@@ -53,7 +67,14 @@ contracts/documentation/documentation-quality-gate
 
 ```{toctree}
 :maxdepth: 2
-:caption: 결정 기록
+:caption: Active 결정
+
+adr/0009-limine-library-plugin-hard-cut
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Superseded 결정 기록
 
 adr/0001-legacy-os-semantic-hard-cut
 adr/0002-core-profile-platform-boundary
@@ -74,7 +95,7 @@ platforms/rpi5/native-boot-boundary
 
 ```{toctree}
 :maxdepth: 2
-:caption: 개발 순서
+:caption: 개발 프로그램
 
 roadmap/ribon-development-program
 ```
@@ -84,14 +105,14 @@ roadmap/ribon-development-program
 :caption: 참고 자료
 
 references/update-and-platform-standards
-api/public-c-api
 ```
 
 ```{toctree}
 :maxdepth: 1
-:caption: 개발 기록
+:caption: 역사적 개발 기록
 
 log/2026-07-26-r0-documentation-hard-cut
 log/2026-07-26-r1-parus-profile-and-rph1
 log/2026-07-26-r2-core-service-boundary
+log/2026-07-26-r3-library-plugin-protocol-hard-cut
 ```

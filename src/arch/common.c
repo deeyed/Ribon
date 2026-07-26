@@ -1,5 +1,6 @@
-#include <Ribon/arch.h>
-#include <Ribon/loader.h>
+#include <Ribon/arch/ops.h>
+#include <Ribon/boot/image.h>
+#include <Ribon/plugin/descriptor.h>
 
 /** @brief 두 C 문자열이 같은지 검사한다. */
 static int arch_streq(const char *lhs, const char *rhs) {
@@ -71,12 +72,18 @@ const char *ribon_arch_endian_name(enum RibonArchEndian endian) {
     }
 }
 
-/** @brief Architecture가 요청한 firmware mask를 모두 지원하는지 검사한다. */
-int ribon_arch_has_firmware_mask(const struct RibonArchDescriptor *arch, uint32_t mask) {
-    if (arch == 0) {
-        return 0;
+/** @brief Architecture ID를 product compatibility bit로 변환한다. */
+uint32_t ribon_architecture_mask(enum RibonArchitectureId architecture) {
+    switch (architecture) {
+    case RIBON_ARCHITECTURE_X86_64:
+        return RIBON_ARCH_MASK_X86_64;
+    case RIBON_ARCHITECTURE_AARCH64:
+        return RIBON_ARCH_MASK_AARCH64;
+    case RIBON_ARCHITECTURE_RISCV64:
+        return RIBON_ARCH_MASK_RISCV64;
+    default:
+        return 0u;
     }
-    return (arch->firmware_mask & mask) == mask;
 }
 
 /** @brief Architecture operation table ABI와 필수 callback을 검사한다. */
@@ -86,10 +93,13 @@ int ribon_arch_ops_are_valid(const struct RibonArchOps *ops) {
         RIBON_ARCH_CAP_HALT;
 
     if (ops == 0 ||
+        ops->size != sizeof(*ops) ||
         ops->abi_version != RIBON_ARCH_OPS_ABI_VERSION ||
         (ops->capabilities & ~RIBON_ARCH_CAP_ALL) != 0u ||
         (ops->capabilities & required) != required ||
         ops->descriptor == 0 ||
+        ops->descriptor->size != sizeof(*ops->descriptor) ||
+        ops->descriptor->abi_version != RIBON_ARCH_OPS_ABI_VERSION ||
         ops->descriptor->canonical_name == 0 ||
         ops->validate_payload == 0 ||
         ops->halt == 0) {
@@ -117,6 +127,23 @@ int ribon_arch_ops_are_valid(const struct RibonArchOps *ops) {
         return 0;
     }
     return 1;
+}
+
+/** @brief Architecture plugin descriptor와 operation table을 함께 검사한다. */
+int ribon_arch_plugin_operations_are_valid(
+    const struct RibonPluginDescriptor *descriptor) {
+    const struct RibonArchOps *ops;
+    if (descriptor == 0 ||
+        descriptor->kind != RIBON_PLUGIN_KIND_ARCHITECTURE ||
+        descriptor->operations_size != sizeof(struct RibonArchOps) ||
+        descriptor->operations_abi != RIBON_ARCH_OPS_ABI_VERSION ||
+        descriptor->provides != RIBON_CAP_ARCHITECTURE) {
+        return 0;
+    }
+    ops = (const struct RibonArchOps *)descriptor->operations;
+    return ribon_arch_ops_are_valid(ops) &&
+           descriptor->architecture_mask ==
+               ribon_architecture_mask(ops->descriptor->id);
 }
 
 /** @brief Loaded payload의 공통 machine/canonical address 계약을 검사한다. */

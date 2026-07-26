@@ -1,0 +1,60 @@
+local architectures = {
+  "x86_64",
+  "aarch64",
+  "riscv64",
+}
+
+for _, architecture in ipairs(architectures) do
+  local generated_registry =
+    qstar.join("build/qstar/generated/host", architecture, "plugin_registry.c")
+
+  qstar.custom_target("ribon_host_registry_" .. architecture) {
+    toolset = "//qstar/policies:host",
+    inputs = {
+      "qstar/manifests/host-reference.json",
+      "tools/generate_plugin_registry.py",
+    },
+    outputs = {
+      qstar.output(generated_registry),
+    },
+    command = qstar.cli {
+      "python3",
+      qstar.input(1),
+      "--manifest",
+      qstar.input(0),
+      "--architecture",
+      architecture,
+      "--output",
+      qstar.output(0),
+    },
+    description = qstar.status(
+      "Generating Ribon host plugin registry for " .. architecture),
+  }
+
+  qstar.executable("ribon_host_reference_" .. architecture) {
+    sources = {
+      "src/environments/host/main.c",
+      "src/environments/host/services.c",
+      "src/modes/normal.c",
+      qstar.output(generated_registry),
+    },
+    deps = {
+      "//src/core:libribon_core",
+      "//src/common:libribon_boot",
+      "//src/arch:ribon_arch_" .. architecture,
+      "//src/protocols:ribon_protocol_synthetic",
+      "//src/protocols:ribon_image_elf64",
+    },
+    configs = {
+      "//qstar/policies:ribon_host_c",
+    },
+  }
+end
+
+qstar.group "ribon_host_products" {
+  deps = {
+    "//src/environments/host:ribon_host_reference_x86_64",
+    "//src/environments/host:ribon_host_reference_aarch64",
+    "//src/environments/host:ribon_host_reference_riscv64",
+  },
+}

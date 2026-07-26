@@ -1,22 +1,18 @@
-#include <Ribon/arch.h>
-#include <Ribon/core.h>
-#include <Ribon/platform.h>
+#include <Ribon/core/capability.h>
 
 static const struct RibonModeDescriptor diagnostic_mode = {
+    .size = sizeof(diagnostic_mode),
     .abi_version = RIBON_CORE_ABI_VERSION,
     .mode = RIBON_MODE_DIAGNOSTIC,
     .name = "diagnostic",
-    .required_platform_capabilities =
-        RIBON_PLATFORM_CAP_MONOTONIC_TIMER |
-        RIBON_PLATFORM_CAP_DIAGNOSTIC_SINK,
-    .forbidden_platform_capabilities =
-        RIBON_PLATFORM_CAP_INACTIVE_SLOT_WRITE |
-        RIBON_PLATFORM_CAP_INACTIVE_SLOT_ERASE |
-        RIBON_PLATFORM_CAP_PERSISTENT_METADATA,
-    .required_arch_capabilities =
-        RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
-        RIBON_ARCH_CAP_HALT,
-    .forbidden_arch_capabilities = 0u,
+    .required_capabilities =
+        RIBON_CAP_MONOTONIC_TIMER |
+        RIBON_CAP_DIAGNOSTIC_SINK |
+        RIBON_CAP_ARCHITECTURE,
+    .forbidden_capabilities =
+        RIBON_CAP_INACTIVE_SLOT_WRITE |
+        RIBON_CAP_INACTIVE_SLOT_ERASE |
+        RIBON_CAP_PERSISTENT_METADATA,
     .limits = {
         .max_memory_regions = 512u,
         .max_load_segments = 64u,

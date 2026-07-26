@@ -1,7 +1,7 @@
 ---
 doc_type: adr
-status: accepted
-authority: normative
+status: superseded
+authority: historical
 last_verified: 2026-07-26
 code_paths:
   - include/Ribon/profile.h
@@ -16,6 +16,8 @@ hardware:
   - none
 supersedes:
   - legacy OS profile compatibility policy
+superseded_by:
+  - 0009-limine-library-plugin-hard-cut
 ---
 
 # ADR: legacy OS 의미론을 hard cut한다

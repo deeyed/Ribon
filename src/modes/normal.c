@@ -1,24 +1,22 @@
-#include <Ribon/arch.h>
-#include <Ribon/core.h>
-#include <Ribon/platform.h>
+#include <Ribon/core/capability.h>
 
 static const struct RibonModeDescriptor normal_mode = {
+    .size = sizeof(normal_mode),
     .abi_version = RIBON_CORE_ABI_VERSION,
     .mode = RIBON_MODE_NORMAL,
     .name = "normal",
-    .required_platform_capabilities =
-        RIBON_PLATFORM_CAP_BOOT_SOURCE_READ |
-        RIBON_PLATFORM_CAP_MONOTONIC_TIMER,
-    .forbidden_platform_capabilities =
-        RIBON_PLATFORM_CAP_INACTIVE_SLOT_WRITE |
-        RIBON_PLATFORM_CAP_INACTIVE_SLOT_ERASE |
-        RIBON_PLATFORM_CAP_NETWORK_TRANSPORT,
-    .required_arch_capabilities =
-        RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
-        RIBON_ARCH_CAP_CACHE_SYNC |
-        RIBON_ARCH_CAP_ENTRY_BRIDGE |
-        RIBON_ARCH_CAP_HALT,
-    .forbidden_arch_capabilities = 0u,
+    .required_capabilities =
+        RIBON_CAP_BOOT_SOURCE_READ |
+        RIBON_CAP_MONOTONIC_TIMER |
+        RIBON_CAP_ARCHITECTURE |
+        RIBON_CAP_IMAGE_ELF64 |
+        RIBON_CAP_BOOT_PROTOCOL |
+        RIBON_CAP_HANDOFF |
+        RIBON_CAP_ENTRY_CONTRACT,
+    .forbidden_capabilities =
+        RIBON_CAP_INACTIVE_SLOT_WRITE |
+        RIBON_CAP_INACTIVE_SLOT_ERASE |
+        RIBON_CAP_NETWORK_TRANSPORT,
     .limits = {
         .max_memory_regions = 256u,
         .max_load_segments = 32u,

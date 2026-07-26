@@ -1,13 +1,25 @@
-qstar.subdir("x86_64")
+local architectures = {
+  "x86_64",
+  "aarch64",
+  "riscv64",
+}
 
-qstar.subdir("aarch64")
+for _, architecture in ipairs(architectures) do
+  qstar.staticlib("ribon_arch_" .. architecture) {
+    sources = {
+      "src/arch/common.c",
+      qstar.join("src/arch", architecture, "arch.c"),
+    },
+    configs = {
+      "//qstar/policies:ribon_host_c",
+    },
+  }
+end
 
-qstar.subdir("riscv64")
-
-qstar.group "ribon_arch" {
+qstar.group "ribon_architectures" {
   deps = {
-    "//src/arch/x86_64:ribon_arch_x86_64",
-    "//src/arch/aarch64:ribon_arch_aarch64",
-    "//src/arch/riscv64:ribon_arch_riscv64",
+    "//src/arch:ribon_arch_x86_64",
+    "//src/arch:ribon_arch_aarch64",
+    "//src/arch:ribon_arch_riscv64",
   },
 }

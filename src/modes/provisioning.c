@@ -1,22 +1,18 @@
-#include <Ribon/arch.h>
-#include <Ribon/core.h>
-#include <Ribon/platform.h>
+#include <Ribon/core/capability.h>
 
 static const struct RibonModeDescriptor provisioning_mode = {
+    .size = sizeof(provisioning_mode),
     .abi_version = RIBON_CORE_ABI_VERSION,
     .mode = RIBON_MODE_PROVISIONING,
     .name = "provisioning",
-    .required_platform_capabilities =
-        RIBON_PLATFORM_CAP_INACTIVE_SLOT_WRITE |
-        RIBON_PLATFORM_CAP_STORAGE_FLUSH |
-        RIBON_PLATFORM_CAP_MONOTONIC_TIMER |
-        RIBON_PLATFORM_CAP_PERSISTENT_METADATA |
-        RIBON_PLATFORM_CAP_RANDOM_NONCE,
-    .forbidden_platform_capabilities = 0u,
-    .required_arch_capabilities =
-        RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
-        RIBON_ARCH_CAP_HALT,
-    .forbidden_arch_capabilities = 0u,
+    .required_capabilities =
+        RIBON_CAP_INACTIVE_SLOT_WRITE |
+        RIBON_CAP_STORAGE_FLUSH |
+        RIBON_CAP_MONOTONIC_TIMER |
+        RIBON_CAP_PERSISTENT_METADATA |
+        RIBON_CAP_RANDOM_NONCE |
+        RIBON_CAP_ARCHITECTURE,
+    .forbidden_capabilities = 0u,
     .limits = {
         .max_memory_regions = 256u,
         .max_load_segments = 32u,
