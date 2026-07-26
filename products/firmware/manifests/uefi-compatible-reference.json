@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "product_id": "firmware.uefi-compatible-reference",
+  "product_kind": "firmware",
+  "target_id": "firmware-provider-uefi-compatible-reference",
+  "architecture": "x86_64",
+  "firmware_personality": "uefi-compatible",
+  "platform": "firmware-reference",
+  "mode": "diagnostic",
+  "boot_protocols": [],
+  "policies": [
+    "bounded-reference"
+  ],
+  "image": {
+    "format": "host-executable",
+    "recipe": "firmware-provider-compile-reference",
+    "artifact": "ribon-firmware-provider-uefi-reference"
+  },
+  "evidence": {
+    "class": "compile-only",
+    "claim": "minimal UEFI-compatible provider composition without conformance"
+  },
+  "max_plugins": 8,
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "FIRMWARE_PERSONALITY",
+    "FIRMWARE_SERVICE_DIRECTORY",
+    "PLATFORM_FACTS"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "FIRMWARE_PERSONALITY",
+    "FIRMWARE_SERVICE_DIRECTORY",
+    "PLATFORM_FACTS"
+  ],
+  "limits": {
+    "max_memory_regions": 16,
+    "max_load_segments": 4,
+    "max_components": 8,
+    "max_retries": 1,
+    "max_input_bytes": 65536,
+    "max_handoff_bytes": 4096,
+    "arena_bytes": 32768,
+    "operation_deadline_ms": 30000
+  },
+  "plugins": [
+    {
+      "id": "arch.x86_64",
+      "package": "ribon.arch.x86_64",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "personality.uefi-compatible",
+      "package": "ribon.firmware.uefi-compatible-reference",
+      "symbol": "ribon_firmware_personality_plugin_descriptor"
+    },
+    {
+      "id": "platform.firmware-reference",
+      "package": "ribon.platform.firmware-reference",
+      "symbol": "ribon_firmware_reference_platform_plugin_descriptor"
+    }
+  ]
+}

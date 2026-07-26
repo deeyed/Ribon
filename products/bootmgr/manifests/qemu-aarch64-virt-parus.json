@@ -1,8 +1,27 @@
 {
+  "schema_version": 1,
   "product_id": "bootmgr.qemu-aarch64-virt-parus",
+  "product_kind": "bootloader",
+  "target_id": "qemu-aarch64-virt-raw-fdt",
   "architecture": "aarch64",
   "environment": "raw-fdt",
+  "platform": "virt-aarch64",
   "mode": "normal",
+  "boot_protocols": [
+    "parus"
+  ],
+  "policies": [
+    "normal"
+  ],
+  "image": {
+    "format": "raw-binary",
+    "recipe": "qemu-virt-kernel",
+    "artifact": "ribon.bin"
+  },
+  "evidence": {
+    "class": "qemu-smoke",
+    "claim": "QEMU virt AArch64 raw-FDT consumer boot"
+  },
   "max_plugins": 16,
   "required_capabilities": [
     "ARCHITECTURE",
@@ -39,22 +58,27 @@
   "plugins": [
     {
       "id": "arch.aarch64",
+      "package": "ribon.arch.aarch64",
       "symbol": "ribon_arch_plugin_descriptor"
     },
     {
       "id": "environment.raw-fdt",
+      "package": "ribon.environment.raw-fdt",
       "symbol": "ribon_raw_fdt_environment_plugin_descriptor"
     },
     {
       "id": "image.elf64",
+      "package": "ribon.image.elf64",
       "symbol": "ribon_elf64_image_plugin_descriptor"
     },
     {
       "id": "platform.virt-aarch64",
+      "package": "ribon.platform.virt-aarch64",
       "symbol": "ribon_platform_plugin_descriptor"
     },
     {
       "id": "protocol.parus",
+      "package": "ribon.protocol.parus",
       "symbol": "ribon_parus_protocol_plugin_descriptor"
     }
   ]

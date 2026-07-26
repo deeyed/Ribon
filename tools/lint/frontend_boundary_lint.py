@@ -57,13 +57,21 @@ def main() -> int:
         fail("no product manifests found")
     for path in manifests:
         manifest = json.loads(path.read_text(encoding="utf-8"))
+        product_kind = manifest.get("product_kind")
         plugins = manifest.get("plugins")
         if not isinstance(plugins, list):
             fail(f"{path.relative_to(ROOT)} has no plugin list")
         ids = [item.get("id", "") for item in plugins if isinstance(item, dict)]
-        for prefix in ("arch.", "environment.", "platform."):
+        prefixes = ["arch.", "platform."]
+        prefixes.append(
+            "personality." if product_kind == "firmware" else "environment."
+        )
+        for prefix in prefixes:
             if sum(plugin_id.startswith(prefix) for plugin_id in ids) != 1:
                 fail(f"{path.relative_to(ROOT)} does not select exactly one {prefix[:-1]}")
+        forbidden = "environment." if product_kind == "firmware" else "personality."
+        if any(plugin_id.startswith(forbidden) for plugin_id in ids):
+            fail(f"{path.relative_to(ROOT)} selects forbidden {forbidden[:-1]}")
     print("RIBON-R4-FRONTEND-BOUNDARY-OK")
     return 0
 

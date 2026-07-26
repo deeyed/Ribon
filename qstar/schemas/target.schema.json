@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ribon.dev/schema/target-v1.json",
+  "title": "Ribon target tuple v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target_id",
+    "architecture",
+    "platform",
+    "image",
+    "evidence"
+  ],
+  "properties": {
+    "target_id": {"type": "string", "minLength": 1},
+    "architecture": {"enum": ["selected", "x86_64", "aarch64", "riscv64"]},
+    "platform": {"type": "string", "minLength": 1},
+    "environment": {"type": "string", "minLength": 1},
+    "firmware_personality": {"type": "string", "minLength": 1},
+    "image": {"$ref": "image-v1.json"},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "claim"],
+      "properties": {
+        "class": {"enum": ["unit", "compile-only", "qemu-smoke", "package"]},
+        "claim": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "oneOf": [
+    {"required": ["environment"], "not": {"required": ["firmware_personality"]}},
+    {"required": ["firmware_personality"], "not": {"required": ["environment"]}}
+  ]
+}

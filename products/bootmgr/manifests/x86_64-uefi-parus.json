@@ -1,8 +1,27 @@
 {
+  "schema_version": 1,
   "product_id": "bootmgr.x86_64-uefi-parus",
+  "product_kind": "bootloader",
+  "target_id": "x86_64-uefi-app",
   "architecture": "x86_64",
   "environment": "uefi",
+  "platform": "pc-uefi-x86_64",
   "mode": "normal",
+  "boot_protocols": [
+    "parus"
+  ],
+  "policies": [
+    "normal"
+  ],
+  "image": {
+    "format": "pe-coff",
+    "recipe": "uefi-application",
+    "artifact": "BOOTX64.EFI"
+  },
+  "evidence": {
+    "class": "qemu-smoke",
+    "claim": "x86_64 UEFI application consumer boot"
+  },
   "max_plugins": 16,
   "required_capabilities": [
     "ARCHITECTURE",
@@ -39,22 +58,27 @@
   "plugins": [
     {
       "id": "arch.x86_64",
+      "package": "ribon.arch.x86_64",
       "symbol": "ribon_arch_plugin_descriptor"
     },
     {
       "id": "environment.uefi-app",
+      "package": "ribon.environment.uefi-app",
       "symbol": "ribon_uefi_app_environment_plugin_descriptor"
     },
     {
       "id": "image.elf64",
+      "package": "ribon.image.elf64",
       "symbol": "ribon_elf64_image_plugin_descriptor"
     },
     {
       "id": "platform.pc-uefi-x86_64",
+      "package": "ribon.platform.pc-uefi-x86_64",
       "symbol": "ribon_platform_plugin_descriptor"
     },
     {
       "id": "protocol.parus",
+      "package": "ribon.protocol.parus",
       "symbol": "ribon_parus_protocol_plugin_descriptor"
     }
   ]

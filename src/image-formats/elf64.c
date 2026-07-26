@@ -20,10 +20,12 @@
 #define RIBON_ELF_MACHINE_AARCH64 183u
 #define RIBON_ELF_MACHINE_RISCV 243u
 
+/** @brief Unaligned little-endian 16-bit field를 byte-wise로 읽는다. */
 static uint16_t ribon_read_le16(const unsigned char *data) {
     return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
 }
 
+/** @brief Unaligned little-endian 32-bit field를 byte-wise로 읽는다. */
 static uint32_t ribon_read_le32(const unsigned char *data) {
     return (uint32_t)data[0] |
            ((uint32_t)data[1] << 8) |
@@ -31,10 +33,12 @@ static uint32_t ribon_read_le32(const unsigned char *data) {
            ((uint32_t)data[3] << 24);
 }
 
+/** @brief Unaligned little-endian 64-bit field를 byte-wise로 읽는다. */
 static uint64_t ribon_read_le64(const unsigned char *data) {
     return (uint64_t)ribon_read_le32(data) | ((uint64_t)ribon_read_le32(data + 4) << 32);
 }
 
+/** @brief ELF offset 합을 overflow 검사와 함께 계산한다. */
 static int ribon_u64_add(uint64_t lhs, uint64_t rhs, uint64_t *out) {
     if (out == 0) {
         return RIBON_LOADER_STATUS_BAD_ARGUMENT;
@@ -46,6 +50,7 @@ static int ribon_u64_add(uint64_t lhs, uint64_t rhs, uint64_t *out) {
     return RIBON_LOADER_STATUS_OK;
 }
 
+/** @brief ELF table byte 크기를 overflow 검사와 함께 계산한다. */
 static int ribon_u64_mul(uint64_t lhs, uint64_t rhs, uint64_t *out) {
     if (out == 0) {
         return RIBON_LOADER_STATUS_BAD_ARGUMENT;
@@ -57,10 +62,12 @@ static int ribon_u64_mul(uint64_t lhs, uint64_t rhs, uint64_t *out) {
     return RIBON_LOADER_STATUS_OK;
 }
 
+/** @brief ELF alignment 값이 0이 아닌 power-of-two인지 검사한다. */
 static int ribon_is_power_of_two(uint64_t value) {
     return value != 0u && (value & (value - 1u)) == 0u;
 }
 
+/** @brief Architecture descriptor를 ELF machine number로 변환한다. */
 static int ribon_machine_for_arch(const struct RibonArchDescriptor *arch, uint16_t *out) {
     if (arch == 0 || arch->canonical_name == 0 || out == 0) {
         return RIBON_LOADER_STATUS_BAD_ARGUMENT;
@@ -80,6 +87,7 @@ static int ribon_machine_for_arch(const struct RibonArchDescriptor *arch, uint16
     return RIBON_LOADER_STATUS_UNSUPPORTED;
 }
 
+/** @brief Unsigned address가 선언된 physical bit 수에 들어가는지 검사한다. */
 static int ribon_address_fits(uint64_t address, uint32_t bits) {
     if (bits >= 64u) {
         return 1;
@@ -90,6 +98,7 @@ static int ribon_address_fits(uint64_t address, uint32_t bits) {
     return address < (1ull << bits);
 }
 
+/** @brief Virtual address가 architecture canonical sign extension을 만족하는지 검사한다. */
 static int ribon_address_is_canonical(uint64_t address, uint32_t bits) {
     uint64_t sign_bit;
     uint64_t upper_mask;
@@ -107,6 +116,7 @@ static int ribon_address_is_canonical(uint64_t address, uint32_t bits) {
     return (address & upper_mask) == 0u;
 }
 
+/** @brief Canonical virtual address가 상위 canonical half인지 검사한다. */
 static int ribon_address_is_high_half(uint64_t address, uint32_t bits) {
     if (bits == 0u || bits >= 64u || !ribon_address_is_canonical(address, bits)) {
         return 0;
@@ -114,6 +124,7 @@ static int ribon_address_is_high_half(uint64_t address, uint32_t bits) {
     return (address & (1ull << (bits - 1u))) != 0u;
 }
 
+/** @brief ELF PF bit를 Ribon load-segment permission bit로 변환한다. */
 static uint32_t ribon_segment_flags_from_elf(uint32_t flags) {
     uint32_t mapped = 0;
     if ((flags & RIBON_ELF_PF_R) != 0u) {
@@ -128,10 +139,12 @@ static uint32_t ribon_segment_flags_from_elf(uint32_t flags) {
     return mapped;
 }
 
+/** @brief 두 exclusive-end address range가 겹치는지 검사한다. */
 static int ribon_ranges_overlap(uint64_t lhs_base, uint64_t lhs_end, uint64_t rhs_base, uint64_t rhs_end) {
     return lhs_base < rhs_end && rhs_base < lhs_end;
 }
 
+/** @brief Caller-owned load plan을 실패 안전한 empty state로 초기화한다. */
 static void ribon_loaded_payload_reset(struct RibonLoadedPayload *out) {
     out->format = RIBON_EXECUTABLE_FORMAT_UNKNOWN;
     out->machine = 0;

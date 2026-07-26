@@ -71,6 +71,7 @@ static int host_boot_source_read(
     return RIBON_SERVICE_STATUS_OK;
 }
 
+/** @brief Host fixture의 deterministic monotonic tick을 반환한다. */
 static int host_timer_now(void *context, uint64_t *ticks_out) {
     (void)context;
     if (ticks_out == 0) {

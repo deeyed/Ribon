@@ -46,8 +46,9 @@ supersedes:
 - Sphinx warning
 - Doxygen XML 생성 실패
 
-Doxygen 기준선은 기존 부채 상한이다. Cleanup 변경은 누락 수와 기준선을 함께 낮춘다.
-기준선 증가는 문서 품질 회귀다.
+Doxygen 기준선은 source function 0개, public header declaration 0개다. 새 public
+declaration과 source function은 같은 변경에서 Doxygen 계약을 제공해야 한다. 기준선
+증가는 문서 품질 회귀다.
 
 ## Hard-forbidden 표현
 
@@ -62,7 +63,8 @@ Doxygen 기준선은 기존 부채 상한이다. Cleanup 변경은 누락 수와
 ## 빌드
 
 `make docs`는 lint, Doxygen, Sphinx를 순서대로 실행한다. Sphinx는 `-W --keep-going`으로
-warning을 오류로 취급한다. Output은 `build/docs/`에만 생성한다.
+warning을 오류로 취급한다. Doxygen도 `FAIL_ON_WARNINGS`로 warning을 오류로 취급한다.
+Output은 `build/docs/`에만 생성한다.
 
 `make legacy-hard-cut`은 active source, 문서, build graph의 path와 content를 검사하되
 `.git`, `build`, `__pycache__`만 제외한다. 대상 identifier를 검사기 source에 평문으로

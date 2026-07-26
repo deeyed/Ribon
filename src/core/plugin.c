@@ -40,8 +40,24 @@ const char *ribon_plugin_kind_name(enum RibonPluginKind kind) {
         return "firmware-personality";
     case RIBON_PLUGIN_KIND_PLATFORM:
         return "platform";
+    case RIBON_PLUGIN_KIND_SERVICE:
+        return "service";
     default:
         return "unknown";
+    }
+}
+
+/** @brief Product kind의 안정적인 이름을 반환한다. */
+const char *ribon_product_kind_name(enum RibonProductKind kind) {
+    switch (kind) {
+    case RIBON_PRODUCT_KIND_LIBRARY:
+        return "library";
+    case RIBON_PRODUCT_KIND_BOOTLOADER:
+        return "bootloader";
+    case RIBON_PRODUCT_KIND_FIRMWARE:
+        return "firmware";
+    default:
+        return "invalid";
     }
 }
 
@@ -58,7 +74,7 @@ int ribon_plugin_descriptor_is_valid(const struct RibonPluginDescriptor *descrip
         descriptor->abi_major != RIBON_PLUGIN_ABI_MAJOR ||
         descriptor->abi_minor > RIBON_PLUGIN_ABI_MINOR ||
         descriptor->kind < RIBON_PLUGIN_KIND_ARCHITECTURE ||
-        descriptor->kind > RIBON_PLUGIN_KIND_PLATFORM ||
+        descriptor->kind > RIBON_PLUGIN_KIND_SERVICE ||
         descriptor->phase < RIBON_PLUGIN_PHASE_EARLY ||
         descriptor->phase > RIBON_PLUGIN_PHASE_RUNTIME ||
         descriptor->id == 0 ||
@@ -69,7 +85,9 @@ int ribon_plugin_descriptor_is_valid(const struct RibonPluginDescriptor *descrip
         (descriptor->architecture_mask & ~RIBON_ARCH_MASK_ALL) != 0u ||
         descriptor->architecture_mask == 0u ||
         (descriptor->environment_mask & ~RIBON_ENV_MASK_ALL) != 0u ||
-        descriptor->environment_mask == 0u ||
+        (descriptor->personality_mask & ~RIBON_PERSONALITY_MASK_ALL) != 0u ||
+        (descriptor->environment_mask == 0u &&
+         descriptor->personality_mask == 0u) ||
         (descriptor->mode_mask & ~RIBON_MODE_MASK_ALL) != 0u ||
         descriptor->mode_mask == 0u ||
         descriptor->reserved != 0u ||
@@ -88,16 +106,32 @@ int ribon_plugin_descriptor_is_valid(const struct RibonPluginDescriptor *descrip
 
 /** @brief Product descriptor의 tuple, capability와 budget을 검사한다. */
 int ribon_product_descriptor_is_valid(const struct RibonProductDescriptor *product) {
+    int frontend_is_valid;
+
+    if (product == 0) {
+        return 0;
+    }
+    frontend_is_valid =
+        ((product->kind == RIBON_PRODUCT_KIND_LIBRARY ||
+          product->kind == RIBON_PRODUCT_KIND_BOOTLOADER) &&
+         plugin_one_bit(product->environment_mask) &&
+         product->personality_mask == 0u) ||
+        (product->kind == RIBON_PRODUCT_KIND_FIRMWARE &&
+         product->environment_mask == 0u &&
+         plugin_one_bit(product->personality_mask));
     if (product == 0 ||
         product->magic != RIBON_PRODUCT_DESCRIPTOR_MAGIC ||
         product->size != sizeof(*product) ||
         product->abi_version != RIBON_CORE_ABI_VERSION ||
         product->id == 0 ||
         product->id[0] == '\0' ||
+        product->kind <= RIBON_PRODUCT_KIND_INVALID ||
+        product->kind > RIBON_PRODUCT_KIND_FIRMWARE ||
         !plugin_one_bit(product->architecture_mask) ||
         (product->architecture_mask & ~RIBON_ARCH_MASK_ALL) != 0u ||
-        !plugin_one_bit(product->environment_mask) ||
         (product->environment_mask & ~RIBON_ENV_MASK_ALL) != 0u ||
+        (product->personality_mask & ~RIBON_PERSONALITY_MASK_ALL) != 0u ||
+        !frontend_is_valid ||
         product->mode_mask == 0u ||
         (product->mode_mask & ~RIBON_MODE_MASK_ALL) != 0u ||
         product->max_plugins == 0u ||

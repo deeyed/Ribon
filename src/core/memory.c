@@ -1,9 +1,11 @@
 #include <Ribon/core/memory.h>
 
+/** @brief 두 physical range operand의 합이 uint64_t를 넘는지 검사한다. */
 static int ribon_u64_add_overflows(uint64_t lhs, uint64_t rhs) {
     return lhs > UINT64_MAX - rhs;
 }
 
+/** @brief 0 또는 임의 alignment에 대해 아래 경계 값을 반환한다. */
 uint64_t ribon_align_down(uint64_t value, uint64_t alignment) {
     if (alignment == 0u) {
         return value;
@@ -11,6 +13,7 @@ uint64_t ribon_align_down(uint64_t value, uint64_t alignment) {
     return value - (value % alignment);
 }
 
+/** @brief Overflow를 검사하며 위 alignment 경계를 계산한다. */
 int ribon_align_up(uint64_t value, uint64_t alignment, uint64_t *out) {
     uint64_t remainder;
     uint64_t delta;
@@ -30,6 +33,7 @@ int ribon_align_up(uint64_t value, uint64_t alignment, uint64_t *out) {
     return RIBON_MEMORY_STATUS_OK;
 }
 
+/** @brief Non-empty region의 exclusive end를 overflow 없이 계산한다. */
 int ribon_memory_region_end(const struct RibonMemoryRegion *region, uint64_t *out) {
     if (region == 0 || out == 0 || region->length == 0u) {
         return RIBON_MEMORY_STATUS_BAD_ARGUMENT;
@@ -41,6 +45,7 @@ int ribon_memory_region_end(const struct RibonMemoryRegion *region, uint64_t *ou
     return RIBON_MEMORY_STATUS_OK;
 }
 
+/** @brief Region 길이와 exclusive-end 표현 가능성을 검사한다. */
 int ribon_memory_region_is_valid(const struct RibonMemoryRegion *region) {
     uint64_t end = 0;
     if (region == 0 || region->length == 0u) {
@@ -49,6 +54,7 @@ int ribon_memory_region_is_valid(const struct RibonMemoryRegion *region) {
     return ribon_memory_region_end(region, &end) == RIBON_MEMORY_STATUS_OK;
 }
 
+/** @brief Memory region kind의 안정적인 diagnostic 이름을 반환한다. */
 const char *ribon_memory_region_kind_name(enum RibonMemoryRegionKind kind) {
     switch (kind) {
     case RIBON_MEMORY_REGION_UNKNOWN:
@@ -76,12 +82,14 @@ const char *ribon_memory_region_kind_name(enum RibonMemoryRegionKind kind) {
     }
 }
 
+/** @brief 두 region의 kind와 memory attribute class가 같은지 검사한다. */
 static int ribon_memory_region_same_class(
     const struct RibonMemoryRegion *lhs,
     const struct RibonMemoryRegion *rhs) {
     return lhs->kind == rhs->kind && lhs->attributes == rhs->attributes;
 }
 
+/** @brief Capacity 안에서 region을 base 오름차순으로 삽입한다. */
 static int ribon_memory_region_insert_sorted(
     struct RibonMutableMemoryMap *destination,
     const struct RibonMemoryRegion *region) {
@@ -103,6 +111,7 @@ static int ribon_memory_region_insert_sorted(
     return RIBON_MEMORY_STATUS_OK;
 }
 
+/** @brief 같은 class의 인접 region만 allocation 없이 병합한다. */
 static int ribon_memory_map_merge_adjacent(struct RibonMutableMemoryMap *destination) {
     uint32_t read_index;
     uint32_t write_index = 0;
@@ -156,6 +165,7 @@ int ribon_memory_map_normalize(
     return ribon_memory_map_merge_adjacent(destination);
 }
 
+/** @brief Usable region byte 합을 계산하고 overflow면 UINT64_MAX를 반환한다. */
 uint64_t ribon_memory_map_usable_bytes(const struct RibonMemoryMap *memory_map) {
     uint32_t index;
     uint64_t total = 0;

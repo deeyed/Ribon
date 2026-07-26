@@ -20,11 +20,33 @@ ENVIRONMENT_MASKS = {
     "raw-fdt": "RIBON_ENV_MASK_RAW_FDT",
     "sbi": "RIBON_ENV_MASK_SBI",
 }
+ENVIRONMENT_PLUGIN_IDS = {
+    "host": "environment.host",
+    "uefi": "environment.uefi-app",
+    "bios": "environment.bios-client",
+    "raw-fdt": "environment.raw-fdt",
+    "sbi": "environment.sbi",
+}
 MODE_VALUES = {
     "normal": "RIBON_MODE_NORMAL",
     "recovery": "RIBON_MODE_RECOVERY",
     "provisioning": "RIBON_MODE_PROVISIONING",
     "diagnostic": "RIBON_MODE_DIAGNOSTIC",
+}
+PRODUCT_KIND_VALUES = {
+    "library": "RIBON_PRODUCT_KIND_LIBRARY",
+    "bootloader": "RIBON_PRODUCT_KIND_BOOTLOADER",
+    "firmware": "RIBON_PRODUCT_KIND_FIRMWARE",
+}
+PERSONALITY_MASKS = {
+    "uefi-compatible": "RIBON_PERSONALITY_MASK_UEFI_COMPATIBLE",
+    "bios-compatible": "RIBON_PERSONALITY_MASK_BIOS_COMPATIBLE",
+}
+EVIDENCE_CLASSES = {
+    "unit",
+    "compile-only",
+    "qemu-smoke",
+    "package",
 }
 CAPABILITIES = {
     name.removeprefix("RIBON_CAP_"): name
@@ -48,6 +70,9 @@ CAPABILITIES = {
         "RIBON_CAP_BOOT_CONFIRMATION",
         "RIBON_CAP_IMAGE_PE_COFF",
         "RIBON_CAP_PLATFORM_FACTS",
+        "RIBON_CAP_FIRMWARE_PERSONALITY",
+        "RIBON_CAP_FIRMWARE_SERVICE_DIRECTORY",
+        "RIBON_CAP_SDK_CONTRACT",
     )
 }
 LIMIT_KEYS = (
@@ -60,6 +85,8 @@ LIMIT_KEYS = (
     "arena_bytes",
     "operation_deadline_ms",
 )
+IMAGE_KEYS = {"format", "recipe", "artifact"}
+EVIDENCE_KEYS = {"class", "claim"}
 
 
 def _string(manifest: dict[str, object], key: str) -> str:
@@ -80,13 +107,35 @@ def _capabilities(manifest: dict[str, object], key: str) -> list[str]:
     return values
 
 
+def _sorted_strings(
+    manifest: dict[str, object],
+    key: str,
+    allow_empty: bool = False,
+) -> list[str]:
+    values = manifest.get(key)
+    if (
+        not isinstance(values, list)
+        or (not values and not allow_empty)
+        or any(not isinstance(value, str) or not value for value in values)
+        or values != sorted(set(values))
+    ):
+        raise ValueError(f"{key} must be a sorted unique string list")
+    return values
+
+
 def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, object]:
     """Load and validate a product graph, including its exact frontend tuple."""
 
     manifest = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError("product manifest must be an object")
+    if manifest.get("schema_version") != 1:
+        raise ValueError("schema_version must be 1")
     _string(manifest, "product_id")
+    _string(manifest, "target_id")
+    product_kind = _string(manifest, "product_kind")
+    if product_kind not in PRODUCT_KIND_VALUES:
+        raise ValueError("unsupported product_kind")
     architecture = _string(manifest, "architecture")
     if architecture == "selected":
         if selected_architecture is None:
@@ -97,10 +146,45 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
     if architecture not in ARCHITECTURE_MASKS:
         raise ValueError(f"unsupported architecture: {architecture}")
     manifest["resolved_architecture"] = architecture
-    if _string(manifest, "environment") not in ENVIRONMENT_MASKS:
-        raise ValueError("unsupported environment")
+    environment = manifest.get("environment")
+    personality = manifest.get("firmware_personality")
+    if product_kind == "firmware":
+        if environment is not None:
+            raise ValueError("firmware product must not select an environment")
+        if not isinstance(personality, str) or personality not in PERSONALITY_MASKS:
+            raise ValueError("firmware product requires one supported personality")
+    else:
+        if personality is not None:
+            raise ValueError("consumer/library product must not select a personality")
+        if not isinstance(environment, str) or environment not in ENVIRONMENT_MASKS:
+            raise ValueError("consumer/library product requires one environment")
     if _string(manifest, "mode") not in MODE_VALUES:
         raise ValueError("unsupported mode")
+    platform = _string(manifest, "platform")
+    protocols = _sorted_strings(
+        manifest,
+        "boot_protocols",
+        allow_empty=product_kind != "bootloader",
+    )
+    if product_kind != "bootloader" and protocols:
+        raise ValueError("only bootloader products select boot protocols")
+    _sorted_strings(manifest, "policies")
+    image = manifest.get("image")
+    if (
+        not isinstance(image, dict)
+        or set(image) != IMAGE_KEYS
+        or any(not isinstance(image[key], str) or not image[key] for key in IMAGE_KEYS)
+    ):
+        raise ValueError("image must define format, recipe, and artifact")
+    evidence = manifest.get("evidence")
+    if (
+        not isinstance(evidence, dict)
+        or set(evidence) != EVIDENCE_KEYS
+        or evidence.get("class") not in EVIDENCE_CLASSES
+        or not isinstance(evidence.get("claim"), str)
+        or not evidence["claim"]
+    ):
+        raise ValueError("evidence must define a supported class and bounded claim")
 
     plugins = manifest.get("plugins")
     if not isinstance(plugins, list) or not plugins:
@@ -112,22 +196,47 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             raise ValueError("plugin entry must be an object")
         plugin_id = item.get("id")
         symbol = item.get("symbol")
+        package = item.get("package")
         if (
             not isinstance(plugin_id, str)
             or not plugin_id
             or not isinstance(symbol, str)
             or not symbol.startswith("ribon_")
+            or not isinstance(package, str)
+            or not package
         ):
-            raise ValueError("plugin id and symbol must be stable strings")
+            raise ValueError("plugin id, package, and symbol must be stable strings")
         ids.append(plugin_id)
         if symbol in symbols:
             raise ValueError(f"duplicate plugin symbol: {symbol}")
         symbols.add(symbol)
     if ids != sorted(ids) or len(ids) != len(set(ids)):
         raise ValueError("plugin IDs must be unique and sorted")
-    for prefix in ("arch.", "environment.", "platform."):
+    required_prefixes = ["arch.", "platform."]
+    required_prefixes.append(
+        "personality." if product_kind == "firmware" else "environment."
+    )
+    for prefix in required_prefixes:
         if sum(plugin_id.startswith(prefix) for plugin_id in ids) != 1:
             raise ValueError(f"product must select exactly one {prefix[:-1]} plugin")
+    forbidden_prefix = (
+        "environment." if product_kind == "firmware" else "personality."
+    )
+    if any(plugin_id.startswith(forbidden_prefix) for plugin_id in ids):
+        raise ValueError(f"product must not select {forbidden_prefix[:-1]} plugin")
+    if f"platform.{platform}" not in ids:
+        raise ValueError("platform field and plugin ID disagree")
+    if product_kind == "firmware":
+        if f"personality.{personality}" not in ids:
+            raise ValueError("personality field and plugin ID disagree")
+    elif (
+        product_kind == "bootloader" and
+        ENVIRONMENT_PLUGIN_IDS[str(environment)] not in ids
+    ):
+        raise ValueError("environment field and plugin ID disagree")
+    for protocol in protocols:
+        if f"protocol.{protocol}" not in ids:
+            raise ValueError(f"boot protocol has no selected plugin: {protocol}")
 
     required = _capabilities(manifest, "required_capabilities")
     allowed = _capabilities(manifest, "allowed_capabilities")
@@ -163,8 +272,16 @@ def render(manifest: dict[str, object]) -> str:
     )
     pointers = "\n".join(f"    &{item['symbol']}," for item in plugins)
     architecture = str(manifest["resolved_architecture"])
-    environment = str(manifest["environment"])
+    product_kind = str(manifest["product_kind"])
+    environment = manifest.get("environment")
+    personality = manifest.get("firmware_personality")
     mode = str(manifest["mode"])
+    environment_mask = (
+        ENVIRONMENT_MASKS[str(environment)] if environment is not None else "0u"
+    )
+    personality_mask = (
+        PERSONALITY_MASKS[str(personality)] if personality is not None else "0u"
+    )
     required = _capability_expression(manifest["required_capabilities"])  # type: ignore[arg-type]
     allowed = _capability_expression(manifest["allowed_capabilities"])  # type: ignore[arg-type]
     return f"""/* Generated by tools/generate_plugin_registry.py; do not edit. */
@@ -188,8 +305,10 @@ static const struct RibonProductDescriptor generated_product = {{
     .size = sizeof(generated_product),
     .abi_version = RIBON_CORE_ABI_VERSION,
     .id = "{manifest['product_id']}",
+    .kind = {PRODUCT_KIND_VALUES[product_kind]},
     .architecture_mask = {ARCHITECTURE_MASKS[architecture]},
-    .environment_mask = {ENVIRONMENT_MASKS[environment]},
+    .environment_mask = {environment_mask},
+    .personality_mask = {personality_mask},
     .mode_mask = RIBON_MODE_MASK({MODE_VALUES[mode]}),
     .max_plugins = {manifest['max_plugins']}u,
     .required_capabilities =
@@ -233,10 +352,17 @@ def main() -> int:
     if args.report is not None:
         report = {
             "product_id": manifest["product_id"],
+            "product_kind": manifest["product_kind"],
+            "target_id": manifest["target_id"],
             "architecture": manifest["resolved_architecture"],
-            "environment": manifest["environment"],
+            "environment": manifest.get("environment"),
+            "firmware_personality": manifest.get("firmware_personality"),
+            "platform": manifest["platform"],
             "mode": manifest["mode"],
             "plugins": [item["id"] for item in manifest["plugins"]],
+            "packages": [item["package"] for item in manifest["plugins"]],
+            "image": manifest["image"],
+            "evidence": manifest["evidence"],
             "source_manifest": str(args.manifest),
         }
         args.report.parent.mkdir(parents=True, exist_ok=True)

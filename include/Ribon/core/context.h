@@ -9,7 +9,7 @@
 
 /** @brief Ribon source release version이다. */
 #define RIBON_VERSION_MAJOR 0u
-#define RIBON_VERSION_MINOR 2u
+#define RIBON_VERSION_MINOR 3u
 #define RIBON_VERSION_PATCH 0u
 
 /** @brief 초기화된 Core context의 immutable library ABI다. */

@@ -6,6 +6,7 @@ last_verified: 2026-07-26
 code_paths:
   - qstar.lua
   - qstar/
+  - qstar/schemas/
   - products/bootmgr/manifests/
   - targets/
   - tools/generate_plugin_registry.py
@@ -32,6 +33,7 @@ registry를 링크한다. C source list가 product identity를 암묵적으로 �
 | --- | --- |
 | `RibonPluginDescriptor` | 한 plugin의 ABI, capability, dependency와 budget |
 | `products/*/manifests/*.json` | product ID, 정확한 frontend tuple, plugin set과 limit |
+| `qstar/schemas/*.schema.json` | package, product, target, image metadata field와 type |
 | `targets/*.qst` | QStar target closure와 generated artifact |
 | `targets/<target>/` | native entry, linker, image와 package recipe |
 | `qstar/*.qst` | library, plugin, test dependency graph |
@@ -70,7 +72,7 @@ Generated output은 정본 source가 아니며 build directory 밖에 기록하�
 
 ## 정확한 provider 수
 
-Product는 다음 provider 수를 만족한다.
+Bootloader product는 다음 provider 수를 만족한다.
 
 | Provider | 수량 |
 | --- | ---: |
@@ -83,6 +85,15 @@ Product는 다음 provider 수를 만족한다.
 Boot manager product는 하나 이상의 Boot Protocol을 정적으로 포함할 수 있으나 한 boot
 session은 정확히 하나를 선택한다. 선택되지 않은 protocol은 실행 중 검색하거나
 동적으로 로드하지 않는다.
+
+Firmware product는 entry environment 대신 정확히 하나의 firmware personality를
+선택한다. Personality가 선언한 `personality_mask`와 product tuple은 정확히 일치해야
+하며 environment plugin은 포함하지 않는다.
+
+Library product는 Boot Protocol provider가 없는 protocol-free embed를 허용한다.
+Generated registry를 사용하는 host contract product는 실행할 architecture,
+environment와 platform tuple을 명시한다. Library에 포함된 service package도 generated
+registry와 ABI validator를 통과해야 한다.
 
 ## Plugin phase
 

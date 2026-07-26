@@ -59,6 +59,7 @@ static int unsupported_storage_flush(
     return RIBON_SERVICE_STATUS_UNSUPPORTED;
 }
 
+/** @brief 미지원 timer 결과를 0으로 정규화하고 unsupported를 반환한다. */
 static int unsupported_timer_now(void *context, uint64_t *ticks_out) {
     (void)context;
     if (ticks_out != 0) {
@@ -67,12 +68,14 @@ static int unsupported_timer_now(void *context, uint64_t *ticks_out) {
     return RIBON_SERVICE_STATUS_UNSUPPORTED;
 }
 
+/** @brief Watchdog state를 바꾸지 않고 unsupported를 반환한다. */
 static int unsupported_watchdog_arm(void *context, uint64_t deadline_ticks) {
     (void)context;
     (void)deadline_ticks;
     return RIBON_SERVICE_STATUS_UNSUPPORTED;
 }
 
+/** @brief Reset을 수행하지 않고 unsupported를 반환한다. */
 static int unsupported_reset(void *context, uint32_t reason) {
     (void)context;
     (void)reason;
@@ -123,6 +126,7 @@ static int unsupported_network_fetch(
     return RIBON_SERVICE_STATUS_UNSUPPORTED;
 }
 
+/** @brief Caller buffer를 변경하지 않고 random service 부재를 반환한다. */
 static int unsupported_random_fill(void *context, void *buffer, uint64_t size) {
     (void)context;
     (void)buffer;

@@ -7,6 +7,7 @@ bootloader executable, embeddable library, firmware/plugin SDK product로 조합
 
 - `libribon-core`: caller-owned arena, context, plugin descriptor와 immutable registry
 - `libribon-boot`: firmware-neutral service, environment, image plan과 boot lifecycle
+- `libribon-sdk`: external package ABI, host contract harness와 firmware service publication
 - Architecture plugin: payload validation, cache, privilege와 terminal entry
 - Image-format plugin: ELF, PE/COFF 등의 bounded parser와 load plan
 - Boot Protocol plugin: OS component, handoff wire ABI, register ABI와 confirmation
@@ -26,6 +27,10 @@ Parus Handoff v1(`RPH1`) serializer와 parser는
 
 ```sh
 make lib
+make sdk-install
+make check-sdk-surface
+make check-external-plugin
+make check-firmware-personalities
 make host-reference
 make check
 make check-target-builds
@@ -36,9 +41,12 @@ make docs
 ```
 
 `make check`는 public API layout, legacy ABI hard cut, plugin graph negative tests,
-protocol-free embed, host-reference plan, architecture matrix와 object graph를 검사한다.
+protocol-free embed, SDK install reproducibility, external package, firmware reference
+provider, host-reference plan, architecture matrix와 object graph를 검사한다.
 QEMU smoke는 x86_64 UEFI consumer와 AArch64 raw-FDT target의 runtime evidence다.
-BIOS는 compile-only, RPi5는 package evidence이며 physical board boot 증거가 아니다.
+BIOS consumer와 UEFI/BIOS-compatible provider는 compile-only, RPi5는 package evidence다.
+Reference provider 성공은 bootable firmware나 specification conformance 증거가 아니며
+physical board boot 증거도 아니다.
 
 ## 문서
 

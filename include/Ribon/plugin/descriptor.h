@@ -10,7 +10,7 @@
 #define RIBON_PLUGIN_DESCRIPTOR_MAGIC 0x5242504cu
 
 /** @brief Plugin ABI major와 minor다. */
-#define RIBON_PLUGIN_ABI_MAJOR 1u
+#define RIBON_PLUGIN_ABI_MAJOR 2u
 #define RIBON_PLUGIN_ABI_MINOR 0u
 
 /** @brief Architecture compatibility mask다. */
@@ -35,6 +35,15 @@ enum RibonEnvironmentMask {
 /** @brief 알려진 environment compatibility bit 전체다. */
 #define RIBON_ENV_MASK_ALL ((1u << 5) - 1u)
 
+/** @brief Firmware provider personality compatibility mask다. */
+enum RibonFirmwarePersonalityMask {
+    RIBON_PERSONALITY_MASK_UEFI_COMPATIBLE = 1u << 0,
+    RIBON_PERSONALITY_MASK_BIOS_COMPATIBLE = 1u << 1,
+};
+
+/** @brief 알려진 firmware personality compatibility bit 전체다. */
+#define RIBON_PERSONALITY_MASK_ALL ((1u << 2) - 1u)
+
 /** @brief Static product graph가 조합하는 plugin 종류다. */
 enum RibonPluginKind {
     RIBON_PLUGIN_KIND_ARCHITECTURE = 0,
@@ -44,6 +53,7 @@ enum RibonPluginKind {
     RIBON_PLUGIN_KIND_POLICY = 4,
     RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY = 5,
     RIBON_PLUGIN_KIND_PLATFORM = 6,
+    RIBON_PLUGIN_KIND_SERVICE = 7,
 };
 
 struct RibonPluginDescriptor;
@@ -65,6 +75,7 @@ struct RibonPluginDescriptor {
     uint64_t requires; /**< 더 늦지 않은 phase provider에 요구하는 capability다. */
     uint32_t architecture_mask; /**< 허용 architecture bit다. */
     uint32_t environment_mask; /**< 허용 environment bit다. */
+    uint32_t personality_mask; /**< 허용 firmware personality bit다. */
     uint32_t mode_mask; /**< 허용 `RibonMode` bitset이다. */
     uint32_t reserved; /**< 반드시 0이어야 한다. */
     uint64_t arena_budget; /**< Core arena에서 소비할 수 있는 byte 상한이다. */

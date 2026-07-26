@@ -46,10 +46,12 @@ const struct RibonArchDescriptor *ribon_arch_selected(void) {
     return &aarch64_arch;
 }
 
+/** @brief Power-of-two 경계 아래의 address를 반환한다. */
 static uint64_t align_down_u64(uint64_t value, uint64_t alignment) {
     return value & ~(alignment - 1u);
 }
 
+/** @brief Overflow 없이 power-of-two 경계 위 address를 계산한다. */
 static int align_up_u64(uint64_t value, uint64_t alignment, uint64_t *out) {
     if (out == 0 || alignment == 0u || (alignment & (alignment - 1u)) != 0u) {
         return 0;
@@ -61,16 +63,19 @@ static int align_up_u64(uint64_t value, uint64_t alignment, uint64_t *out) {
     return 1;
 }
 
+/** @brief AArch64 descriptor에 들어갈 physical address bit만 보존한다. */
 static uint64_t descriptor_address(uint64_t physical_address) {
     return physical_address & RIBON_AARCH64_ADDR_MASK;
 }
 
+/** @brief 다음 translation level을 가리키는 table descriptor를 만든다. */
 static uint64_t table_descriptor(uint64_t physical_address) {
     return descriptor_address(physical_address) |
            RIBON_AARCH64_DESC_VALID |
            RIBON_AARCH64_DESC_TABLE;
 }
 
+/** @brief Normal-memory block mapping descriptor를 만든다. */
 static uint64_t block_descriptor(uint64_t physical_address) {
     return descriptor_address(physical_address) |
            RIBON_AARCH64_ATTR_NORMAL |
@@ -79,10 +84,12 @@ static uint64_t block_descriptor(uint64_t physical_address) {
            RIBON_AARCH64_DESC_VALID;
 }
 
+/** @brief 4 KiB page mapping descriptor를 만든다. */
 static uint64_t page_descriptor(uint64_t physical_address) {
     return block_descriptor(physical_address) | RIBON_AARCH64_DESC_TABLE;
 }
 
+/** @brief Caller-owned translation table entry를 allocation 없이 0으로 만든다. */
 static void zero_u64_table(uint64_t *table, uint64_t entries) {
     for (uint64_t index = 0; index < entries; ++index) {
         table[index] = 0;
@@ -182,6 +189,7 @@ static int find_runtime_for_virtual_entry(
     return 0;
 }
 
+/** @brief AArch64 direct-high bridge가 요구하는 고정 table page 수를 반환한다. */
 uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload *payload) {
     if (payload == 0 ||
         (payload->load_plan_flags & RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE) == 0u ||
@@ -303,12 +311,14 @@ int ribon_arch_prepare_direct_high_entry(
 }
 
 #if defined(__aarch64__)
+/** @brief Interrupt 상태를 바꾸지 않고 ID_AA64MMFR0_EL1을 읽는다. */
 static uint64_t read_id_aa64mmfr0_el1(void) {
     uint64_t value = 0;
     __asm__ __volatile__("mrs %0, id_aa64mmfr0_el1" : "=r"(value));
     return value;
 }
 
+/** @brief Physical address bit 수를 TCR_EL1.IPS encoding으로 변환한다. */
 static uint64_t pa_bits_to_tcr_ips(uint32_t bits) {
     if (bits <= 32u) {
         return 0u;
@@ -328,6 +338,7 @@ static uint64_t pa_bits_to_tcr_ips(uint32_t bits) {
     return 5u;
 }
 
+/** @brief 실행 CPU가 지원하는 bounded physical address bit 수를 반환한다. */
 static uint32_t current_pa_bits(void) {
     switch (read_id_aa64mmfr0_el1() & 0xFu) {
     case 0u:

@@ -1,0 +1,32 @@
+qstar.staticlib "ribon_firmware_uefi_reference" {
+  artifact_name = "libribon-firmware-uefi-reference.a",
+  sources = {
+    "src/firmware/uefi-compatible/personality.c",
+  },
+  deps = {
+    "//src/plugins:libribon_sdk",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.staticlib "ribon_firmware_bios_reference" {
+  artifact_name = "libribon-firmware-bios-reference.a",
+  sources = {
+    "src/firmware/bios-compatible/personality.c",
+  },
+  deps = {
+    "//src/plugins:libribon_sdk",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.group "ribon_firmware_reference_modules" {
+  deps = {
+    ":ribon_firmware_uefi_reference",
+    ":ribon_firmware_bios_reference",
+  },
+}

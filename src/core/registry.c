@@ -61,6 +61,10 @@ int ribon_plugin_registry_validate(
     uint32_t visited = 0u;
     uint64_t aggregate = 0u;
     uint64_t arena_budget = 0u;
+    uint32_t architecture_count = 0u;
+    uint32_t environment_count = 0u;
+    uint32_t personality_count = 0u;
+    uint32_t platform_count = 0u;
 
     if (registry == 0 ||
         registry->size != sizeof(*registry) ||
@@ -76,15 +80,24 @@ int ribon_plugin_registry_validate(
 
     for (uint32_t index = 0; index < registry->plugin_count; ++index) {
         const struct RibonPluginDescriptor *plugin = registry->plugins[index];
+        const int frontend_matches =
+            product->kind == RIBON_PRODUCT_KIND_FIRMWARE ?
+                (plugin->personality_mask & product->personality_mask) != 0u :
+                (plugin->environment_mask & product->environment_mask) != 0u;
         if (!ribon_plugin_descriptor_is_valid(plugin) ||
             (plugin->architecture_mask & product->architecture_mask) == 0u ||
-            (plugin->environment_mask & product->environment_mask) == 0u ||
+            !frontend_matches ||
             (plugin->mode_mask & RIBON_MODE_MASK(mode)) == 0u ||
             (plugin->provides & ~product->allowed_capabilities) != 0u ||
             plugin->input_budget > product->limits.max_input_bytes ||
             plugin->output_budget > product->limits.max_handoff_bytes ||
             plugin->deadline_ms > product->limits.operation_deadline_ms ||
-            plugin->phase == RIBON_PLUGIN_PHASE_RUNTIME ||
+            (plugin->phase == RIBON_PLUGIN_PHASE_RUNTIME &&
+             product->kind != RIBON_PRODUCT_KIND_FIRMWARE) ||
+            (plugin->kind == RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY &&
+             product->kind != RIBON_PRODUCT_KIND_FIRMWARE) ||
+            (plugin->kind == RIBON_PLUGIN_KIND_ENVIRONMENT &&
+             product->kind == RIBON_PRODUCT_KIND_FIRMWARE) ||
             (index != 0u &&
              registry_strcmp(registry->plugins[index - 1u]->id, plugin->id) >= 0)) {
             return RIBON_CORE_STATUS_INVALID_DESCRIPTOR;
@@ -97,9 +110,27 @@ int ribon_plugin_registry_validate(
         }
         arena_budget += plugin->arena_budget;
         aggregate |= plugin->provides;
+        architecture_count +=
+            plugin->kind == RIBON_PLUGIN_KIND_ARCHITECTURE ? 1u : 0u;
+        environment_count +=
+            plugin->kind == RIBON_PLUGIN_KIND_ENVIRONMENT ? 1u : 0u;
+        personality_count +=
+            plugin->kind == RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY ? 1u : 0u;
+        platform_count +=
+            plugin->kind == RIBON_PLUGIN_KIND_PLATFORM ? 1u : 0u;
     }
 
     if (arena_budget > product->limits.arena_bytes ||
+        (product->kind == RIBON_PRODUCT_KIND_BOOTLOADER &&
+         (architecture_count != 1u ||
+          platform_count != 1u ||
+          environment_count != 1u ||
+          personality_count != 0u)) ||
+        (product->kind == RIBON_PRODUCT_KIND_FIRMWARE &&
+         (architecture_count != 1u ||
+          platform_count != 1u ||
+          personality_count != 1u ||
+          environment_count != 0u)) ||
         (aggregate & product->required_capabilities) !=
             product->required_capabilities) {
         return RIBON_CORE_STATUS_MISSING_CAPABILITY;

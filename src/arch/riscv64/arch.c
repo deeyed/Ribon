@@ -26,6 +26,7 @@ const struct RibonArchDescriptor *ribon_arch_selected(void) {
     return &riscv64_arch;
 }
 
+/** @brief 미지원 RISC-V direct-high bridge에 대해 0 page를 반환한다. */
 uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload *payload) {
     (void)payload;
     return 0;

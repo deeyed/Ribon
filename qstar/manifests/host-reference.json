@@ -1,8 +1,27 @@
 {
+  "schema_version": 1,
   "product_id": "host-reference",
+  "product_kind": "bootloader",
+  "target_id": "host-reference",
   "architecture": "selected",
   "environment": "host",
+  "platform": "host",
   "mode": "normal",
+  "boot_protocols": [
+    "synthetic"
+  ],
+  "policies": [
+    "normal"
+  ],
+  "image": {
+    "format": "host-executable",
+    "recipe": "host-contract-fixture",
+    "artifact": "ribon-host-reference"
+  },
+  "evidence": {
+    "class": "unit",
+    "claim": "host contract fixture only"
+  },
   "max_plugins": 16,
   "required_capabilities": [
     "ARCHITECTURE",
@@ -39,22 +58,27 @@
   "plugins": [
     {
       "id": "arch.selected",
+      "package": "ribon.arch.selected",
       "symbol": "ribon_arch_plugin_descriptor"
     },
     {
       "id": "environment.host",
+      "package": "ribon.environment.host",
       "symbol": "ribon_host_environment_plugin_descriptor"
     },
     {
       "id": "image.elf64",
+      "package": "ribon.image.elf64",
       "symbol": "ribon_elf64_image_plugin_descriptor"
     },
     {
       "id": "platform.host",
+      "package": "ribon.platform.host",
       "symbol": "ribon_platform_plugin_descriptor"
     },
     {
       "id": "protocol.synthetic",
+      "package": "ribon.protocol.synthetic",
       "symbol": "ribon_synthetic_protocol_plugin_descriptor"
     }
   ]

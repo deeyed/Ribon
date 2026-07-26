@@ -1,0 +1,30 @@
+qstar.config "diagnostic_sink_public" {
+  toolset = "//qstar/policies:host",
+  lang = {
+    c = {
+      public_include_dirs = {
+        "examples/plugins/diagnostic-sink/include",
+      },
+      compile_options = {
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+      },
+    },
+  },
+}
+
+qstar.staticlib "diagnostic_sink" {
+  artifact_name = "libribon-example-diagnostic-sink.a",
+  sources = {
+    "examples/plugins/diagnostic-sink/src/plugin.c",
+  },
+  deps = {
+    "//src/plugins:libribon_sdk",
+  },
+  configs = {
+    ":diagnostic_sink_public",
+  },
+}

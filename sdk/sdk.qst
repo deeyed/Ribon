@@ -1,0 +1,46 @@
+qstar.custom_target "ribon_sdk_install" {
+  toolset = "//qstar/policies:host",
+  inputs = {
+    "Makefile",
+    "tools/install_sdk.py",
+  },
+  outputs = {
+    qstar.output("build/qstar/generated/r5/sdk/install/share/ribon/sdk-manifest.json"),
+  },
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar/generated/r5",
+    "SDK_INSTALL_ROOT=build/qstar/generated/r5/sdk/install",
+    "sdk-install",
+  },
+  description = qstar.status("Staging Ribon SDK"),
+}
+
+qstar.custom_target "ribon_external_plugin_contract" {
+  toolset = "//qstar/policies:host",
+  inputs = {
+    "Makefile",
+    "examples/plugins/diagnostic-sink/package.json",
+    "examples/plugins/diagnostic-sink/plugin.qst",
+  },
+  outputs = {
+    qstar.output(
+      "build/qstar/generated/r5/sdk/examples/diagnostic-sink/external-diagnostic-sink-contract"
+    ),
+  },
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar/generated/r5",
+    "check-external-plugin",
+  },
+  description = qstar.status("Building external Ribon plugin contract"),
+}
+
+qstar.group "ribon_sdk_products" {
+  deps = {
+    ":ribon_sdk_install",
+    ":ribon_external_plugin_contract",
+  },
+}

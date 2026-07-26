@@ -9,6 +9,7 @@ code_paths:
   - include/Ribon/plugin/
   - include/Ribon/protocol/
   - include/Ribon/firmware/
+  - include/Ribon/sdk/
   - include/Ribon/arch/
   - include/Ribon/platform/
 tests:
@@ -63,6 +64,18 @@ Ribon/plugin/manifest.h
 Plugin descriptor는 size와 ABI version으로 확장한다. Plugin implementation은 generated
 registry를 수정하거나 hidden constructor로 자신을 등록하지 않는다.
 
+## Installed SDK API
+
+```text
+Ribon/sdk/abi.h
+Ribon/sdk/package.h
+Ribon/sdk/host.h
+```
+
+SDK API는 immutable ABI tuple, external package inventory와 host-side contract
+validation을 제공한다. Installed SDK consumer는 source-private header와 target generated
+registry를 include하지 않는다.
+
 ## Boot Protocol API
 
 ```text
@@ -84,7 +97,8 @@ Ribon/firmware/personality.h
 
 Environment consumer와 firmware personality descriptor는 서로 다른 kind를 사용한다.
 UEFI native declaration과 BIOS register frame은 environment 또는 personality-private
-header에 둔다.
+header에 둔다. Firmware service directory는 caller-owned storage이며 selected
+personality lifetime을 벗어나지 않는다.
 
 ## Architecture API
 

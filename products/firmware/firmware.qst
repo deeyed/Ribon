@@ -1,0 +1,30 @@
+qstar.custom_target "ribon_firmware_provider_references" {
+  toolset = "//qstar/policies:host",
+  inputs = {
+    "Makefile",
+    "products/firmware/manifests/uefi-compatible-reference.json",
+    "products/firmware/manifests/bios-compatible-reference.json",
+  },
+  outputs = {
+    qstar.output(
+      "build/qstar/generated/r5/firmware-providers/uefi-compatible-reference/ribon-firmware-provider-uefi-reference"
+    ),
+    qstar.output(
+      "build/qstar/generated/r5/firmware-providers/bios-compatible-reference/ribon-firmware-provider-bios-reference"
+    ),
+  },
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar/generated/r5",
+    "firmware-provider-reference",
+  },
+  description = qstar.status("Building firmware provider reference products"),
+}
+
+qstar.group "ribon_firmware_provider_products" {
+  deps = {
+    ":ribon_firmware_provider_references",
+    "//src/firmware:ribon_firmware_reference_modules",
+  },
+}

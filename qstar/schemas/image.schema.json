@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ribon.dev/schema/image-v1.json",
+  "title": "Ribon image recipe v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "recipe", "artifact"],
+  "properties": {
+    "format": {"type": "string", "minLength": 1},
+    "recipe": {"type": "string", "minLength": 1},
+    "artifact": {"type": "string", "minLength": 1}
+  }
+}

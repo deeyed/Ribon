@@ -49,6 +49,7 @@ endif
 
 CORE_LIB := $(BUILD_DIR)/libribon-core.a
 BOOT_LIB := $(BUILD_DIR)/libribon-boot.a
+SDK_LIB := $(BUILD_DIR)/libribon-sdk.a
 HOST_REFERENCE := $(BUILD_DIR)/ribon-host-reference
 KERNEL_FIXTURE := $(BUILD_DIR)/fixtures/kernel.elf
 HOST_MANIFEST := qstar/manifests/host-reference.json
@@ -72,6 +73,9 @@ BOOT_LIB_SRCS := \
 	src/common/boot.c \
 	src/common/image.c \
 	src/common/platform.c
+SDK_LIB_SRCS := \
+	src/plugins/sdk.c \
+	src/firmware/personality.c
 ARCH_SRCS := \
 	src/arch/common.c \
 	src/arch/$(RIBON_ARCH)/arch.c
@@ -85,6 +89,7 @@ HOST_MAIN_SRC := src/environments/host/main.c
 
 CORE_OBJS := $(CORE_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
 BOOT_LIB_OBJS := $(BOOT_LIB_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
+SDK_LIB_OBJS := $(SDK_LIB_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
 ARCH_OBJS := $(ARCH_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
 HOST_PRODUCT_OBJS := $(HOST_PRODUCT_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
 HOST_MAIN_OBJ := $(BUILD_DIR)/obj/$(HOST_MAIN_SRC:.c=.o)
@@ -100,6 +105,15 @@ CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
+SDK_INSTALL_ROOT := $(BUILD_ROOT)/sdk/install
+SDK_REPRO_FIRST := $(BUILD_ROOT)/sdk/reproducible-a
+SDK_REPRO_SECOND := $(BUILD_ROOT)/sdk/reproducible-b
+SDK_LIBRARY_EMBED_TEST := $(BUILD_ROOT)/sdk/examples/library-embed
+EXTERNAL_PLUGIN_DIR := $(BUILD_ROOT)/sdk/examples/diagnostic-sink
+EXTERNAL_PLUGIN_REGISTRY_C := $(EXTERNAL_PLUGIN_DIR)/generated/plugin_registry.c
+EXTERNAL_PLUGIN_REPORT := $(EXTERNAL_PLUGIN_DIR)/results/object-graph.json
+EXTERNAL_PLUGIN_TEST := $(EXTERNAL_PLUGIN_DIR)/external-diagnostic-sink-contract
+EXTERNAL_PLUGIN_ROOT := examples/plugins/diagnostic-sink
 MODE_DESCRIPTOR_TESTS := \
 	$(TEST_BUILD_DIR)/mode_descriptor_normal_tests \
 	$(TEST_BUILD_DIR)/mode_descriptor_recovery_tests \
@@ -206,11 +220,43 @@ BIOS_OBJECTS := \
 	$(BIOS_DIR)/obj/src/environments/bios-client/bios_client.o \
 	$(BIOS_DIR)/obj/targets/x86-bios-client/compile_probe.o
 
-.PHONY: all lib host-reference check check-one check-loader check-pe-coff \
+FIRMWARE_PROVIDER_ROOT := $(BUILD_ROOT)/firmware-providers
+UEFI_PROVIDER_DIR := $(FIRMWARE_PROVIDER_ROOT)/uefi-compatible-reference
+UEFI_PROVIDER_MANIFEST := products/firmware/manifests/uefi-compatible-reference.json
+UEFI_PROVIDER_REGISTRY_C := $(UEFI_PROVIDER_DIR)/generated/plugin_registry.c
+UEFI_PROVIDER_REPORT := $(UEFI_PROVIDER_DIR)/results/object-graph.json
+UEFI_PROVIDER_BIN := $(UEFI_PROVIDER_DIR)/ribon-firmware-provider-uefi-reference
+UEFI_PROVIDER_SRCS := \
+	src/arch/common.c \
+	src/arch/x86_64/arch.c \
+	products/firmware/reference/platform.c \
+	src/firmware/uefi-compatible/personality.c \
+	products/firmware/uefi-compatible-reference/main.c
+UEFI_PROVIDER_OBJS := $(UEFI_PROVIDER_SRCS:%.c=$(UEFI_PROVIDER_DIR)/obj/%.o)
+UEFI_PROVIDER_OBJS += $(UEFI_PROVIDER_DIR)/obj/generated/plugin_registry.o
+
+BIOS_PROVIDER_DIR := $(FIRMWARE_PROVIDER_ROOT)/bios-compatible-reference
+BIOS_PROVIDER_MANIFEST := products/firmware/manifests/bios-compatible-reference.json
+BIOS_PROVIDER_REGISTRY_C := $(BIOS_PROVIDER_DIR)/generated/plugin_registry.c
+BIOS_PROVIDER_REPORT := $(BIOS_PROVIDER_DIR)/results/object-graph.json
+BIOS_PROVIDER_BIN := $(BIOS_PROVIDER_DIR)/ribon-firmware-provider-bios-reference
+BIOS_PROVIDER_SRCS := \
+	src/arch/common.c \
+	src/arch/x86_64/arch.c \
+	products/firmware/reference/platform.c \
+	src/firmware/bios-compatible/personality.c \
+	products/firmware/bios-compatible-reference/main.c
+BIOS_PROVIDER_OBJS := $(BIOS_PROVIDER_SRCS:%.c=$(BIOS_PROVIDER_DIR)/obj/%.o)
+BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
+
+.PHONY: all lib sdk-install host-reference check check-one check-loader check-pe-coff \
 	check-fdt check-rph1 check-arch-x86_64 check-arch-aarch64 \
 	check-arch-ops check-core-service \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
 	check-library-embed check-object-graphs check-public-api \
+	check-composition-schemas check-sdk-surface check-sdk-embed \
+	check-sdk-reproducible check-external-plugin check-firmware-personalities \
+	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-target-builds qemu-aarch64-virt-raw-fdt \
 	qemu-aarch64-virt-raw-fdt-smoke x86_64-uefi-app \
 	x86_64-uefi-app-smoke bios-compile rpi5-aarch64-raw-fdt-package \
@@ -218,7 +264,7 @@ BIOS_OBJECTS := \
 
 all: lib host-reference
 
-lib: $(CORE_LIB) $(BOOT_LIB)
+lib: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB)
 
 host-reference: $(HOST_REFERENCE)
 
@@ -252,6 +298,11 @@ $(BOOT_LIB): $(BOOT_LIB_OBJS) Makefile
 	@mkdir -p $(@D)
 	$(RM) $@
 	$(AR) rcs $@ $(BOOT_LIB_OBJS)
+
+$(SDK_LIB): $(SDK_LIB_OBJS) Makefile
+	@mkdir -p $(@D)
+	$(RM) $@
+	$(AR) rcs $@ $(SDK_LIB_OBJS)
 
 $(HOST_REFERENCE): \
 	$(HOST_MAIN_OBJ) $(ARCH_OBJS) $(HOST_PRODUCT_OBJS) \
@@ -517,8 +568,122 @@ check-protocol-contract: $(PROTOCOL_CONTRACT_TEST)
 check-library-embed: $(PROTOCOL_FREE_EMBED_TEST)
 	$(PROTOCOL_FREE_EMBED_TEST)
 
-check-object-graphs: $(CORE_LIB) $(BOOT_LIB)
-	$(PYTHON) tools/lint/object_graph_lint.py --core $(CORE_LIB) --boot $(BOOT_LIB)
+check-composition-schemas:
+	$(PYTHON) tools/lint/composition_schema_lint.py
+
+sdk-install: lib
+	$(PYTHON) tools/install_sdk.py \
+		--root $(SDK_INSTALL_ROOT) \
+		--public-include include/Ribon \
+		--library $(CORE_LIB) \
+		--library $(BOOT_LIB) \
+		--library $(SDK_LIB) \
+		--schemas qstar/schemas \
+		--templates sdk/templates
+
+check-sdk-surface: sdk-install
+	$(PYTHON) tools/lint/sdk_surface_lint.py \
+		--install-root $(SDK_INSTALL_ROOT)
+
+$(SDK_LIBRARY_EMBED_TEST): sdk-install examples/library-embed/main.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		-I$(SDK_INSTALL_ROOT)/include \
+		examples/library-embed/main.c \
+		$(SDK_INSTALL_ROOT)/lib/libribon-sdk.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-boot.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-core.a \
+		-o $@
+
+check-sdk-embed: $(SDK_LIBRARY_EMBED_TEST)
+	$(SDK_LIBRARY_EMBED_TEST)
+
+check-sdk-reproducible: lib
+	$(PYTHON) tools/install_sdk.py \
+		--root $(SDK_REPRO_FIRST) \
+		--public-include include/Ribon \
+		--library $(CORE_LIB) --library $(BOOT_LIB) --library $(SDK_LIB) \
+		--schemas qstar/schemas --templates sdk/templates
+	$(PYTHON) tools/install_sdk.py \
+		--root $(SDK_REPRO_SECOND) \
+		--public-include include/Ribon \
+		--library $(CORE_LIB) --library $(BOOT_LIB) --library $(SDK_LIB) \
+		--schemas qstar/schemas --templates sdk/templates
+	$(PYTHON) tools/check_reproducible_trees.py \
+		$(SDK_REPRO_FIRST) $(SDK_REPRO_SECOND)
+
+$(EXTERNAL_PLUGIN_REGISTRY_C): \
+	$(EXTERNAL_PLUGIN_ROOT)/tests/product.json \
+	tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest $< --output $@ --report $(EXTERNAL_PLUGIN_REPORT)
+
+$(EXTERNAL_PLUGIN_TEST): sdk-install $(EXTERNAL_PLUGIN_REGISTRY_C) \
+	$(EXTERNAL_PLUGIN_ROOT)/src/plugin.c \
+	$(EXTERNAL_PLUGIN_ROOT)/tests/fixture_providers.c \
+	$(EXTERNAL_PLUGIN_ROOT)/tests/contract.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		-I$(SDK_INSTALL_ROOT)/include \
+		-I$(EXTERNAL_PLUGIN_ROOT)/include \
+		$(EXTERNAL_PLUGIN_ROOT)/src/plugin.c \
+		$(EXTERNAL_PLUGIN_ROOT)/tests/fixture_providers.c \
+		$(EXTERNAL_PLUGIN_ROOT)/tests/contract.c \
+		$(EXTERNAL_PLUGIN_REGISTRY_C) \
+		$(SDK_INSTALL_ROOT)/lib/libribon-sdk.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-boot.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-core.a \
+		-o $@
+
+check-external-plugin: $(EXTERNAL_PLUGIN_TEST)
+	$(EXTERNAL_PLUGIN_TEST)
+
+$(UEFI_PROVIDER_REGISTRY_C): $(UEFI_PROVIDER_MANIFEST) \
+	tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest $< --output $@ --report $(UEFI_PROVIDER_REPORT)
+
+$(BIOS_PROVIDER_REGISTRY_C): $(BIOS_PROVIDER_MANIFEST) \
+	tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest $< --output $@ --report $(BIOS_PROVIDER_REPORT)
+
+$(UEFI_PROVIDER_DIR)/obj/%.o: %.c
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+
+$(BIOS_PROVIDER_DIR)/obj/%.o: %.c
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+
+$(UEFI_PROVIDER_DIR)/obj/generated/plugin_registry.o: $(UEFI_PROVIDER_REGISTRY_C)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+
+$(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o: $(BIOS_PROVIDER_REGISTRY_C)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+
+$(UEFI_PROVIDER_BIN): $(UEFI_PROVIDER_OBJS) $(SDK_LIB) $(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(BIOS_PROVIDER_BIN): $(BIOS_PROVIDER_OBJS) $(SDK_LIB) $(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+firmware-provider-reference: $(UEFI_PROVIDER_BIN) $(BIOS_PROVIDER_BIN)
+
+check-firmware-personalities: firmware-provider-reference
+	$(UEFI_PROVIDER_BIN)
+	$(BIOS_PROVIDER_BIN)
+
+check-firmware-object-graphs: firmware-provider-reference
+	$(PYTHON) tools/lint/firmware_object_graph_lint.py \
+		--makefile Makefile \
+		--provider-root $(FIRMWARE_PROVIDER_ROOT)
+
+check-object-graphs: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB)
+	$(PYTHON) tools/lint/object_graph_lint.py \
+		--core $(CORE_LIB) --boot $(BOOT_LIB) --sdk $(SDK_LIB)
 
 qstar-check:
 	$(QSTAR) --file qstar.lua check
@@ -547,11 +712,14 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-mode-descriptors check-plugin-descriptors \
-	check-protocol-contract check-library-embed check-object-graphs qstar-check
+	check-protocol-contract check-library-embed check-composition-schemas \
+	check-sdk-surface check-sdk-embed check-sdk-reproducible \
+	check-external-plugin check-firmware-personalities \
+	check-firmware-object-graphs check-object-graphs qstar-check
 	@for arch in $(RIBON_ARCHES); do \
 		$(MAKE) --no-print-directory RIBON_ARCH=$$arch check-one || exit $$?; \
 	done
-	@echo "RIBON-R4-AGGREGATE-OK"
+	@echo "RIBON-R5-AGGREGATE-OK"
 
 docs: legacy-hard-cut
 	$(PYTHON) tools/lint/documentation_quality_lint.py

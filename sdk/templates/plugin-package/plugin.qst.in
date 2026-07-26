@@ -1,0 +1,9 @@
+qstar.staticlib "@TARGET_NAME@" {
+  artifact_name = "lib@TARGET_NAME@.a",
+  sources = {
+    "src/plugin.c",
+  },
+  deps = {
+    "//src/plugins:libribon_sdk",
+  },
+}

@@ -31,6 +31,9 @@ REQUIRED = {
     "arch/ops.h",
     "arch/entry.h",
     "platform/facts.h",
+    "sdk/abi.h",
+    "sdk/package.h",
+    "sdk/host.h",
 }
 FORBIDDEN_FLAT = {
     "arch.h",

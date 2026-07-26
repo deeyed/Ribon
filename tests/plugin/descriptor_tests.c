@@ -45,6 +45,7 @@ static struct RibonProductDescriptor policy_product(uint64_t capabilities) {
         .size = sizeof(struct RibonProductDescriptor),
         .abi_version = RIBON_CORE_ABI_VERSION,
         .id = "policy-test",
+        .kind = RIBON_PRODUCT_KIND_LIBRARY,
         .architecture_mask = RIBON_ARCH_MASK_X86_64,
         .environment_mask = RIBON_ENV_MASK_HOST,
         .mode_mask = RIBON_MODE_MASK(RIBON_MODE_NORMAL),

@@ -48,6 +48,8 @@ Firmware Personality는 Ribon service와 driver를 외부 firmware ABI로 publis
 
 Provider는 generic Core를 fork하지 않는다. Personality가 요구하는 handle database,
 event, protocol publication, variable namespace는 personality runtime에 한정한다.
+Service directory와 provider context storage는 caller가 소유하며 generic Core registry에
+삽입하지 않는다.
 
 ## Service table
 
@@ -58,6 +60,11 @@ lifetime을 검증한다.
 Service가 `QUIESCE`에서 종료되면 이후 Boot Library와 protocol이 호출할 수 없다.
 `RUNTIME` service는 personality manifest에 명시되고 OS entry 뒤 보존되는 memory와
 calling convention을 별도 검증한다.
+
+Reference provider는 UEFI-compatible bounded handle/protocol database와 BIOS-compatible
+bounded E820 table만 제공한다. 선택되지 않은 variable, image, time, reset, EDD, video
+service는 `UNSUPPORTED`로 실패한다. 이 최소 provider는 bootable firmware나 firmware
+specification conformance 증거가 아니다.
 
 ## UEFI personality 최소 분해
 

@@ -18,6 +18,10 @@ BOOT_MEMBERS = {
     "protocol.o",
     "services.o",
 }
+SDK_MEMBERS = {
+    "personality.o",
+    "sdk.o",
+}
 CORE_FORBIDDEN_SYMBOLS = (
     "ribon_arch_",
     "ribon_boot_protocol_",
@@ -66,11 +70,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core", type=Path, required=True)
     parser.add_argument("--boot", type=Path, required=True)
+    parser.add_argument("--sdk", type=Path, required=True)
     args = parser.parse_args()
     failures: list[str] = []
     try:
         core_members = members(args.core)
         boot_members = members(args.boot)
+        sdk_members = members(args.sdk)
         core_symbols = symbols(args.core)
         boot_symbols = symbols(args.boot)
     except RuntimeError as error:
@@ -85,6 +91,11 @@ def main() -> int:
         failures.append(
             f"boot members mismatch: expected={sorted(BOOT_MEMBERS)} actual={sorted(boot_members)}"
         )
+    if sdk_members != SDK_MEMBERS:
+        failures.append(
+            f"sdk members mismatch: expected={sorted(SDK_MEMBERS)} "
+            f"actual={sorted(sdk_members)}"
+        )
     for symbol in CORE_FORBIDDEN_SYMBOLS:
         if symbol in core_symbols:
             failures.append(f"core archive leaks forbidden symbol prefix: {symbol}")
@@ -96,7 +107,7 @@ def main() -> int:
         for failure in failures:
             print(f"object_graph_lint: {failure}")
         return 1
-    print("RIBON-R4-LIBRARY-OBJECT-GRAPH-OK")
+    print("RIBON-R5-LIBRARY-OBJECT-GRAPHS-OK")
     return 0
 
 

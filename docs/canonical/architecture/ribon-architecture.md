@@ -5,6 +5,7 @@ authority: normative
 last_verified: 2026-07-26
 code_paths:
   - include/Ribon/
+  - sdk/
   - src/common/
   - src/arch/
   - src/environments/
@@ -43,7 +44,7 @@ Ribon 저장소는 다음 산출물을 독립된 product로 제공한다.
 | --- | --- | --- |
 | `libribon-core` | 상태 전이, memory map, capability, fixed arena | entry, OS handoff, firmware native ABI |
 | `libribon-boot` | boot source, image load, plan, commit, transfer orchestration | OS별 wire format, board MMIO |
-| `libribon-sdk` | plugin descriptor, service ABI, product composition | 선택된 plugin 정책 |
+| `libribon-sdk` | plugin package ABI, host contract harness, firmware service publication | 선택된 plugin 정책과 native firmware 구현 |
 | `ribon-bootmgr` | 독립 실행 boot manager | 특정 OS의 고정 의미론 |
 | environment application | UEFI, BIOS, SBI, raw-FDT를 Ribon service로 변환 | firmware service 제공자 역할 |
 | firmware product | 선택된 firmware personality와 driver를 조립 | Ribon Core의 OS 특수화 |
@@ -184,8 +185,9 @@ Source scan, weak symbol, constructor side effect로 plugin을 발견하지 않�
 | `BOOT_PROTOCOL` | Parus, synthetic contract fixture |
 | `PLATFORM` | QEMU virt, RPi5, PC UEFI, PC BIOS |
 
-`POLICY`와 `FIRMWARE_PERSONALITY` 값은 해당 operation ABI가 승인될 때까지 reserved
-kind다. Mode descriptor는 plugin descriptor와 별도 계약이다.
+`POLICY`와 `FIRMWARE_PERSONALITY`는 firmware product가 사용할 수 있는 활성 kind다.
+`SERVICE`는 SDK package가 제공하는 typed service operation의 활성 kind다. Mode
+descriptor는 plugin descriptor와 별도 계약이다.
 
 Driver, filesystem, transport, security와 firmware service는 SDK 확장에서 독립 kind가
 될 수 있다. 해당 kind가 public descriptor ABI에 추가되기 전에는 product가 선택한
@@ -193,7 +195,7 @@ private object이며 runtime plugin으로 간주하지 않는다.
 
 향후 kind의 역할 예시는 다음과 같다.
 
-| 예정 경계 | 예 |
+| 확장 경계 | 예 |
 | --- | --- |
 | `DRIVER` | PL011, block controller, NIC |
 | `FILESYSTEM` | FAT, ISO9660 |
@@ -206,6 +208,17 @@ private object이며 runtime plugin으로 간주하지 않는다.
 Plugin은 build-time에 선택되는 정적 component다. Runtime-loadable plugin은 별도의
 signature, relocation, W^X, dependency authenticity, rollback, lifetime 계약이 승인되기
 전에는 지원하지 않는다.
+
+## 설치 가능한 SDK
+
+SDK install tree는 `include/Ribon/`, `libribon-core.a`, `libribon-boot.a`,
+`libribon-sdk.a`, ABI symbol allowlist, composition schema와 package template로
+구성된다. 외부 consumer와 plugin package는 source checkout의 private header나 generated
+registry에 의존하지 않는다.
+
+`libribon-sdk`는 SDK ABI tuple, package descriptor validation, host package contract와
+firmware personality service directory를 제공한다. Architecture, environment, boot
+protocol, platform implementation은 해당 archive에 포함하지 않는다.
 
 ## Plugin graph 불변식
 

@@ -1,0 +1,13 @@
+qstar.staticlib "libribon_sdk" {
+  artifact_name = "libribon-sdk.a",
+  sources = {
+    "src/plugins/sdk.c",
+    "src/firmware/personality.c",
+  },
+  deps = {
+    "//src/core:libribon_core",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}

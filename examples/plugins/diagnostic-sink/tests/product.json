@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "product_id": "library.external-diagnostic-sink",
+  "product_kind": "library",
+  "target_id": "external-diagnostic-sink-contract",
+  "architecture": "x86_64",
+  "environment": "host",
+  "platform": "fixture",
+  "mode": "diagnostic",
+  "boot_protocols": [],
+  "policies": [
+    "contract-harness"
+  ],
+  "image": {
+    "format": "host-executable",
+    "recipe": "external-plugin-contract",
+    "artifact": "external-diagnostic-sink-contract"
+  },
+  "evidence": {
+    "class": "unit",
+    "claim": "installed SDK external package contract"
+  },
+  "max_plugins": 8,
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "DIAGNOSTIC_SINK",
+    "MONOTONIC_TIMER",
+    "PLATFORM_FACTS",
+    "SDK_CONTRACT"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "DIAGNOSTIC_SINK",
+    "MONOTONIC_TIMER",
+    "PLATFORM_FACTS",
+    "SDK_CONTRACT"
+  ],
+  "limits": {
+    "max_memory_regions": 8,
+    "max_load_segments": 2,
+    "max_components": 4,
+    "max_retries": 1,
+    "max_input_bytes": 16384,
+    "max_handoff_bytes": 4096,
+    "arena_bytes": 16384,
+    "operation_deadline_ms": 1000
+  },
+  "plugins": [
+    {
+      "id": "arch.fixture",
+      "package": "example.fixture-providers",
+      "symbol": "ribon_example_fixture_arch_plugin"
+    },
+    {
+      "id": "environment.fixture",
+      "package": "example.fixture-providers",
+      "symbol": "ribon_example_fixture_environment_plugin"
+    },
+    {
+      "id": "platform.fixture",
+      "package": "example.fixture-providers",
+      "symbol": "ribon_example_fixture_platform_plugin"
+    },
+    {
+      "id": "service.diagnostic-sink",
+      "package": "example.diagnostic-sink",
+      "symbol": "ribon_example_diagnostic_sink_plugin_descriptor"
+    }
+  ]
+}

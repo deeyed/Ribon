@@ -36,10 +36,12 @@ const struct RibonArchDescriptor *ribon_arch_selected(void) {
     return &x86_64_arch;
 }
 
+/** @brief Power-of-two 경계 아래의 address를 반환한다. */
 static uint64_t align_down_u64(uint64_t value, uint64_t alignment) {
     return value & ~(alignment - 1u);
 }
 
+/** @brief Overflow 없이 power-of-two 경계 위 address를 계산한다. */
 static int align_up_u64(uint64_t value, uint64_t alignment, uint64_t *out) {
     if (out == 0 || alignment == 0u || (alignment & (alignment - 1u)) != 0u) {
         return 0;
@@ -51,16 +53,19 @@ static int align_up_u64(uint64_t value, uint64_t alignment, uint64_t *out) {
     return 1;
 }
 
+/** @brief Writable present page-table descriptor를 만든다. */
 static uint64_t table_descriptor(uint64_t physical_address) {
     return (physical_address & RIBON_X86_64_ADDR_MASK) |
            RIBON_X86_64_PTE_PRESENT |
            RIBON_X86_64_PTE_WRITE;
 }
 
+/** @brief 2 MiB 또는 1 GiB large-page descriptor를 만든다. */
 static uint64_t large_descriptor(uint64_t physical_address) {
     return table_descriptor(physical_address) | RIBON_X86_64_PTE_LARGE;
 }
 
+/** @brief Caller-owned page table entry를 allocation 없이 0으로 만든다. */
 static void zero_u64_table(uint64_t *table, uint64_t entries) {
     for (uint64_t index = 0; index < entries; ++index) {
         table[index] = 0;
@@ -94,6 +99,7 @@ static int find_runtime_for_virtual_entry(
     return 0;
 }
 
+/** @brief x86_64 direct-high bridge가 요구하는 고정 table page 수를 반환한다. */
 uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload *payload) {
     if (payload == 0 ||
         (payload->load_plan_flags & RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE) == 0u ||
@@ -318,6 +324,7 @@ const struct RibonPluginDescriptor ribon_arch_plugin_descriptor = {
     .provides = RIBON_CAP_ARCHITECTURE,
     .architecture_mask = RIBON_ARCH_MASK_X86_64,
     .environment_mask = RIBON_ENV_MASK_ALL,
+    .personality_mask = RIBON_PERSONALITY_MASK_ALL,
     .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 4096u,
     .input_budget = 4096u,

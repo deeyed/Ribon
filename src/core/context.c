@@ -17,7 +17,7 @@ static int core_streq(const char *lhs, const char *rhs) {
 
 /** @brief Ribon library ABI version의 안정적인 문자열을 반환한다. */
 const char *ribon_version_string(void) {
-    return "0.2.0";
+    return "0.3.0";
 }
 
 /** @brief Mode 값의 안정적인 이름을 반환한다. */

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "package_id": "example.diagnostic-sink",
+  "plugin_id": "service.diagnostic-sink",
+  "plugin_kind": "service",
+  "sdk_abi": 1,
+  "public_headers": [
+    "include/RibonExamples/diagnostic_sink.h"
+  ],
+  "sources": [
+    "src/plugin.c"
+  ],
+  "tests": [
+    "tests/contract.c"
+  ],
+  "documentation": [
+    "docs/plugin.md"
+  ],
+  "qstar_file": "plugin.qst"
+}
