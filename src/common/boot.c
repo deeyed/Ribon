@@ -27,20 +27,14 @@ static int boot_loaded_payload_is_ready(const struct RibonLoadedPayload *layout)
 int ribon_boot_session_initialize(
     struct RibonBootSession *out,
     const struct RibonCoreContext *core,
-    const struct RibonServiceTable *services,
     const struct RibonArchOps *arch,
     const struct RibonBootProtocol *protocol,
     const struct RibonImageFormatOps *image_format) {
     if (out == 0 ||
         ribon_core_context_validate(core) != RIBON_CORE_STATUS_OK ||
-        !ribon_service_table_is_valid(services) ||
         !ribon_arch_ops_are_valid(arch) ||
         !ribon_boot_protocol_is_valid(protocol) ||
         !ribon_image_format_ops_are_valid(image_format) ||
-        !boot_registry_contains_operations(
-            core->registry,
-            RIBON_PLUGIN_KIND_ENVIRONMENT,
-            services) ||
         !boot_registry_contains_operations(
             core->registry,
             RIBON_PLUGIN_KIND_ARCHITECTURE,
@@ -65,7 +59,7 @@ int ribon_boot_session_initialize(
         .abi_version = RIBON_CORE_ABI_VERSION,
         .state = RIBON_BOOT_SESSION_INITIALIZED,
         .core = core,
-        .services = services,
+        .services = core->services,
         .arch = arch,
         .protocol = protocol,
         .image_format = image_format,

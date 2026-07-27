@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <Ribon/sdk/package.h>
+#include <Ribon/service/directory.h>
 
 /** @brief Example sink가 caller-owned byte budget을 추적하는 context다. */
 struct RibonExampleDiagnosticSink {
@@ -27,6 +28,10 @@ struct RibonExampleDiagnosticSinkOperations {
 /** @brief External package가 제공하는 service plugin descriptor다. */
 extern const struct RibonPluginDescriptor
     ribon_example_diagnostic_sink_plugin_descriptor;
+
+/** @brief External package가 publish하는 typed diagnostic service descriptor다. */
+extern const struct RibonServiceDescriptor
+    ribon_example_diagnostic_sink_service_descriptor;
 
 /** @brief Manifest와 compiled plugin을 연결하는 package descriptor다. */
 extern const struct RibonSdkPluginPackage

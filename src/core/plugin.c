@@ -138,7 +138,13 @@ int ribon_product_descriptor_is_valid(const struct RibonProductDescriptor *produ
         product->max_plugins > RIBON_PLUGIN_REGISTRY_LIMIT ||
         (product->required_capabilities & ~RIBON_CAP_ALL) != 0u ||
         (product->allowed_capabilities & ~RIBON_CAP_ALL) != 0u ||
-        (product->required_capabilities & ~product->allowed_capabilities) != 0u) {
+        (product->required_capabilities & ~product->allowed_capabilities) != 0u ||
+        product->service_selection_count > RIBON_SERVICE_DIRECTORY_LIMIT ||
+        (product->service_selection_count != 0u &&
+         product->service_selections == 0) ||
+        product->plugin_selection_count > RIBON_PLUGIN_REGISTRY_LIMIT ||
+        (product->plugin_selection_count != 0u &&
+         product->plugin_selections == 0)) {
         return 0;
     }
     return ribon_resource_limits_are_valid(&product->limits);

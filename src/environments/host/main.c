@@ -92,7 +92,8 @@ int main(int argc, char **argv) {
     const struct RibonPluginDescriptor *image_plugin;
     const struct RibonBootProtocol *protocol;
     const struct RibonImageFormatOps *image_format;
-    const struct RibonServiceTable *services = ribon_host_services();
+    const struct RibonServiceDirectory *services =
+        ribon_generated_service_directory();
     const struct RibonArchOps *arch = ribon_arch_selected_ops();
     unsigned char arena_storage[256u * 1024u];
     struct RibonArena arena;
@@ -150,6 +151,7 @@ int main(int argc, char **argv) {
         &core,
         product,
         registry,
+        services,
         ribon_mode_selected(),
         &arena);
     if (status != RIBON_CORE_STATUS_OK) {
@@ -159,7 +161,6 @@ int main(int argc, char **argv) {
     status = ribon_boot_session_initialize(
         &session,
         &core,
-        services,
         arch,
         protocol,
         image_format);

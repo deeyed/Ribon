@@ -73,6 +73,7 @@ contracts/documentation/documentation-quality-gate
 :caption: Active 결정
 
 adr/0009-limine-library-plugin-hard-cut
+adr/0010-typed-service-graph-hard-cut
 ```
 
 ```{toctree}
@@ -120,4 +121,5 @@ log/2026-07-26-r2-core-service-boundary
 log/2026-07-26-r3-library-plugin-protocol-hard-cut
 log/2026-07-26-r4-environment-protocol-targets
 log/2026-07-26-r5-sdk-firmware-composition
+log/2026-07-27-r6-typed-service-graph
 ```

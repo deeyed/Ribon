@@ -23,6 +23,20 @@
     "claim": "BIOS consumer boundary compilation"
   },
   "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.bios-client.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_bios_client_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.bios-client.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_bios_client_monotonic_timer_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [],
   "required_capabilities": [
     "ARCHITECTURE",
     "BOOT_CONFIRMATION",

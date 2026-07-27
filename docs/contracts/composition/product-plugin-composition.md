@@ -32,6 +32,7 @@ registry를 링크한다. C source list가 product identity를 암묵적으로 �
 | Metadata | 역할 |
 | --- | --- |
 | `RibonPluginDescriptor` | 한 plugin의 ABI, capability, dependency와 budget |
+| `RibonServiceDescriptor` | typed service role, lifetime, operation ABI와 budget |
 | `products/*/manifests/*.json` | product ID, 정확한 frontend tuple, plugin set과 limit |
 | `qstar/schemas/*.schema.json` | package, product, target, image metadata field와 type |
 | `targets/*.qst` | QStar target closure와 generated artifact |
@@ -63,6 +64,7 @@ evidence policy
 Composer는 `build/` 아래 최소 다음을 생성한다.
 
 - plugin registry
+- typed service directory와 collection owner selection
 - product descriptor
 - selected object manifest
 - final link map
@@ -82,9 +84,14 @@ Bootloader product는 다음 provider 수를 만족한다.
 | selected mode object | 1 |
 | stable plugin ID | 1 이하 |
 
-Boot manager product는 하나 이상의 Boot Protocol을 정적으로 포함할 수 있으나 한 boot
-session은 정확히 하나를 선택한다. 선택되지 않은 protocol은 실행 중 검색하거나
-동적으로 로드하지 않는다.
+Boot manager product는 하나 이상의 Boot Protocol, image format, filesystem 또는 transport
+provider를 정적으로 포함할 수 있으나 한 boot session은 manifest selection으로 정확히 하나의
+active owner를 고정한다. 선택되지 않은 provider는 실행 중 검색하거나 동적으로 로드하지
+않는다.
+
+`services` manifest field는 provider source가 export한 service descriptor symbol을 stable ID
+순으로 열거한다. `service_selections`는 collection role의 active descriptor ID를 ABI role
+순으로 열거한다. Authority role은 selection을 사용하지 않으며 중복이면 composition이 실패한다.
 
 Firmware product는 entry environment 대신 정확히 하나의 firmware personality를
 선택한다. Personality가 선언한 `personality_mask`와 product tuple은 정확히 일치해야
@@ -122,3 +129,4 @@ Gate는 archive member와 final link map을 검사하여 다음을 거부한다.
 - Linux 또는 FreeBSD product의 Parus object
 - normal product의 recovery network와 update writer
 - firmware personality 없는 product의 runtime service
+- service authority 중복, collection owner 미선택, service ABI/lifetime/mode budget 불일치

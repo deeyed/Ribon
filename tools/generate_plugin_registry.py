@@ -38,6 +38,28 @@ PRODUCT_KIND_VALUES = {
     "bootloader": "RIBON_PRODUCT_KIND_BOOTLOADER",
     "firmware": "RIBON_PRODUCT_KIND_FIRMWARE",
 }
+PLUGIN_KIND_VALUES = {
+    "architecture": "RIBON_PLUGIN_KIND_ARCHITECTURE",
+    "environment": "RIBON_PLUGIN_KIND_ENVIRONMENT",
+    "image-format": "RIBON_PLUGIN_KIND_IMAGE_FORMAT",
+    "boot-protocol": "RIBON_PLUGIN_KIND_BOOT_PROTOCOL",
+    "policy": "RIBON_PLUGIN_KIND_POLICY",
+    "firmware-personality": "RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY",
+    "platform": "RIBON_PLUGIN_KIND_PLATFORM",
+    "service": "RIBON_PLUGIN_KIND_SERVICE",
+}
+SERVICE_KIND_VALUES = {
+    "boot-source": "RIBON_SERVICE_KIND_BOOT_SOURCE",
+    "inactive-slot-storage": "RIBON_SERVICE_KIND_INACTIVE_SLOT_STORAGE",
+    "storage-flush": "RIBON_SERVICE_KIND_STORAGE_FLUSH",
+    "monotonic-timer": "RIBON_SERVICE_KIND_MONOTONIC_TIMER",
+    "watchdog": "RIBON_SERVICE_KIND_WATCHDOG",
+    "reset": "RIBON_SERVICE_KIND_RESET",
+    "persistent-metadata": "RIBON_SERVICE_KIND_PERSISTENT_METADATA",
+    "network-transport": "RIBON_SERVICE_KIND_NETWORK_TRANSPORT",
+    "random-nonce": "RIBON_SERVICE_KIND_RANDOM_NONCE",
+    "diagnostic-sink": "RIBON_SERVICE_KIND_DIAGNOSTIC_SINK",
+}
 PERSONALITY_MASKS = {
     "uefi-compatible": "RIBON_PERSONALITY_MASK_UEFI_COMPATIBLE",
     "bios-compatible": "RIBON_PERSONALITY_MASK_BIOS_COMPATIBLE",
@@ -121,6 +143,58 @@ def _sorted_strings(
     ):
         raise ValueError(f"{key} must be a sorted unique string list")
     return values
+
+
+def _provider_entries(
+    manifest: dict[str, object],
+    key: str,
+    kind_values: dict[str, str],
+    symbol_required: bool,
+) -> list[dict[str, str]]:
+    """Validate deterministic typed service or plugin selection metadata."""
+
+    values = manifest.get(key)
+    if not isinstance(values, list):
+        raise ValueError(f"{key} must be a list")
+    entries: list[dict[str, str]] = []
+    ids: list[str] = []
+    symbols: set[str] = set()
+    previous_kind = -1
+    kind_order = list(kind_values)
+    for value in values:
+        if not isinstance(value, dict):
+            raise ValueError(f"{key} entry must be an object")
+        item_id = value.get("id")
+        kind = value.get("kind")
+        symbol = value.get("symbol")
+        if (
+            not isinstance(item_id, str)
+            or not item_id
+            or not isinstance(kind, str)
+            or kind not in kind_values
+            or (symbol_required and
+                (not isinstance(symbol, str) or not symbol.startswith("ribon_")))
+            or (not symbol_required and symbol is not None)
+        ):
+            raise ValueError(f"{key} entry has an invalid id, kind, or symbol")
+        order = kind_order.index(kind)
+        if not symbol_required and order <= previous_kind:
+            raise ValueError(f"{key} must have one entry per kind in ABI order")
+        previous_kind = order
+        if item_id in ids:
+            raise ValueError(f"{key} IDs must be unique")
+        ids.append(item_id)
+        if symbol_required:
+            assert isinstance(symbol, str)
+            if symbol in symbols:
+                raise ValueError(f"duplicate {key} symbol: {symbol}")
+            symbols.add(symbol)
+            entries.append({"id": item_id, "kind": kind, "symbol": symbol})
+        else:
+            entries.append({"id": item_id, "kind": kind})
+    if symbol_required and ids != sorted(ids):
+        raise ValueError(f"{key} IDs must be sorted")
+    return entries
 
 
 def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, object]:
@@ -238,6 +312,19 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         if f"protocol.{protocol}" not in ids:
             raise ValueError(f"boot protocol has no selected plugin: {protocol}")
 
+    services = _provider_entries(
+        manifest, "services", SERVICE_KIND_VALUES, symbol_required=True
+    )
+    if product_kind == "bootloader" and not services:
+        raise ValueError("bootloader product requires typed services")
+    manifest["services"] = services
+    manifest["service_selections"] = _provider_entries(
+        manifest, "service_selections", SERVICE_KIND_VALUES, symbol_required=False
+    )
+    manifest["plugin_selections"] = _provider_entries(
+        manifest, "plugin_selections", PLUGIN_KIND_VALUES, symbol_required=False
+    )
+
     required = _capabilities(manifest, "required_capabilities")
     allowed = _capabilities(manifest, "allowed_capabilities")
     if not set(required).issubset(allowed):
@@ -271,6 +358,27 @@ def render(manifest: dict[str, object]) -> str:
         for item in plugins
     )
     pointers = "\n".join(f"    &{item['symbol']}," for item in plugins)
+    services = manifest["services"]
+    service_selections = manifest["service_selections"]
+    plugin_selections = manifest["plugin_selections"]
+    assert isinstance(services, list)
+    assert isinstance(service_selections, list)
+    assert isinstance(plugin_selections, list)
+    service_externs = "\n".join(
+        f"extern const struct RibonServiceDescriptor {item['symbol']};"
+        for item in services
+    )
+    service_pointers = "\n".join(f"    &{item['symbol']}," for item in services)
+    service_selection_entries = "\n".join(
+        "    { .kind = " + SERVICE_KIND_VALUES[item["kind"]] +
+        ", .id = \"" + item["id"] + "\" },"
+        for item in service_selections
+    )
+    plugin_selection_entries = "\n".join(
+        "    { .kind = " + PLUGIN_KIND_VALUES[item["kind"]] +
+        ", .id = \"" + item["id"] + "\" },"
+        for item in plugin_selections
+    )
     architecture = str(manifest["resolved_architecture"])
     product_kind = str(manifest["product_kind"])
     environment = manifest.get("environment")
@@ -288,6 +396,7 @@ def render(manifest: dict[str, object]) -> str:
 #include <Ribon/plugin/registry.h>
 
 {externs}
+{service_externs}
 
 static const struct RibonPluginDescriptor *const generated_plugins[] = {{
 {pointers}
@@ -298,6 +407,19 @@ static const struct RibonPluginRegistry generated_registry = {{
     .abi_version = RIBON_CORE_ABI_VERSION,
     .plugins = generated_plugins,
     .plugin_count = (uint32_t)(sizeof(generated_plugins) / sizeof(generated_plugins[0])),
+}};
+
+{("static const struct RibonServiceDescriptor *const generated_services[] = {\n" + service_pointers + "\n};") if services else ""}
+
+{("static const struct RibonServiceSelection generated_service_selections[] = {\n" + service_selection_entries + "\n};") if service_selections else ""}
+
+{("static const struct RibonPluginSelection generated_plugin_selections[] = {\n" + plugin_selection_entries + "\n};") if plugin_selections else ""}
+
+static const struct RibonServiceDirectory generated_service_directory = {{
+    .size = sizeof(generated_service_directory),
+    .abi_version = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
+    .services = {"generated_services" if services else "0"},
+    .service_count = {len(services)}u,
 }};
 
 static const struct RibonProductDescriptor generated_product = {{
@@ -315,6 +437,10 @@ static const struct RibonProductDescriptor generated_product = {{
         {required},
     .allowed_capabilities =
         {allowed},
+    .service_selections = {"generated_service_selections" if service_selections else "0"},
+    .service_selection_count = {len(service_selections)}u,
+    .plugin_selections = {"generated_plugin_selections" if plugin_selections else "0"},
+    .plugin_selection_count = {len(plugin_selections)}u,
     .limits = {{
         .max_memory_regions = {limits['max_memory_regions']}u,
         .max_load_segments = {limits['max_load_segments']}u,
@@ -333,6 +459,10 @@ const struct RibonPluginRegistry *ribon_generated_plugin_registry(void) {{
 
 const struct RibonProductDescriptor *ribon_generated_product_descriptor(void) {{
     return &generated_product;
+}}
+
+const struct RibonServiceDirectory *ribon_generated_service_directory(void) {{
+    return &generated_service_directory;
 }}
 """
 
@@ -358,6 +488,9 @@ def main() -> int:
             "environment": manifest.get("environment"),
             "firmware_personality": manifest.get("firmware_personality"),
             "platform": manifest["platform"],
+            "services": manifest["services"],
+            "service_selections": manifest["service_selections"],
+            "plugin_selections": manifest["plugin_selections"],
             "mode": manifest["mode"],
             "plugins": [item["id"] for item in manifest["plugins"]],
             "packages": [item["package"] for item in manifest["plugins"]],

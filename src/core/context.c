@@ -17,7 +17,7 @@ static int core_streq(const char *lhs, const char *rhs) {
 
 /** @brief Ribon library ABI version의 안정적인 문자열을 반환한다. */
 const char *ribon_version_string(void) {
-    return "0.3.0";
+    return "0.4.0";
 }
 
 /** @brief Mode 값의 안정적인 이름을 반환한다. */
@@ -76,6 +76,7 @@ int ribon_core_context_validate(const struct RibonCoreContext *context) {
         context->abi_version != RIBON_CORE_ABI_VERSION ||
         context->product == 0 ||
         context->registry == 0 ||
+        context->services == 0 ||
         context->mode == 0 ||
         context->arena == 0) {
         return RIBON_CORE_STATUS_BAD_ARGUMENT;
@@ -91,10 +92,19 @@ int ribon_core_context_validate(const struct RibonCoreContext *context) {
         context->arena->capacity < context->product->limits.arena_bytes) {
         return RIBON_CORE_STATUS_BAD_LIMIT;
     }
-    return ribon_plugin_registry_validate(
-        context->registry,
-        context->product,
-        context->mode->mode);
+    {
+        int status = ribon_plugin_registry_validate(
+            context->registry,
+            context->product,
+            context->mode->mode);
+        if (status != RIBON_CORE_STATUS_OK) {
+            return status;
+        }
+        return ribon_service_directory_validate(
+            context->services,
+            context->product,
+            context->mode->mode);
+    }
 }
 
 /** @brief Product, registry, mode와 빈 arena를 검증해 immutable context를 만든다. */
@@ -102,6 +112,7 @@ int ribon_context_initialize(
     struct RibonCoreContext *out,
     const struct RibonProductDescriptor *product,
     const struct RibonPluginRegistry *registry,
+    const struct RibonServiceDirectory *services,
     const struct RibonModeDescriptor *mode,
     struct RibonArena *arena) {
     struct RibonCoreContext candidate;
@@ -115,6 +126,7 @@ int ribon_context_initialize(
         .abi_version = RIBON_CORE_ABI_VERSION,
         .product = product,
         .registry = registry,
+        .services = services,
         .mode = mode,
         .arena = arena,
     };

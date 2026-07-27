@@ -5,6 +5,7 @@ qstar.staticlib "libribon_core" {
     "src/core/context.c",
     "src/core/plugin.c",
     "src/core/registry.c",
+    "src/core/service_directory.c",
   },
   configs = {
     "//qstar/policies:ribon_host_c",

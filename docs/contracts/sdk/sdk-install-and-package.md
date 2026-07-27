@@ -58,7 +58,8 @@ Plugin package는 다음 source-owned 파일을 모두 제공한다.
 - `package.json`: package ID, plugin ID와 kind, SDK ABI, file inventory
 - `plugin.qst`: static library와 dependency graph
 - public header: operation table과 exported descriptor
-- source: immutable `RibonPluginDescriptor`와 typed validator
+- source: immutable `RibonPluginDescriptor`, service package인 경우
+  `RibonServiceDescriptor`, 그리고 typed validator
 - contract test: positive graph와 malformed descriptor negative case
 - documentation: ownership, budget, lifetime과 non-claim
 
@@ -74,5 +75,6 @@ native ABI, MMIO, interrupt와 image 실행은 해당 target의 독립 evidence�
 ## 재현성
 
 같은 public header, archive, schema와 template 입력은 byte-identical install tree와
-동일한 SHA-256 file manifest를 생성해야 한다. Install manifest에는 timestamp,
+동일한 SHA-256 file manifest를 생성해야 한다. SDK ABI 2는 Core ABI 3, Plugin ABI major 3와
+typed service directory public header를 함께 고정한다. Install manifest에는 timestamp,
 checkout 절대 경로와 host-specific 작업 directory를 기록하지 않는다.

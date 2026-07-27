@@ -87,10 +87,19 @@ Ribon/protocol/confirmation.h
 Parus, Linux, FreeBSD, Multiboot와 chainload 구현은 이 API를 소비한다. 각 protocol의
 wire header는 해당 protocol package에 둔다.
 
+## Service API
+
+```text
+Ribon/service/directory.h
+```
+
+Service API는 immutable typed descriptor, caller-owned directory, authority/collection selection과
+operation lifetime을 제공한다. Monolithic service table, compatibility alias와 runtime locator는
+public ABI에 없다.
+
 ## Firmware API
 
 ```text
-Ribon/firmware/services.h
 Ribon/firmware/environment.h
 Ribon/firmware/personality.h
 ```

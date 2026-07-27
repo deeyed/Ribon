@@ -9,7 +9,7 @@
 
 /** @brief Ribon source release version이다. */
 #define RIBON_VERSION_MAJOR 0u
-#define RIBON_VERSION_MINOR 3u
+#define RIBON_VERSION_MINOR 4u
 #define RIBON_VERSION_PATCH 0u
 
 /** @brief 초기화된 Core context의 immutable library ABI다. */
@@ -18,6 +18,7 @@ struct RibonCoreContext {
     uint32_t abi_version; /**< `RIBON_CORE_ABI_VERSION`과 일치해야 한다. */
     const struct RibonProductDescriptor *product; /**< Generated product tuple이다. */
     const struct RibonPluginRegistry *registry; /**< Generated immutable registry다. */
+    const struct RibonServiceDirectory *services; /**< Generated immutable service directory다. */
     const struct RibonModeDescriptor *mode; /**< Link-time mode policy다. */
     struct RibonArena *arena; /**< Caller-owned fixed arena다. */
 };
@@ -31,6 +32,7 @@ int ribon_context_initialize(
     struct RibonCoreContext *out,
     const struct RibonProductDescriptor *product,
     const struct RibonPluginRegistry *registry,
+    const struct RibonServiceDirectory *services,
     const struct RibonModeDescriptor *mode,
     struct RibonArena *arena);
 

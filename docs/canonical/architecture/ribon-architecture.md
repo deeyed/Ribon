@@ -170,8 +170,26 @@ target
             + platform + image recipe + evidence policy
 ```
 
-QStar는 검증된 조합만 허용하고 immutable registry와 product descriptor를 생성한다.
+QStar는 검증된 조합만 허용하고 immutable plugin registry, typed service directory와
+product descriptor를 생성한다.
 Source scan, weak symbol, constructor side effect로 plugin을 발견하지 않는다.
+
+## Typed Service Graph
+
+Generic Core는 서비스별 giant callback struct나 전역 service locator를 소유하지 않는다.
+QStar manifest는 provider가 export한 `RibonServiceDescriptor`를 stable ID 순으로
+열거하고, 이를 caller-owned immutable `RibonServiceDirectory`로 생성한다. Context는
+registry와 directory를 allocation 없이 함께 검증한다.
+
+각 service descriptor는 typed role, stable ID, capability와 operation ABI, compatibility
+mask, 최초 소비 phase, native handle lifetime, arena/input/output/deadline budget, authority
+또는 collection cardinality를 명시한다.
+
+Boot source, timer, reset처럼 한 owner만 허용하는 role은 authority다. Transport,
+filesystem, diagnostic sink처럼 여러 static provider를 포함할 수 있는 role은 collection이다.
+Collection이 둘 이상이면 product의 explicit selection이 boot 전에 active owner를 고정한다.
+Core는 duplicate authority, missing authority, unselected ambiguous collection, phase inversion,
+ABI mismatch와 budget/mode violation을 fail-closed한다.
 
 ## Plugin 종류
 
@@ -227,7 +245,8 @@ required capability, memory budget, operation deadline, operation table을 선�
 
 QStar composition은 다음을 fail-closed로 거부한다.
 
-- 같은 kind와 ID의 중복 provider
+- duplicate stable ID 또는 authority provider
+- collection owner selection 없는 ambiguous provider
 - 지원되지 않는 ABI major
 - 충족되지 않는 required capability
 - dependency cycle과 phase 역전

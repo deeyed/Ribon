@@ -25,7 +25,7 @@ Ribon은 firmware consumer와 firmware provider를 서로 다른 plugin kind와 
 
 ## Consumer
 
-Environment Consumer는 기존 firmware가 제공하는 service를 Ribon service table로
+Environment Consumer는 기존 firmware가 제공하는 service를 typed Ribon service directory로
 변환한다.
 
 | Consumer | 소비하는 ABI |
@@ -51,7 +51,7 @@ event, protocol publication, variable namespace는 personality runtime에 한정
 Service directory와 provider context storage는 caller가 소유하며 generic Core registry에
 삽입하지 않는다.
 
-## Service table
+## Typed service directory
 
 Firmware service는 GUID 또는 stable service ID, ABI version, phase, ownership, operation
 table을 가진다. Native ABI table로 publish하기 전에 generic provider의 capability와

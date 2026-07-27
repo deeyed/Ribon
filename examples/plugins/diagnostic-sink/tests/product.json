@@ -21,6 +21,20 @@
     "claim": "installed SDK external package contract"
   },
   "max_plugins": 8,
+  "services": [
+    {
+      "id": "service.diagnostic-sink",
+      "kind": "diagnostic-sink",
+      "symbol": "ribon_example_diagnostic_sink_service_descriptor"
+    },
+    {
+      "id": "service.fixture.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_example_fixture_timer_service"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [],
   "required_capabilities": [
     "ARCHITECTURE",
     "DIAGNOSTIC_SINK",

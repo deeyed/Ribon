@@ -27,7 +27,8 @@ ownership을 고정한다.
 
 ## Library context
 
-Library 호출자는 product descriptor, service table, caller-owned arena를 제공한다.
+Library 호출자는 product descriptor, immutable typed service directory, caller-owned arena를
+제공한다.
 초기화는 입력 전체를 검증한 뒤 immutable context를 만든다.
 
 Context 검증 전에는 service callback, protocol operation, architecture operation을
@@ -107,7 +108,7 @@ protocol은 허용 format을 선택하지만 parser 구현을 복제하지 않�
 Image-format plugin은 destination range와 entry candidate를 반환하며 최종 register ABI를
 결정하지 않는다. Protocol과 architecture backend가 entry contract를 함께 검증한다.
 
-## Service 경계
+## Typed service directory
 
 Library는 다음 service를 typed operation으로 소비한다.
 
@@ -122,8 +123,15 @@ Library는 다음 service를 typed operation으로 소비한다.
 - cryptographic verify
 - watchdog와 reset reason
 
-Service native handle은 opaque context 안에 남는다. Operation은 timeout, maximum transfer,
-alignment, ownership, retry 가능 여부를 descriptor로 제공한다.
+Service native handle은 typed operation context 안에 남는다. `RibonServiceDescriptor`는
+stable ID, role, capability, lifecycle phase, lifetime, compatibility mask, budget, operation
+ABI와 validator를 함께 고정한다. `RibonServiceDirectory`는 caller-owned pointer array이며
+Core가 검증 중 heap allocation, probe 또는 callback을 수행하지 않는다.
+
+Authority role은 정확히 한 provider만 가진다. Collection role은 여러 static provider를
+가질 수 있지만 둘 이상일 때 product manifest의 selection이 exact stable ID를 고정해야
+한다. Plugin capability dependency가 collection provider에 의존하면 같은 product selection
+없이는 ambiguous로 거부한다.
 
 ## Allocation과 interrupt
 
@@ -162,9 +170,9 @@ network, inactive-slot writer, diagnostic fixture는 normal product에 링크하
 다음은 fail-closed 오류다.
 
 - descriptor magic, size, ABI 불일치
-- duplicate provider
+- duplicate authority 또는 stable ID
 - required capability 부재
-- phase dependency cycle
+- unselected ambiguous collection, phase dependency cycle 또는 phase inversion
 - budget 초과
 - source와 destination overlap
 - handoff capacity 초과

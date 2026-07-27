@@ -16,6 +16,9 @@
     "image",
     "evidence",
     "max_plugins",
+    "services",
+    "service_selections",
+    "plugin_selections",
     "required_capabilities",
     "allowed_capabilities",
     "limits",
@@ -36,6 +39,40 @@
     "image": {"$ref": "image-v1.json"},
     "evidence": {"type": "object"},
     "max_plugins": {"type": "integer", "minimum": 1, "maximum": 64},
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "symbol"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "symbol": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "service_selections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "plugin_selections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1}
+        }
+      }
+    },
     "required_capabilities": {"type": "array", "items": {"type": "string"}},
     "allowed_capabilities": {"type": "array", "items": {"type": "string"}},
     "limits": {"type": "object"},

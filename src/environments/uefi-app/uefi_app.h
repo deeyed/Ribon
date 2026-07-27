@@ -3,7 +3,7 @@
 
 #include <Ribon/boot/image.h>
 #include <Ribon/firmware/environment.h>
-#include <Ribon/firmware/services.h>
+#include <Ribon/service/directory.h>
 #include <Ribon/plugin/descriptor.h>
 
 #include <Uefi.h>
@@ -73,8 +73,8 @@ int ribon_uefi_app_exit_boot_services(
     RibonUefiRefreshPlanFn refresh,
     void *refresh_context);
 
-/** @brief 초기화된 UEFI application service table을 반환한다. */
-const struct RibonServiceTable *ribon_uefi_app_services(void);
+/** @brief 초기화된 UEFI application typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_uefi_app_service_directory(void);
 
 /** @brief UEFI application environment consumer plugin descriptor다. */
 extern const struct RibonPluginDescriptor ribon_uefi_app_environment_plugin_descriptor;

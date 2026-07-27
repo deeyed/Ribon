@@ -176,6 +176,7 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
         &core,
         product,
         registry,
+        ribon_generated_service_directory(),
         ribon_mode_selected(),
         &arena);
     if (status != RIBON_CORE_STATUS_OK) {
@@ -185,7 +186,6 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
     status = ribon_boot_session_initialize(
         &session,
         &core,
-        ribon_raw_fdt_services(),
         arch,
         protocol,
         image_format);

@@ -96,15 +96,30 @@ int main(void) {
     first.requires = 0u;
     second.requires = 0u;
     second.provides = RIBON_CAP_DIAGNOSTIC_SINK;
+    product = policy_product(RIBON_CAP_DIAGNOSTIC_SINK);
+    if (ribon_plugin_registry_validate(
+            &registry,
+            &product,
+            RIBON_MODE_NORMAL) != RIBON_CORE_STATUS_OK) {
+        fputs("descriptor_tests: collection provider was rejected\n", stderr);
+        return 1;
+    }
+
+    first.provides = RIBON_CAP_ARCHITECTURE;
+    second.provides = RIBON_CAP_ARCHITECTURE;
+    product = policy_product(RIBON_CAP_ARCHITECTURE);
     if (ribon_plugin_registry_validate(
             &registry,
             &product,
             RIBON_MODE_NORMAL) != RIBON_CORE_STATUS_DUPLICATE_PROVIDER) {
-        fputs("descriptor_tests: duplicate provider was not rejected\n", stderr);
+        fputs("descriptor_tests: duplicate authority was not rejected\n", stderr);
         return 1;
     }
 
+    first.provides = RIBON_CAP_DIAGNOSTIC_SINK;
     second.provides = RIBON_CAP_RANDOM_NONCE;
+    product = policy_product(
+        RIBON_CAP_DIAGNOSTIC_SINK | RIBON_CAP_RANDOM_NONCE);
     product.required_capabilities |= RIBON_CAP_NETWORK_TRANSPORT;
     product.allowed_capabilities |= RIBON_CAP_NETWORK_TRANSPORT;
     if (ribon_plugin_registry_validate(
@@ -115,6 +130,59 @@ int main(void) {
         return 1;
     }
 
-    puts("RIBON-R3-PLUGIN-DESCRIPTOR-NEGATIVE-OK");
+    {
+        struct RibonPluginDescriptor ambiguous_first = policy_descriptor(
+            "policy.a",
+            RIBON_CAP_DIAGNOSTIC_SINK,
+            0u);
+        struct RibonPluginDescriptor ambiguous_second = policy_descriptor(
+            "policy.b",
+            RIBON_CAP_DIAGNOSTIC_SINK,
+            0u);
+        struct RibonPluginDescriptor ambiguous_consumer = policy_descriptor(
+            "policy.c",
+            RIBON_CAP_RANDOM_NONCE,
+            RIBON_CAP_DIAGNOSTIC_SINK);
+        const struct RibonPluginDescriptor *ambiguous_plugins[] = {
+            &ambiguous_first,
+            &ambiguous_second,
+            &ambiguous_consumer,
+        };
+        const struct RibonPluginRegistry ambiguous_registry = {
+            .size = sizeof(ambiguous_registry),
+            .abi_version = RIBON_CORE_ABI_VERSION,
+            .plugins = ambiguous_plugins,
+            .plugin_count = 3u,
+        };
+        product = policy_product(
+            RIBON_CAP_DIAGNOSTIC_SINK | RIBON_CAP_RANDOM_NONCE);
+        if (ribon_plugin_registry_validate(
+                &ambiguous_registry,
+                &product,
+                RIBON_MODE_NORMAL) != RIBON_CORE_STATUS_AMBIGUOUS_SELECTION) {
+            fputs("descriptor_tests: ambiguous collection was accepted\n", stderr);
+            return 1;
+        }
+    }
+
+    first = policy_descriptor(
+        "policy.a",
+        RIBON_CAP_RANDOM_NONCE,
+        0u);
+    second = policy_descriptor(
+        "policy.b",
+        RIBON_CAP_DIAGNOSTIC_SINK,
+        RIBON_CAP_RANDOM_NONCE);
+    second.phase = RIBON_PLUGIN_PHASE_FOUNDATION;
+    product = policy_product(RIBON_CAP_DIAGNOSTIC_SINK | RIBON_CAP_RANDOM_NONCE);
+    if (ribon_plugin_registry_validate(
+            &registry,
+            &product,
+            RIBON_MODE_NORMAL) != RIBON_CORE_STATUS_PHASE_INVERSION) {
+        fputs("descriptor_tests: phase inversion was accepted\n", stderr);
+        return 1;
+    }
+
+    puts("RIBON-R6-SERVICE-GRAPH-NEGATIVE-OK");
     return 0;
 }

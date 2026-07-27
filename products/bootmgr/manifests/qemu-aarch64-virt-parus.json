@@ -23,6 +23,20 @@
     "claim": "QEMU virt AArch64 raw-FDT consumer boot"
   },
   "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.raw-fdt.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_raw_fdt_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_raw_fdt_monotonic_timer_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [],
   "required_capabilities": [
     "ARCHITECTURE",
     "BOOT_CONFIRMATION",

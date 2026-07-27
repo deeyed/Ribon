@@ -46,6 +46,7 @@ int main(void) {
             &context,
             product,
             registry,
+            ribon_generated_service_directory(),
             &mode,
             &arena);
     if (status != RIBON_CORE_STATUS_OK) {

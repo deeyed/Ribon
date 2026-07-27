@@ -19,6 +19,7 @@ X86_64_UEFI_FIRMWARE ?= /opt/homebrew/Cellar/qemu/11.0.2/share/qemu/edk2-x86_64-
 
 CFLAGS ?= -std=c11 -O2 -g
 WARNFLAGS := -Wall -Wextra -Werror
+DEPFLAGS := -MMD -MP
 CPPFLAGS += -I$(ROOT)/include
 FREESTANDING_FLAGS := -std=c11 -O2 -ffreestanding -fno-builtin \
 	-fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables \
@@ -60,14 +61,17 @@ TEST_BUILD_DIR := $(BUILD_ROOT)/tests
 TARGET_BUILD_ROOT := $(BUILD_ROOT)/targets
 RESULTS_DIR := $(BUILD_ROOT)/results
 
+# Header ABI hard cuts must rebuild every previously emitted object on the next make run.
+-include $(shell find "$(BUILD_ROOT)" -type f -name '*.d' -print 2>/dev/null)
+
 CORE_SRCS := \
 	src/core/arena.c \
 	src/core/context.c \
 	src/core/plugin.c \
-	src/core/registry.c
+	src/core/registry.c \
+	src/core/service_directory.c
 BOOT_LIB_SRCS := \
 	src/core/memory.c \
-	src/common/services.c \
 	src/common/environment.c \
 	src/common/protocol.c \
 	src/common/boot.c \
@@ -125,8 +129,8 @@ RAW_COMMON_SRCS := \
 	src/core/context.c \
 	src/core/plugin.c \
 	src/core/registry.c \
+	src/core/service_directory.c \
 	src/core/memory.c \
-	src/common/services.c \
 	src/common/environment.c \
 	src/common/protocol.c \
 	src/common/boot.c \
@@ -189,8 +193,8 @@ UEFI_SRCS := \
 	src/core/context.c \
 	src/core/plugin.c \
 	src/core/registry.c \
+	src/core/service_directory.c \
 	src/core/memory.c \
-	src/common/services.c \
 	src/common/environment.c \
 	src/common/protocol.c \
 	src/common/boot.c \
@@ -270,13 +274,13 @@ host-reference: $(HOST_REFERENCE)
 
 $(BUILD_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/obj/platforms/host/platform.o: CPPFLAGS += $(HOST_PLATFORM_DEFINES)
 
 $(TEST_BUILD_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(GENERATED_REGISTRY_C): $(HOST_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py \
@@ -287,7 +291,7 @@ $(GENERATED_REGISTRY_C): $(HOST_MANIFEST) tools/generate_plugin_registry.py
 
 $(GENERATED_REGISTRY_O): $(GENERATED_REGISTRY_C)
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(CORE_LIB): $(CORE_OBJS) Makefile
 	@mkdir -p $(@D)
@@ -393,15 +397,15 @@ $(QEMU_RAW_EMBED_C): $(QEMU_RAW_FIXTURE) tools/embed_binary.py
 
 $(QEMU_RAW_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	$(AARCH64_CC) $(AARCH64_FLAGS) -c $< -o $@
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(QEMU_RAW_DIR)/obj/generated/plugin_registry.o: $(QEMU_RAW_REGISTRY_C)
 	@mkdir -p $(@D)
-	$(AARCH64_CC) $(AARCH64_FLAGS) -c $< -o $@
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(QEMU_RAW_DIR)/obj/generated/embedded_payload.o: $(QEMU_RAW_EMBED_C)
 	@mkdir -p $(@D)
-	$(AARCH64_CC) $(AARCH64_FLAGS) -c $< -o $@
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(QEMU_RAW_DIR)/obj/targets/qemu-aarch64-virt-raw-fdt/entry.o: \
 	targets/qemu-aarch64-virt-raw-fdt/entry.S
@@ -437,15 +441,15 @@ $(RPI5_EMBED_C): $(RPI5_FIXTURE) tools/embed_binary.py
 
 $(RPI5_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	$(AARCH64_CC) $(AARCH64_FLAGS) -c $< -o $@
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(RPI5_DIR)/obj/generated/plugin_registry.o: $(RPI5_REGISTRY_C)
 	@mkdir -p $(@D)
-	$(AARCH64_CC) $(AARCH64_FLAGS) -c $< -o $@
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(RPI5_DIR)/obj/generated/embedded_payload.o: $(RPI5_EMBED_C)
 	@mkdir -p $(@D)
-	$(AARCH64_CC) $(AARCH64_FLAGS) -c $< -o $@
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(RPI5_DIR)/obj/targets/rpi5-aarch64-raw-fdt/entry.o: \
 	targets/rpi5-aarch64-raw-fdt/entry.S
@@ -480,15 +484,15 @@ $(UEFI_EMBED_C): $(UEFI_FIXTURE) tools/embed_binary.py
 
 $(UEFI_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	/usr/bin/clang $(UEFI_FLAGS) -c $< -o $@
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_DIR)/obj/generated/plugin_registry.o: $(UEFI_REGISTRY_C)
 	@mkdir -p $(@D)
-	/usr/bin/clang $(UEFI_FLAGS) -c $< -o $@
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_DIR)/obj/generated/embedded_payload.o: $(UEFI_EMBED_C)
 	@mkdir -p $(@D)
-	/usr/bin/clang $(UEFI_FLAGS) -c $< -o $@
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_APP): $(UEFI_OBJS)
 	$(LLD_LINK) /subsystem:efi_application /entry:efi_main /nodefaultlib \
@@ -513,7 +517,7 @@ $(BIOS_REGISTRY_C): $(BIOS_MANIFEST) tools/generate_plugin_registry.py
 
 $(BIOS_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	/usr/bin/clang $(BIOS_FLAGS) -c $< -o $@
+	/usr/bin/clang $(BIOS_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 bios-compile: $(BIOS_REGISTRY_C) $(BIOS_OBJECTS)
 	@echo "RIBON-R4-BIOS-COMPILE-ONLY-OK"
@@ -521,6 +525,7 @@ bios-compile: $(BIOS_REGISTRY_C) $(BIOS_OBJECTS)
 legacy-hard-cut:
 	$(PYTHON) tools/lint/legacy_os_hard_cut.py
 	$(PYTHON) tools/lint/library_plugin_hard_cut.py
+	$(PYTHON) tools/lint/monolithic_service_hard_cut.py
 
 check-public-api:
 	$(PYTHON) tools/lint/public_api_layout_lint.py
@@ -650,19 +655,19 @@ $(BIOS_PROVIDER_REGISTRY_C): $(BIOS_PROVIDER_MANIFEST) \
 
 $(UEFI_PROVIDER_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BIOS_PROVIDER_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_PROVIDER_DIR)/obj/generated/plugin_registry.o: $(UEFI_PROVIDER_REGISTRY_C)
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o: $(BIOS_PROVIDER_REGISTRY_C)
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_PROVIDER_BIN): $(UEFI_PROVIDER_OBJS) $(SDK_LIB) $(BOOT_LIB) $(CORE_LIB)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@

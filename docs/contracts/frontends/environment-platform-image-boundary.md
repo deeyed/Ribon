@@ -42,7 +42,8 @@ board alias, runtime probe로 다른 provider를 선택하지 않는다.
 ## Environment consumer
 
 Environment는 native input을 firmware-neutral `RibonBootEnvironment`와
-`RibonServiceTable`로 변환한다.
+typed `RibonServiceDescriptor` 집합으로 변환한다. QStar가 해당 집합을 product-owned
+immutable `RibonServiceDirectory`에 연결한다.
 
 | Environment | 소유하는 native 계약 |
 | --- | --- |

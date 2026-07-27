@@ -23,6 +23,20 @@
     "claim": "x86_64 UEFI application consumer boot"
   },
   "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.uefi-app.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_uefi_app_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_uefi_app_monotonic_timer_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [],
   "required_capabilities": [
     "ARCHITECTURE",
     "BOOT_CONFIRMATION",

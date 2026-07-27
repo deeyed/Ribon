@@ -4,6 +4,9 @@
 #include <stdint.h>
 
 #include <Ribon/core/capability.h>
+#include <Ribon/service/directory.h>
+
+struct RibonPluginSelection;
 
 /** @brief Product descriptor를 식별하는 magic이다. */
 #define RIBON_PRODUCT_DESCRIPTOR_MAGIC 0x52425044u
@@ -30,6 +33,10 @@ struct RibonProductDescriptor {
     uint32_t max_plugins; /**< Registry plugin 수 상한이다. */
     uint64_t required_capabilities; /**< Product가 요구하는 capability다. */
     uint64_t allowed_capabilities; /**< Product가 허용하는 capability다. */
+    const struct RibonServiceSelection *service_selections; /**< Collection owner selection이다. */
+    uint32_t service_selection_count; /**< Service selection element 수다. */
+    const struct RibonPluginSelection *plugin_selections; /**< Collection plugin owner selection이다. */
+    uint32_t plugin_selection_count; /**< Plugin selection element 수다. */
     struct RibonResourceLimits limits; /**< Product 자원 상한이다. */
 };
 

@@ -5,7 +5,6 @@
 #define RIBON_RAW_FDT_MAX_RESERVATIONS 8u
 
 static struct RibonRawFdtEntry *raw_fdt_entry;
-static struct RibonServiceTable raw_fdt_services;
 static int raw_fdt_services_initialized;
 
 /** @brief Memory boot source에서 bounded byte range를 복사한다. */
@@ -45,6 +44,109 @@ static int raw_fdt_timer_now(void *context, uint64_t *ticks_out) {
     *ticks_out = entry->arch_ops->monotonic_counter();
     return RIBON_SERVICE_STATUS_OK;
 }
+
+static struct RibonBootSourceServiceOperations raw_fdt_boot_source_operations = {
+    .size = sizeof(raw_fdt_boot_source_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .read = raw_fdt_boot_source_read,
+};
+
+static struct RibonMonotonicTimerServiceOperations raw_fdt_timer_operations = {
+    .size = sizeof(raw_fdt_timer_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .now = raw_fdt_timer_now,
+};
+
+static int raw_fdt_boot_source_validate(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonBootSourceServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &raw_fdt_boot_source_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return raw_fdt_services_initialized && operations->context == raw_fdt_entry &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->read == raw_fdt_boot_source_read;
+}
+
+static int raw_fdt_timer_validate(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonMonotonicTimerServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &raw_fdt_timer_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return raw_fdt_services_initialized && operations->context == raw_fdt_entry &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->frequency_hz == raw_fdt_entry->timer_frequency_hz &&
+           operations->now == raw_fdt_timer_now;
+}
+
+/** @brief raw-FDT consumer가 제공하는 typed boot-source authority다. */
+const struct RibonServiceDescriptor ribon_raw_fdt_boot_source_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_raw_fdt_boot_source_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_BOOT_SOURCE,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.raw-fdt.boot-source",
+    .provides = RIBON_CAP_BOOT_SOURCE_READ,
+    .architecture_mask = RIBON_ARCH_MASK_AARCH64 | RIBON_ARCH_MASK_RISCV64,
+    .environment_mask = RIBON_ENV_MASK_RAW_FDT,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 4096u,
+    .input_budget = 64ull * 1024ull * 1024ull,
+    .output_budget = 8192u,
+    .deadline_ms = 30000u,
+    .operations = &raw_fdt_boot_source_operations,
+    .operations_size = sizeof(raw_fdt_boot_source_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = raw_fdt_boot_source_validate,
+};
+
+/** @brief raw-FDT consumer가 제공하는 typed monotonic-timer authority다. */
+const struct RibonServiceDescriptor ribon_raw_fdt_monotonic_timer_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_raw_fdt_monotonic_timer_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_MONOTONIC_TIMER,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.raw-fdt.monotonic-timer",
+    .provides = RIBON_CAP_MONOTONIC_TIMER,
+    .architecture_mask = RIBON_ARCH_MASK_AARCH64 | RIBON_ARCH_MASK_RISCV64,
+    .environment_mask = RIBON_ENV_MASK_RAW_FDT,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 4096u,
+    .input_budget = 4096u,
+    .output_budget = 8192u,
+    .deadline_ms = 30000u,
+    .operations = &raw_fdt_timer_operations,
+    .operations_size = sizeof(raw_fdt_timer_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = raw_fdt_timer_validate,
+};
+
+static const struct RibonServiceDescriptor *const raw_fdt_services[] = {
+    &ribon_raw_fdt_boot_source_service_descriptor,
+    &ribon_raw_fdt_monotonic_timer_service_descriptor,
+};
+
+static const struct RibonServiceDirectory raw_fdt_service_directory = {
+    .size = sizeof(raw_fdt_service_directory),
+    .abi_version = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
+    .services = raw_fdt_services,
+    .service_count = (uint32_t)(sizeof(raw_fdt_services) / sizeof(raw_fdt_services[0])),
+};
 
 /** @brief 한 reserved range의 end를 overflow 없이 계산한다. */
 static int raw_fdt_range_end(
@@ -218,30 +320,26 @@ int ribon_raw_fdt_environment_capture(
         out->flags |= RIBON_BOOT_ENV_HAS_COMMAND_LINE;
     }
     raw_fdt_entry = entry;
-    ribon_service_table_init_unsupported(&raw_fdt_services, entry);
-    raw_fdt_services.capabilities =
-        RIBON_CAP_BOOT_SOURCE_READ |
-        RIBON_CAP_MONOTONIC_TIMER;
-    raw_fdt_services.timer_frequency_hz = entry->timer_frequency_hz;
-    raw_fdt_services.boot_source_read = raw_fdt_boot_source_read;
-    raw_fdt_services.timer_now = raw_fdt_timer_now;
+    raw_fdt_boot_source_operations.context = entry;
+    raw_fdt_timer_operations.context = entry;
+    raw_fdt_timer_operations.frequency_hz = entry->timer_frequency_hz;
     raw_fdt_services_initialized = 1;
     return RIBON_RAW_FDT_STATUS_OK;
 }
 
-/** @brief 초기화된 raw-FDT service table을 반환한다. */
-const struct RibonServiceTable *ribon_raw_fdt_services(void) {
+/** @brief 초기화된 raw-FDT typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_raw_fdt_service_directory(void) {
     return raw_fdt_services_initialized && raw_fdt_entry != 0 ?
-        &raw_fdt_services :
+        &raw_fdt_service_directory :
         0;
 }
 
-/** @brief raw-FDT descriptor와 live service table의 방향을 검증한다. */
+/** @brief raw-FDT descriptor와 live typed directory의 방향을 검증한다. */
 static int raw_fdt_environment_validate(
     const struct RibonPluginDescriptor *descriptor) {
     return raw_fdt_services_initialized &&
            descriptor != 0 &&
-           descriptor->operations == &raw_fdt_services &&
+           descriptor->operations == &raw_fdt_service_directory &&
            ribon_environment_plugin_operations_are_valid(descriptor);
 }
 
@@ -267,8 +365,8 @@ const struct RibonPluginDescriptor ribon_raw_fdt_environment_plugin_descriptor =
     .input_budget = 64ull * 1024ull * 1024ull,
     .output_budget = 8192u,
     .deadline_ms = 30000u,
-    .operations = &raw_fdt_services,
-    .operations_size = sizeof(raw_fdt_services),
-    .operations_abi = RIBON_SERVICE_TABLE_ABI_VERSION,
+    .operations = &raw_fdt_service_directory,
+    .operations_size = sizeof(raw_fdt_service_directory),
+    .operations_abi = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
     .validate_operations = raw_fdt_environment_validate,
 };

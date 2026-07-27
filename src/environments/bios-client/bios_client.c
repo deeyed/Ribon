@@ -6,7 +6,6 @@
 #define RIBON_BIOS_E820_MAX_ENTRIES 256u
 
 static struct RibonBiosClientContext *bios_context;
-static struct RibonServiceTable bios_services;
 static int bios_services_initialized;
 
 /** @brief BIOS E820 type을 generic ownership kind로 변환한다. */
@@ -68,6 +67,110 @@ static int bios_timer_now(void *opaque, uint64_t *ticks_out) {
     *ticks_out = context->native->monotonic_counter(context->native_context);
     return RIBON_SERVICE_STATUS_OK;
 }
+
+static struct RibonBootSourceServiceOperations bios_boot_source_operations = {
+    .size = sizeof(bios_boot_source_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .read = bios_boot_source_read,
+};
+
+static struct RibonMonotonicTimerServiceOperations bios_timer_operations = {
+    .size = sizeof(bios_timer_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .frequency_hz = 18u,
+    .now = bios_timer_now,
+};
+
+/** @brief BIOS boot-source descriptor가 live native context를 참조하는지 검사한다. */
+static int bios_boot_source_validate(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonBootSourceServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &bios_boot_source_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return bios_services_initialized && operations->context == bios_context &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->read == bios_boot_source_read;
+}
+
+/** @brief BIOS monotonic-timer descriptor가 live native context를 참조하는지 검사한다. */
+static int bios_timer_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonMonotonicTimerServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &bios_timer_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return bios_services_initialized && operations->context == bios_context &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->frequency_hz == 18u && operations->now == bios_timer_now;
+}
+
+/** @brief BIOS client가 제공하는 typed boot-source authority다. */
+const struct RibonServiceDescriptor ribon_bios_client_boot_source_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_bios_client_boot_source_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_BOOT_SOURCE,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.bios-client.boot-source",
+    .provides = RIBON_CAP_BOOT_SOURCE_READ,
+    .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .environment_mask = RIBON_ENV_MASK_BIOS,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 4096u,
+    .input_budget = 64ull * 1024ull * 1024ull,
+    .output_budget = 65536u,
+    .deadline_ms = 30000u,
+    .operations = &bios_boot_source_operations,
+    .operations_size = sizeof(bios_boot_source_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = bios_boot_source_validate,
+};
+
+/** @brief BIOS client가 제공하는 typed monotonic-timer authority다. */
+const struct RibonServiceDescriptor ribon_bios_client_monotonic_timer_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_bios_client_monotonic_timer_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_MONOTONIC_TIMER,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.bios-client.monotonic-timer",
+    .provides = RIBON_CAP_MONOTONIC_TIMER,
+    .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .environment_mask = RIBON_ENV_MASK_BIOS,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 4096u,
+    .input_budget = 4096u,
+    .output_budget = 65536u,
+    .deadline_ms = 30000u,
+    .operations = &bios_timer_operations,
+    .operations_size = sizeof(bios_timer_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = bios_timer_validate,
+};
+
+static const struct RibonServiceDescriptor *const bios_services[] = {
+    &ribon_bios_client_boot_source_service_descriptor,
+    &ribon_bios_client_monotonic_timer_service_descriptor,
+};
+
+static const struct RibonServiceDirectory bios_service_directory = {
+    .size = sizeof(bios_service_directory),
+    .abi_version = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
+    .services = bios_services,
+    .service_count = (uint32_t)(sizeof(bios_services) / sizeof(bios_services[0])),
+};
 
 /** @brief E820과 EDD boundary를 firmware-neutral environment로 capture한다. */
 int ribon_bios_client_capture(
@@ -133,13 +236,8 @@ int ribon_bios_client_capture(
         RIBON_BOOT_ENV_HAS_MEMORY_MAP |
         RIBON_BOOT_ENV_HAS_BOOT_MEDIA;
     bios_context = context;
-    ribon_service_table_init_unsupported(&bios_services, context);
-    bios_services.capabilities =
-        RIBON_CAP_BOOT_SOURCE_READ |
-        RIBON_CAP_MONOTONIC_TIMER;
-    bios_services.timer_frequency_hz = 18u;
-    bios_services.boot_source_read = bios_boot_source_read;
-    bios_services.timer_now = bios_timer_now;
+    bios_boot_source_operations.context = context;
+    bios_timer_operations.context = context;
     bios_services_initialized = 1;
     return RIBON_BIOS_CLIENT_STATUS_OK;
 }
@@ -157,19 +255,19 @@ int ribon_bios_long_mode_contract_is_valid(
            contract->entry_point != 0u;
 }
 
-/** @brief 초기화된 BIOS client service table을 반환한다. */
-const struct RibonServiceTable *ribon_bios_client_services(void) {
+/** @brief 초기화된 BIOS client typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_bios_client_service_directory(void) {
     return bios_services_initialized && bios_context != 0 ?
-        &bios_services :
+        &bios_service_directory :
         0;
 }
 
-/** @brief BIOS environment descriptor와 live service table을 검증한다. */
+/** @brief BIOS environment descriptor와 live typed directory를 검증한다. */
 static int bios_environment_validate(
     const struct RibonPluginDescriptor *descriptor) {
     return bios_services_initialized &&
            descriptor != 0 &&
-           descriptor->operations == &bios_services &&
+           descriptor->operations == &bios_service_directory &&
            ribon_environment_plugin_operations_are_valid(descriptor);
 }
 
@@ -195,8 +293,8 @@ const struct RibonPluginDescriptor ribon_bios_client_environment_plugin_descript
     .input_budget = 64ull * 1024ull * 1024ull,
     .output_budget = 65536u,
     .deadline_ms = 30000u,
-    .operations = &bios_services,
-    .operations_size = sizeof(bios_services),
-    .operations_abi = RIBON_SERVICE_TABLE_ABI_VERSION,
+    .operations = &bios_service_directory,
+    .operations_size = sizeof(bios_service_directory),
+    .operations_abi = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
     .validate_operations = bios_environment_validate,
 };

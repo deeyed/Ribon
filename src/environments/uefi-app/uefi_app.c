@@ -6,7 +6,6 @@
 #include <string.h>
 
 static struct RibonUefiAppContext *uefi_context;
-static struct RibonServiceTable uefi_services;
 static int uefi_services_initialized;
 
 /** @brief UEFI memory type을 Ribon ownership kind로 변환한다. */
@@ -106,6 +105,110 @@ static int uefi_timer_now(void *context, uint64_t *ticks_out) {
     return RIBON_SERVICE_STATUS_OK;
 }
 
+static struct RibonBootSourceServiceOperations uefi_boot_source_operations = {
+    .size = sizeof(uefi_boot_source_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .read = uefi_boot_source_read,
+};
+
+static struct RibonMonotonicTimerServiceOperations uefi_timer_operations = {
+    .size = sizeof(uefi_timer_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .frequency_hz = 1u,
+    .now = uefi_timer_now,
+};
+
+/** @brief UEFI boot-source descriptor가 live native context를 참조하는지 검사한다. */
+static int uefi_boot_source_validate(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonBootSourceServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &uefi_boot_source_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return uefi_services_initialized && operations->context == uefi_context &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->read == uefi_boot_source_read;
+}
+
+/** @brief UEFI monotonic-timer descriptor가 live native context를 참조하는지 검사한다. */
+static int uefi_timer_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonMonotonicTimerServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &uefi_timer_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return uefi_services_initialized && operations->context == uefi_context &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->frequency_hz == 1u && operations->now == uefi_timer_now;
+}
+
+/** @brief UEFI application이 제공하는 typed boot-source authority다. */
+const struct RibonServiceDescriptor ribon_uefi_app_boot_source_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_uefi_app_boot_source_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_BOOT_SOURCE,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_QUIESCE,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.uefi-app.boot-source",
+    .provides = RIBON_CAP_BOOT_SOURCE_READ,
+    .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .environment_mask = RIBON_ENV_MASK_UEFI,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 8192u,
+    .input_budget = 64ull * 1024ull * 1024ull,
+    .output_budget = 65536u,
+    .deadline_ms = 30000u,
+    .operations = &uefi_boot_source_operations,
+    .operations_size = sizeof(uefi_boot_source_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = uefi_boot_source_validate,
+};
+
+/** @brief UEFI application이 제공하는 typed monotonic-timer authority다. */
+const struct RibonServiceDescriptor ribon_uefi_app_monotonic_timer_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_uefi_app_monotonic_timer_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_MONOTONIC_TIMER,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_QUIESCE,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.uefi-app.monotonic-timer",
+    .provides = RIBON_CAP_MONOTONIC_TIMER,
+    .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .environment_mask = RIBON_ENV_MASK_UEFI,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 8192u,
+    .input_budget = 4096u,
+    .output_budget = 65536u,
+    .deadline_ms = 30000u,
+    .operations = &uefi_timer_operations,
+    .operations_size = sizeof(uefi_timer_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = uefi_timer_validate,
+};
+
+static const struct RibonServiceDescriptor *const uefi_services[] = {
+    &ribon_uefi_app_boot_source_service_descriptor,
+    &ribon_uefi_app_monotonic_timer_service_descriptor,
+};
+
+static const struct RibonServiceDirectory uefi_service_directory = {
+    .size = sizeof(uefi_service_directory),
+    .abi_version = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
+    .services = uefi_services,
+    .service_count = (uint32_t)(sizeof(uefi_services) / sizeof(uefi_services[0])),
+};
+
 /** @brief UEFI native state와 memory-source service를 결합한다. */
 int ribon_uefi_app_initialize(
     struct RibonUefiAppContext *context,
@@ -130,13 +233,8 @@ int ribon_uefi_app_initialize(
     context->descriptor_size = 0u;
     context->descriptor_version = 0u;
     uefi_context = context;
-    ribon_service_table_init_unsupported(&uefi_services, context);
-    uefi_services.capabilities =
-        RIBON_CAP_BOOT_SOURCE_READ |
-        RIBON_CAP_MONOTONIC_TIMER;
-    uefi_services.timer_frequency_hz = 1u;
-    uefi_services.boot_source_read = uefi_boot_source_read;
-    uefi_services.timer_now = uefi_timer_now;
+    uefi_boot_source_operations.context = context;
+    uefi_timer_operations.context = context;
     uefi_services_initialized = 1;
     return RIBON_UEFI_APP_STATUS_OK;
 }
@@ -337,19 +435,19 @@ int ribon_uefi_app_exit_boot_services(
     return RIBON_UEFI_APP_STATUS_RETRY_EXHAUSTED;
 }
 
-/** @brief 초기화된 UEFI application service table을 반환한다. */
-const struct RibonServiceTable *ribon_uefi_app_services(void) {
+/** @brief 초기화된 UEFI application typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_uefi_app_service_directory(void) {
     return uefi_services_initialized && uefi_context != 0 ?
-        &uefi_services :
+        &uefi_service_directory :
         0;
 }
 
-/** @brief UEFI environment descriptor와 live service table을 검증한다. */
+/** @brief UEFI environment descriptor와 live typed directory를 검증한다. */
 static int uefi_environment_validate(
     const struct RibonPluginDescriptor *descriptor) {
     return uefi_services_initialized &&
            descriptor != 0 &&
-           descriptor->operations == &uefi_services &&
+           descriptor->operations == &uefi_service_directory &&
            ribon_environment_plugin_operations_are_valid(descriptor);
 }
 
@@ -375,8 +473,8 @@ const struct RibonPluginDescriptor ribon_uefi_app_environment_plugin_descriptor 
     .input_budget = 64ull * 1024ull * 1024ull,
     .output_budget = 65536ull,
     .deadline_ms = 30000u,
-    .operations = &uefi_services,
-    .operations_size = sizeof(uefi_services),
-    .operations_abi = RIBON_SERVICE_TABLE_ABI_VERSION,
+    .operations = &uefi_service_directory,
+    .operations_size = sizeof(uefi_service_directory),
+    .operations_abi = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
     .validate_operations = uefi_environment_validate,
 };

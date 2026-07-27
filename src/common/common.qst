@@ -2,7 +2,6 @@ qstar.staticlib "libribon_boot" {
   artifact_name = "libribon-boot.a",
   sources = {
     "src/core/memory.c",
-    "src/common/services.c",
     "src/common/environment.c",
     "src/common/protocol.c",
     "src/common/boot.c",

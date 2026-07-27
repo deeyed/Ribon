@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include <Ribon/firmware/services.h>
+#include <Ribon/service/directory.h>
 #include <Ribon/plugin/descriptor.h>
 
 /** @brief Firmware personality descriptor를 식별하는 magic이다. */

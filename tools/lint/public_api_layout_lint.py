@@ -25,7 +25,7 @@ REQUIRED = {
     "protocol/protocol.h",
     "protocol/entry_contract.h",
     "protocol/confirmation.h",
-    "firmware/services.h",
+    "service/directory.h",
     "firmware/environment.h",
     "firmware/personality.h",
     "arch/ops.h",

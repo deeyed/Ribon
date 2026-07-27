@@ -81,22 +81,112 @@ static int host_timer_now(void *context, uint64_t *ticks_out) {
     return RIBON_SERVICE_STATUS_OK;
 }
 
-static struct RibonServiceTable host_services;
-static int host_services_initialized;
+static const struct RibonBootSourceServiceOperations host_boot_source_operations = {
+    .size = sizeof(host_boot_source_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .read = host_boot_source_read,
+};
 
-/** @brief Host reference product의 immutable service table을 반환한다. */
-const struct RibonServiceTable *ribon_host_services(void) {
-    if (!host_services_initialized) {
-        ribon_service_table_init_unsupported(&host_services, 0);
-        host_services.capabilities =
-            RIBON_CAP_BOOT_SOURCE_READ |
-            RIBON_CAP_MONOTONIC_TIMER;
-        host_services.timer_frequency_hz = 1000000u;
-        host_services.boot_source_read = host_boot_source_read;
-        host_services.timer_now = host_timer_now;
-        host_services_initialized = 1;
+static const struct RibonMonotonicTimerServiceOperations host_timer_operations = {
+    .size = sizeof(host_timer_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .frequency_hz = 1000000u,
+    .now = host_timer_now,
+};
+
+/** @brief Host boot-source descriptor와 immutable operation table을 함께 검사한다. */
+static int host_boot_source_validate(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonBootSourceServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &host_boot_source_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
     }
-    return &host_services;
+    operations = descriptor->operations;
+    return operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->read == host_boot_source_read;
+}
+
+/** @brief Host monotonic-timer descriptor와 immutable operation table을 함께 검사한다. */
+static int host_timer_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonMonotonicTimerServiceOperations *operations;
+    if (descriptor == 0 || descriptor->operations != &host_timer_operations ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->frequency_hz == 1000000u &&
+           operations->now == host_timer_now;
+}
+
+/** @brief Host fixture가 제공하는 typed boot-source authority다. */
+const struct RibonServiceDescriptor ribon_host_boot_source_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_host_boot_source_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_BOOT_SOURCE,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.host.boot-source",
+    .provides = RIBON_CAP_BOOT_SOURCE_READ,
+    .architecture_mask = RIBON_ARCH_MASK_ALL,
+    .environment_mask = RIBON_ENV_MASK_HOST,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 2048u,
+    .input_budget = 64ull * 1024ull * 1024ull,
+    .output_budget = 4096u,
+    .deadline_ms = 30000u,
+    .operations = &host_boot_source_operations,
+    .operations_size = sizeof(host_boot_source_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = host_boot_source_validate,
+};
+
+/** @brief Host fixture가 제공하는 typed monotonic-timer authority다. */
+const struct RibonServiceDescriptor ribon_host_monotonic_timer_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_host_monotonic_timer_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_MONOTONIC_TIMER,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.host.monotonic-timer",
+    .provides = RIBON_CAP_MONOTONIC_TIMER,
+    .architecture_mask = RIBON_ARCH_MASK_ALL,
+    .environment_mask = RIBON_ENV_MASK_HOST,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 2048u,
+    .input_budget = 4096u,
+    .output_budget = 4096u,
+    .deadline_ms = 30000u,
+    .operations = &host_timer_operations,
+    .operations_size = sizeof(host_timer_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = host_timer_validate,
+};
+
+static const struct RibonServiceDescriptor *const host_services[] = {
+    &ribon_host_boot_source_service_descriptor,
+    &ribon_host_monotonic_timer_service_descriptor,
+};
+
+static const struct RibonServiceDirectory host_service_directory = {
+    .size = sizeof(host_service_directory),
+    .abi_version = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
+    .services = host_services,
+    .service_count = (uint32_t)(sizeof(host_services) / sizeof(host_services[0])),
+};
+
+/** @brief Host reference product의 immutable typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_host_service_directory(void) {
+    return &host_service_directory;
 }
 
 /** @brief Host reference product의 deterministic environment fixture를 수집한다. */
@@ -127,8 +217,7 @@ int ribon_host_environment_collect(
 
 static int host_environment_validate(
     const struct RibonPluginDescriptor *descriptor) {
-    const struct RibonServiceTable *services = ribon_host_services();
-    if (descriptor == 0 || descriptor->operations != services) {
+    if (descriptor == 0 || descriptor->operations != &host_service_directory) {
         return 0;
     }
     return ribon_environment_plugin_operations_are_valid(descriptor);
@@ -156,8 +245,8 @@ const struct RibonPluginDescriptor ribon_host_environment_plugin_descriptor = {
     .input_budget = 64ull * 1024ull * 1024ull,
     .output_budget = 4096u,
     .deadline_ms = 30000u,
-    .operations = &host_services,
-    .operations_size = sizeof(host_services),
-    .operations_abi = RIBON_SERVICE_TABLE_ABI_VERSION,
+    .operations = &host_service_directory,
+    .operations_size = sizeof(host_service_directory),
+    .operations_abi = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
     .validate_operations = host_environment_validate,
 };

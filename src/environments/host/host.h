@@ -2,10 +2,10 @@
 #define RIBON_ENVIRONMENTS_HOST_HOST_H
 
 #include <Ribon/firmware/environment.h>
-#include <Ribon/firmware/services.h>
+#include <Ribon/service/directory.h>
 
-/** @brief Host reference product의 immutable service table을 반환한다. */
-const struct RibonServiceTable *ribon_host_services(void);
+/** @brief Host reference product의 immutable typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_host_service_directory(void);
 
 /** @brief Host reference product의 deterministic environment fixture를 수집한다. */
 int ribon_host_environment_collect(

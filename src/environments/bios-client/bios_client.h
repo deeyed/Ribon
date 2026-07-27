@@ -2,7 +2,7 @@
 #define RIBON_ENVIRONMENTS_BIOS_CLIENT_H
 
 #include <Ribon/firmware/environment.h>
-#include <Ribon/firmware/services.h>
+#include <Ribon/service/directory.h>
 #include <Ribon/plugin/descriptor.h>
 
 /** @brief BIOS E820 native entry의 bounded semantic view다. */
@@ -69,8 +69,8 @@ int ribon_bios_client_capture(
 int ribon_bios_long_mode_contract_is_valid(
     const struct RibonBiosLongModeContract *contract);
 
-/** @brief 초기화된 BIOS client service table을 반환한다. */
-const struct RibonServiceTable *ribon_bios_client_services(void);
+/** @brief 초기화된 BIOS client typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_bios_client_service_directory(void);
 
 /** @brief BIOS client environment consumer plugin descriptor다. */
 extern const struct RibonPluginDescriptor ribon_bios_client_environment_plugin_descriptor;

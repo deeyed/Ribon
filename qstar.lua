@@ -1,6 +1,6 @@
 qstar.project {
   name = "ribon",
-  version = "0.3.0",
+  version = "0.4.0",
   root = ".",
   build_dir = "build/qstar",
   generated_dir = "build/qstar/generated",

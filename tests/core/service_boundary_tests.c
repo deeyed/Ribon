@@ -1,5 +1,5 @@
 #include <Ribon/core/context.h>
-#include <Ribon/firmware/services.h>
+#include <Ribon/service/directory.h>
 
 #include "../../src/environments/host/host.h"
 
@@ -33,17 +33,26 @@ static void test_arena(void) {
 }
 
 static void test_services(void) {
-    const struct RibonServiceTable *services = ribon_host_services();
-    struct RibonServiceTable invalid = *services;
-    CHECK(ribon_service_table_is_valid(services));
-    CHECK(ribon_service_table_supports(
-        services,
-        RIBON_CAP_BOOT_SOURCE_READ | RIBON_CAP_MONOTONIC_TIMER));
-    invalid.timer_frequency_hz = 0u;
-    CHECK(!ribon_service_table_is_valid(&invalid));
-    invalid = *services;
-    invalid.capabilities |= RIBON_CAP_NETWORK_TRANSPORT;
-    CHECK(!ribon_service_table_is_valid(&invalid));
+    const struct RibonServiceDirectory *services =
+        ribon_generated_service_directory();
+    struct RibonServiceDirectory invalid = *services;
+    CHECK(ribon_service_directory_validate(
+              services,
+              ribon_generated_product_descriptor(),
+              RIBON_MODE_NORMAL) == RIBON_CORE_STATUS_OK);
+    CHECK(ribon_service_directory_find_exact(
+              services,
+              RIBON_SERVICE_KIND_BOOT_SOURCE,
+              "service.host.boot-source") != 0);
+    CHECK(ribon_service_directory_find_exact(
+              services,
+              RIBON_SERVICE_KIND_MONOTONIC_TIMER,
+              "service.host.monotonic-timer") != 0);
+    invalid.abi_version += 1u;
+    CHECK(ribon_service_directory_validate(
+              &invalid,
+              ribon_generated_product_descriptor(),
+              RIBON_MODE_NORMAL) == RIBON_CORE_STATUS_INVALID_DESCRIPTOR);
 }
 
 static void test_context(void) {
@@ -57,6 +66,7 @@ static void test_context(void) {
               &context,
               ribon_generated_product_descriptor(),
               ribon_generated_plugin_registry(),
+              ribon_generated_service_directory(),
               ribon_mode_selected(),
               &arena) == RIBON_CORE_STATUS_OK);
     CHECK(context.product == ribon_generated_product_descriptor());
@@ -70,6 +80,7 @@ static void test_context(void) {
               &context,
               &invalid_product,
               ribon_generated_plugin_registry(),
+              ribon_generated_service_directory(),
               ribon_mode_selected(),
               &arena) == RIBON_CORE_STATUS_INVALID_DESCRIPTOR);
 }
@@ -82,6 +93,6 @@ int main(void) {
         fprintf(stderr, "service_boundary_tests: %d failure(s)\n", failures);
         return 1;
     }
-    puts("RIBON-R3-LIBRARY-SERVICE-BOUNDARY-OK");
+    puts("RIBON-R6-TYPED-SERVICE-DIRECTORY-OK");
     return 0;
 }

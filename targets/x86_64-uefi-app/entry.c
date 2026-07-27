@@ -197,6 +197,7 @@ EFI_STATUS EFIAPI efi_main(
         &core,
         ribon_generated_product_descriptor(),
         ribon_generated_plugin_registry(),
+        ribon_generated_service_directory(),
         ribon_mode_selected(),
         &arena);
     if (status != RIBON_CORE_STATUS_OK) {
@@ -206,7 +207,6 @@ EFI_STATUS EFIAPI efi_main(
     status = ribon_boot_session_initialize(
         &session,
         &core,
-        ribon_uefi_app_services(),
         arch,
         protocol,
         image_format);

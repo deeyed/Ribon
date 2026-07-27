@@ -3,7 +3,7 @@
 
 #include <Ribon/arch/ops.h>
 #include <Ribon/firmware/environment.h>
-#include <Ribon/firmware/services.h>
+#include <Ribon/service/directory.h>
 #include <Ribon/plugin/descriptor.h>
 
 /** @brief Target가 raw-FDT capture에 제공하는 reserved physical range다. */
@@ -47,8 +47,8 @@ int ribon_raw_fdt_environment_capture(
     struct RibonRawFdtEntry *entry,
     struct RibonBootEnvironment *out);
 
-/** @brief 초기화된 raw-FDT service table을 반환한다. */
-const struct RibonServiceTable *ribon_raw_fdt_services(void);
+/** @brief 초기화된 raw-FDT typed service directory를 반환한다. */
+const struct RibonServiceDirectory *ribon_raw_fdt_service_directory(void);
 
 /** @brief raw-FDT environment consumer plugin descriptor다. */
 extern const struct RibonPluginDescriptor ribon_raw_fdt_environment_plugin_descriptor;

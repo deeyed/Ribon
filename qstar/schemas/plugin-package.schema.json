@@ -21,7 +21,7 @@
     "package_id": {"type": "string", "minLength": 1},
     "plugin_id": {"type": "string", "minLength": 1},
     "plugin_kind": {"type": "string", "minLength": 1},
-    "sdk_abi": {"const": 1},
+    "sdk_abi": {"const": 2},
     "public_headers": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "sources": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "tests": {"type": "array", "minItems": 1, "items": {"type": "string"}},

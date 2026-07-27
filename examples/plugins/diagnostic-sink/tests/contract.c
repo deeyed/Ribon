@@ -45,6 +45,7 @@ int main(void) {
             &context,
             product,
             registry,
+            ribon_generated_service_directory(),
             &mode,
             &arena) != RIBON_CORE_STATUS_OK ||
         ribon_sdk_host_validate_package(
@@ -90,6 +91,6 @@ int main(void) {
             return 1;
         }
     }
-    puts("RIBON-R5-EXTERNAL-PLUGIN-PACKAGE-OK");
+    puts("RIBON-R6-EXTERNAL-TYPED-SERVICE-PACKAGE-OK");
     return 0;
 }

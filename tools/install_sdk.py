@@ -49,7 +49,7 @@ def main() -> int:
         "\n"
         "Name: Ribon SDK\n"
         "Description: Deterministic boot and firmware plugin SDK\n"
-        "Version: 0.3.0\n"
+        "Version: 0.4.0\n"
         "Cflags: -I${includedir}\n"
         "Libs: -L${libdir} -lribon-sdk -lribon-boot -lribon-core\n",
         encoding="utf-8",
@@ -58,10 +58,10 @@ def main() -> int:
     installed = sorted(path for path in root.rglob("*") if path.is_file())
     manifest = {
         "schema_version": 1,
-        "sdk_abi": 1,
-        "core_abi": 2,
-        "plugin_abi": {"major": 2, "minor": 0},
-        "source_version": "0.3.0",
+        "sdk_abi": 2,
+        "core_abi": 3,
+        "plugin_abi": {"major": 3, "minor": 0},
+        "source_version": "0.4.0",
         "files": {
             path.relative_to(root).as_posix(): digest(path)
             for path in installed

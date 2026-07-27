@@ -21,6 +21,9 @@
     "claim": "minimal BIOS-compatible provider composition without conformance"
   },
   "max_plugins": 8,
+  "services": [],
+  "service_selections": [],
+  "plugin_selections": [],
   "required_capabilities": [
     "ARCHITECTURE",
     "FIRMWARE_PERSONALITY",

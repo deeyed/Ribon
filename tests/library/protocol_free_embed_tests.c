@@ -1,4 +1,5 @@
 #include <Ribon/core/context.h>
+#include <Ribon/service/directory.h>
 
 #include <stdio.h>
 
@@ -8,6 +9,15 @@ static int validate_policy(const struct RibonPluginDescriptor *descriptor) {
     return descriptor != 0 &&
            descriptor->kind == RIBON_PLUGIN_KIND_POLICY &&
            descriptor->operations == &policy_operations;
+}
+
+static int validate_diagnostic_service(
+    const struct RibonServiceDescriptor *descriptor) {
+    return descriptor != 0 &&
+           descriptor->kind == RIBON_SERVICE_KIND_DIAGNOSTIC_SINK &&
+           descriptor->operations == &policy_operations &&
+           descriptor->operations_size == sizeof(policy_operations) &&
+           descriptor->operations_abi == 1u;
 }
 
 int main(void) {
@@ -38,6 +48,35 @@ int main(void) {
         .abi_version = RIBON_CORE_ABI_VERSION,
         .plugins = plugins,
         .plugin_count = 1u,
+    };
+    const struct RibonServiceDescriptor diagnostic_service = {
+        .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+        .size = sizeof(diagnostic_service),
+        .abi_version = RIBON_SERVICE_ABI_VERSION,
+        .kind = RIBON_SERVICE_KIND_DIAGNOSTIC_SINK,
+        .cardinality = RIBON_SERVICE_CARDINALITY_COLLECTION,
+        .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+        .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+        .id = "service.embed.diagnostic",
+        .provides = RIBON_CAP_DIAGNOSTIC_SINK,
+        .architecture_mask = RIBON_ARCH_MASK_X86_64,
+        .environment_mask = RIBON_ENV_MASK_HOST,
+        .mode_mask = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
+        .arena_budget = 1024u,
+        .input_budget = 1024u,
+        .output_budget = 1024u,
+        .deadline_ms = 1000u,
+        .operations = &policy_operations,
+        .operations_size = sizeof(policy_operations),
+        .operations_abi = 1u,
+        .validate_operations = validate_diagnostic_service,
+    };
+    const struct RibonServiceDescriptor *services[] = {&diagnostic_service};
+    const struct RibonServiceDirectory directory = {
+        .size = sizeof(directory),
+        .abi_version = RIBON_SERVICE_DIRECTORY_ABI_VERSION,
+        .services = services,
+        .service_count = 1u,
     };
     const struct RibonResourceLimits limits = {
         .max_memory_regions = 1u,
@@ -80,11 +119,12 @@ int main(void) {
             &context,
             &product,
             &registry,
+            &directory,
             &mode,
             &arena) != RIBON_CORE_STATUS_OK) {
         fputs("protocol_free_embed_tests: context initialization failed\n", stderr);
         return 1;
     }
-    puts("RIBON-R3-PROTOCOL-FREE-EMBED-OK");
+    puts("RIBON-R6-PROTOCOL-FREE-TYPED-SERVICE-EMBED-OK");
     return 0;
 }

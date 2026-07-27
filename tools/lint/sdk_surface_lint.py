@@ -63,7 +63,7 @@ def main() -> int:
 
     expected_symbols = {
         line.strip()
-        for line in (ROOT / "sdk" / "abi" / "libribon-sdk-v1.symbols")
+        for line in (ROOT / "sdk" / "abi" / "libribon-sdk-v2.symbols")
         .read_text(encoding="utf-8")
         .splitlines()
         if line.strip()
@@ -78,9 +78,9 @@ def main() -> int:
     manifest_path = root / "share" / "ribon" / "sdk-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if (
-        manifest.get("sdk_abi") != 1
-        or manifest.get("core_abi") != 2
-        or manifest.get("source_version") != "0.3.0"
+        manifest.get("sdk_abi") != 2
+        or manifest.get("core_abi") != 3
+        or manifest.get("source_version") != "0.4.0"
     ):
         fail("installed SDK ABI manifest is inconsistent")
 

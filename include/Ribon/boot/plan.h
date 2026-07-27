@@ -6,7 +6,7 @@
 #include <Ribon/boot/image.h>
 #include <Ribon/core/context.h>
 #include <Ribon/firmware/environment.h>
-#include <Ribon/firmware/services.h>
+#include <Ribon/service/directory.h>
 #include <Ribon/protocol/protocol.h>
 
 /** @brief Boot Library lifecycle operation의 결과다. */
@@ -37,7 +37,7 @@ struct RibonBootSession {
     uint32_t abi_version; /**< `RIBON_CORE_ABI_VERSION`과 일치해야 한다. */
     enum RibonBootSessionState state; /**< 단방향 lifecycle state다. */
     const struct RibonCoreContext *core; /**< Validated Core context다. */
-    const struct RibonServiceTable *services; /**< Environment service table이다. */
+    const struct RibonServiceDirectory *services; /**< Generated typed service directory다. */
     const struct RibonArchOps *arch; /**< 선택한 architecture backend다. */
     const struct RibonBootProtocol *protocol; /**< 선택한 OS Boot Protocol이다. */
     const struct RibonImageFormatOps *image_format; /**< 선택한 image parser다. */
@@ -103,7 +103,6 @@ struct RibonBootPlan {
 int ribon_boot_session_initialize(
     struct RibonBootSession *out,
     const struct RibonCoreContext *core,
-    const struct RibonServiceTable *services,
     const struct RibonArchOps *arch,
     const struct RibonBootProtocol *protocol,
     const struct RibonImageFormatOps *image_format);

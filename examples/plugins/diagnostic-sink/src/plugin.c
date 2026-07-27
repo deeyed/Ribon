@@ -22,12 +22,28 @@ static const struct RibonExampleDiagnosticSinkOperations sink_operations = {
 };
 
 /** @brief Example service operation table의 size, ABI와 callback을 검사한다. */
-static int diagnostic_sink_operations_are_valid(
-    const struct RibonPluginDescriptor *descriptor) {
+static int diagnostic_sink_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor) {
     const struct RibonExampleDiagnosticSinkOperations *operations;
 
-    if (descriptor == 0 ||
-        descriptor->kind != RIBON_PLUGIN_KIND_SERVICE ||
+    if (descriptor == 0 || descriptor->operations == 0 ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi !=
+            RIBON_EXAMPLE_DIAGNOSTIC_SINK_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return operations->size == sizeof(*operations) &&
+           operations->abi_version ==
+               RIBON_EXAMPLE_DIAGNOSTIC_SINK_ABI_VERSION &&
+           operations->write != 0;
+}
+
+/** @brief Plugin descriptor가 package-local typed service operation을 가리키는지 검사한다. */
+static int diagnostic_sink_plugin_operations_are_valid(
+    const struct RibonPluginDescriptor *descriptor) {
+    const struct RibonExampleDiagnosticSinkOperations *operations;
+    if (descriptor == 0 || descriptor->kind != RIBON_PLUGIN_KIND_SERVICE ||
         descriptor->operations == 0 ||
         descriptor->operations_size != sizeof(*operations) ||
         descriptor->operations_abi !=
@@ -40,6 +56,31 @@ static int diagnostic_sink_operations_are_valid(
                RIBON_EXAMPLE_DIAGNOSTIC_SINK_ABI_VERSION &&
            operations->write != 0;
 }
+
+/** @brief External package가 publish하는 typed diagnostic collection provider다. */
+const struct RibonServiceDescriptor
+    ribon_example_diagnostic_sink_service_descriptor = {
+        .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+        .size = sizeof(ribon_example_diagnostic_sink_service_descriptor),
+        .abi_version = RIBON_SERVICE_ABI_VERSION,
+        .kind = RIBON_SERVICE_KIND_DIAGNOSTIC_SINK,
+        .cardinality = RIBON_SERVICE_CARDINALITY_COLLECTION,
+        .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+        .phase = RIBON_PLUGIN_PHASE_BOOT,
+        .id = "service.diagnostic-sink",
+        .provides = RIBON_CAP_DIAGNOSTIC_SINK,
+        .architecture_mask = RIBON_ARCH_MASK_X86_64,
+        .environment_mask = RIBON_ENV_MASK_HOST,
+        .mode_mask = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
+        .arena_budget = 1024u,
+        .input_budget = 4096u,
+        .output_budget = 4096u,
+        .deadline_ms = 1000u,
+        .operations = &sink_operations,
+        .operations_size = sizeof(sink_operations),
+        .operations_abi = RIBON_EXAMPLE_DIAGNOSTIC_SINK_ABI_VERSION,
+        .validate_operations = diagnostic_sink_service_operations_are_valid,
+    };
 
 /** @brief External package가 제공하는 bounded diagnostic service plugin이다. */
 const struct RibonPluginDescriptor
@@ -64,7 +105,7 @@ const struct RibonPluginDescriptor
         .operations = &sink_operations,
         .operations_size = sizeof(sink_operations),
         .operations_abi = RIBON_EXAMPLE_DIAGNOSTIC_SINK_ABI_VERSION,
-        .validate_operations = diagnostic_sink_operations_are_valid,
+        .validate_operations = diagnostic_sink_plugin_operations_are_valid,
     };
 
 /** @brief Source package manifest와 compiled descriptor를 연결한다. */

@@ -15,6 +15,12 @@ struct RibonPluginRegistry {
     uint32_t plugin_count; /**< Plugin pointer element 수다. */
 };
 
+/** @brief Product graph가 collection plugin provider를 고정하는 selector다. */
+struct RibonPluginSelection {
+    enum RibonPluginKind kind; /**< 선택할 collection plugin kind다. */
+    const char *id; /**< 선택한 plugin의 stable ID다. */
+};
+
 /** @brief Registry와 product tuple의 provider, phase, capability, budget을 검사한다. */
 int ribon_plugin_registry_validate(
     const struct RibonPluginRegistry *registry,

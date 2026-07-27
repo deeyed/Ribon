@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 
 
-CORE_MEMBERS = {"arena.o", "context.o", "plugin.o", "registry.o"}
+CORE_MEMBERS = {"arena.o", "context.o", "plugin.o", "registry.o", "service_directory.o"}
 BOOT_MEMBERS = {
     "boot.o",
     "environment.o",
@@ -16,7 +16,6 @@ BOOT_MEMBERS = {
     "memory.o",
     "platform.o",
     "protocol.o",
-    "services.o",
 }
 SDK_MEMBERS = {
     "personality.o",
@@ -25,8 +24,6 @@ SDK_MEMBERS = {
 CORE_FORBIDDEN_SYMBOLS = (
     "ribon_arch_",
     "ribon_boot_protocol_",
-    "ribon_environment_",
-    "ribon_service_",
     "ribon_parus_",
     "ribon_uefi_",
     "ribon_rpi_",
