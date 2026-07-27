@@ -78,15 +78,21 @@ Firmware table, FDT, memory map, boot source, reset reason을 검증하고 immut
 
 ### Select and verify
 
-Boot policy가 source와 candidate를 선택한다. `VERIFY_MANIFEST`는 stable source name과
-선택된 candidate 범위를 검증한다. 이 단계는 signature, digest, anti-rollback 또는 network
-metadata를 검증하지 않는다. 그런 trust assertion은 Security와 Update Policy plugin 계약이
-결정하며, 검증 결과는 이후 transaction input으로 전달된다.
+Boot policy는 configuration candidate가 명시한 source, protocol과 image-format tuple을 선택한다.
+Unknown required configuration key, non-canonical path, unsupported tuple과 same-priority candidate는
+selection failure다. `VERIFY_MANIFEST`는 stable source name과 선택된 candidate 범위를 검증한다.
+이 단계는 signature, digest, anti-rollback 또는 network metadata를 검증하지 않는다. 그런 trust
+assertion은 Security와 Update Policy plugin 계약이 결정하며, 검증 결과는 이후 transaction input으로
+전달된다.
 
 `LOAD_IMAGE`는 selected boot-source authority만 호출한다. 한 callback의 deadline과 product
 retry budget을 동시에 적용하고, 자동 fallback source·protocol·network discovery를 수행하지
 않는다. Source가 memory mapping을 zero-copy로 노출하려면 environment service가 input/output
 alias를 명시적으로 보장해야 한다.
+
+Read-only media parser는 GPT/protective MBR, filesystem과 path를 각각 검증한다. Parser failure는
+memory, other filesystem 또는 network source fallback을 열지 않는다. Normal product의 reader는
+inactive-slot writer와 mutable filesystem authority를 포함하지 않는다.
 
 ### Prepare protocol
 

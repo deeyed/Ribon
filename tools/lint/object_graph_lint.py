@@ -10,8 +10,12 @@ from pathlib import Path
 
 CORE_MEMBERS = {"arena.o", "context.o", "plugin.o", "registry.o", "service_directory.o"}
 BOOT_MEMBERS = {
+    "block.o",
     "boot.o",
+    "boot_config.o",
     "environment.o",
+    "fat32.o",
+    "gpt.o",
     "image.o",
     "memory.o",
     "platform.o",

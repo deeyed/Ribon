@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-27
 code_paths:
   - docs/
   - include/Ribon/
@@ -49,6 +49,7 @@ canonical/lifecycle/boot-update-recovery-model
 contracts/core/library-plugin-protocol-boundary
 contracts/composition/product-plugin-composition
 contracts/frontends/environment-platform-image-boundary
+contracts/storage/deterministic-boot-media
 contracts/firmware/firmware-personality-plugin
 contracts/firmware/reference-provider-products
 contracts/sdk/sdk-install-and-package
@@ -75,6 +76,7 @@ contracts/documentation/documentation-quality-gate
 adr/0009-limine-library-plugin-hard-cut
 adr/0010-typed-service-graph-hard-cut
 adr/0011-bounded-boot-transaction-hard-cut
+adr/0012-deterministic-boot-media-pipeline
 ```
 
 ```{toctree}
@@ -124,4 +126,5 @@ log/2026-07-26-r4-environment-protocol-targets
 log/2026-07-26-r5-sdk-firmware-composition
 log/2026-07-27-r6-typed-service-graph
 log/2026-07-27-r7-bounded-boot-lifecycle
+log/2026-07-27-r8-deterministic-boot-media
 ```

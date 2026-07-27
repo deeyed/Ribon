@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-27
 code_paths:
   - src/environments/
   - src/image-formats/
@@ -48,7 +48,7 @@ immutable `RibonServiceDirectory`에 연결한다.
 | Environment | 소유하는 native 계약 |
 | --- | --- |
 | `host` | caller가 제공한 file, clock와 synthetic memory facts |
-| `uefi-app` | Boot Services memory map, page allocation, monotonic count, ExitBootServices |
+| `uefi-app` | Boot Services memory map, page allocation, monotonic count, loaded-image Simple File System/Block I/O, ExitBootServices |
 | `bios-client` | E820, EDD와 long-mode 진입 전 native callback |
 | `raw-fdt` | entry register의 FDT pointer와 bounded FDT blob |
 
@@ -58,6 +58,11 @@ Environment가 제공한 borrowed native pointer는 generic Core 또는 Protocol
 
 UEFI final transaction은 memory map capture, handoff refresh, `ExitBootServices`를
 bounded retry로 묶는다. 성공 뒤 Boot Services callback을 호출하지 않는다.
+
+UEFI consumer는 loaded-image device의 native file and block handle을 environment-private context에
+유지하고 canonical read-only file source 또는 `RibonReadOnlyBlockDevice`로만 변환한다. File size와
+exact read를 검증하고, configuration-selected payload path가 아닌 build-embedded bytes를 external
+media product의 source로 사용하지 않는다.
 
 Raw-FDT parser는 allocation과 MMIO 없이 header, structure, string bounds를 검증한다.
 Platform이 선언한 native input 상한을 넘는 blob과 memory reservation 충돌을 거부한다.

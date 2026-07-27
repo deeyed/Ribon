@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-27
 code_paths:
   - qstar.lua
   - qstar/
@@ -128,5 +128,7 @@ Gate는 archive member와 final link map을 검사하여 다음을 거부한다.
 - QEMU `virt` target의 RPi5 object와 package input
 - Linux 또는 FreeBSD product의 Parus object
 - normal product의 recovery network와 update writer
+- normal product의 mutable filesystem 또는 inactive destination storage authority
 - firmware personality 없는 product의 runtime service
 - service authority 중복, collection owner 미선택, service ABI/lifetime/mode budget 불일치
+- external-media target의 runtime object graph에 embedded payload fixture object

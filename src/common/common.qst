@@ -2,11 +2,15 @@ qstar.staticlib "libribon_boot" {
   artifact_name = "libribon-boot.a",
   sources = {
     "src/core/memory.c",
+    "src/config/boot_config.c",
+    "src/filesystems/fat32.c",
     "src/common/environment.c",
     "src/common/protocol.c",
     "src/common/boot.c",
     "src/common/image.c",
     "src/common/platform.c",
+    "src/storage/block.c",
+    "src/storage/gpt.c",
   },
   configs = {
     "//qstar/policies:ribon_host_c",

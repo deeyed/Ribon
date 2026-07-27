@@ -25,6 +25,8 @@ MARKERS = {
     ),
     "x86_64-uefi": (
         b"RIBON-R4-UEFI-ENTRY",
+        b"RIBON-R8-UEFI-CONFIG-OK",
+        b"RIBON-R8-UEFI-ESP-PAYLOAD-OK",
         b"RIBON-R4-UEFI-PAYLOAD-LOADED",
         b"RIBON-R4-UEFI-MEMORY-MAP",
         b"RIBON-R4-UEFI-PRODUCT-GRAPH-OK",

@@ -75,6 +75,7 @@ protocol global, native firmware handle이 없다.
 Boot Library는 OS 중립적인 boot orchestration을 소유한다.
 
 - boot source의 bounded byte-range read와 product retry budget
+- read-only block, partition, filesystem와 configuration candidate의 bounded resolution
 - image format plugin을 통한 load plan
 - component와 destination overlap 검증
 - trust result와 provenance의 immutable snapshot
@@ -154,6 +155,11 @@ Driver와 Service Plugin은 재사용 가능한 기능을 제공한다.
 - update journal과 metadata
 - watchdog와 reset reason
 
+Read-only boot media parser는 generic Boot Library extension이다. GPT/MBR, FAT32와
+configuration grammar는 OS protocol, native firmware handle, board MMIO와 update writer를
+해석하지 않는다. Native file/block controller는 Environment Consumer가 typed source 또는 block
+provider로 변환한다.
+
 Board는 resource와 wiring을 기술하고 driver 구현을 복제하지 않는다. Driver는 특정
 board 이름을 policy 분기로 사용하지 않는다.
 
@@ -173,6 +179,10 @@ target
 QStar는 검증된 조합만 허용하고 immutable plugin registry, typed service directory와
 product descriptor를 생성한다.
 Source scan, weak symbol, constructor side effect로 plugin을 발견하지 않는다.
+
+Boot media recipe는 configuration file path, payload path, bounded parser limits와 source authority를
+명시할 수 있다. Recipe가 embedded fixture를 사용할 때에는 fixture-only product identity를 가지며
+external media product의 compatibility alias가 아니다.
 
 ## Typed Service Graph
 

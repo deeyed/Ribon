@@ -72,11 +72,15 @@ CORE_SRCS := \
 	src/core/service_directory.c
 BOOT_LIB_SRCS := \
 	src/core/memory.c \
+	src/config/boot_config.c \
+	src/filesystems/fat32.c \
 	src/common/environment.c \
 	src/common/protocol.c \
 	src/common/boot.c \
 	src/common/image.c \
-	src/common/platform.c
+	src/common/platform.c \
+	src/storage/block.c \
+	src/storage/gpt.c
 SDK_LIB_SRCS := \
 	src/plugins/sdk.c \
 	src/firmware/personality.c
@@ -107,6 +111,7 @@ ARCH_AARCH64_TEST := $(TEST_BUILD_DIR)/aarch64_direct_high_tests
 ARCH_OPS_TESTS := $(RIBON_ARCHES:%=$(TEST_BUILD_DIR)/arch_ops_%_tests)
 CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
 BOOT_LIFECYCLE_TEST := $(TEST_BUILD_DIR)/boot_lifecycle_tests
+MEDIA_PIPELINE_TEST := $(TEST_BUILD_DIR)/media_pipeline_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
@@ -186,9 +191,10 @@ UEFI_MANIFEST := products/bootmgr/manifests/x86_64-uefi-parus.json
 UEFI_REGISTRY_C := $(UEFI_DIR)/generated/plugin_registry.c
 UEFI_GRAPH := $(UEFI_DIR)/results/object-graph.json
 UEFI_FIXTURE := $(UEFI_DIR)/payload.elf
-UEFI_EMBED_C := $(UEFI_DIR)/generated/embedded_payload.c
 UEFI_APP := $(UEFI_DIR)/BOOTX64.EFI
 UEFI_ESP := $(UEFI_DIR)/esp
+UEFI_CONFIG := $(UEFI_ESP)/RIBON/BOOT.CFG
+UEFI_PAYLOAD := $(UEFI_ESP)/RIBON/PAYLOAD.ELF
 UEFI_SRCS := \
 	src/core/arena.c \
 	src/core/context.c \
@@ -196,6 +202,7 @@ UEFI_SRCS := \
 	src/core/registry.c \
 	src/core/service_directory.c \
 	src/core/memory.c \
+	src/config/boot_config.c \
 	src/common/environment.c \
 	src/common/protocol.c \
 	src/common/boot.c \
@@ -214,8 +221,7 @@ UEFI_SRCS := \
 	targets/x86_64-uefi-app/entry.c
 UEFI_OBJS := $(UEFI_SRCS:%.c=$(UEFI_DIR)/obj/%.o)
 UEFI_OBJS += \
-	$(UEFI_DIR)/obj/generated/plugin_registry.o \
-	$(UEFI_DIR)/obj/generated/embedded_payload.o
+	$(UEFI_DIR)/obj/generated/plugin_registry.o
 
 BIOS_DIR := $(TARGET_BUILD_ROOT)/x86-bios-client
 BIOS_MANIFEST := products/bootmgr/manifests/x86-bios-parus.json
@@ -256,13 +262,13 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 
 .PHONY: all lib sdk-install host-reference check check-one check-loader check-pe-coff \
 	check-fdt check-rph1 check-arch-x86_64 check-arch-aarch64 \
-	check-arch-ops check-core-service check-boot-lifecycle \
+	check-arch-ops check-core-service check-boot-lifecycle check-media-pipeline \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs firmware-provider-reference \
-	check-frontends check-target-builds qemu-aarch64-virt-raw-fdt \
+	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
 	qemu-aarch64-virt-raw-fdt-smoke x86_64-uefi-app \
 	x86_64-uefi-app-smoke bios-compile rpi5-aarch64-raw-fdt-package \
 	legacy-hard-cut qstar-check docs docs-lint docs-clean clean
@@ -370,6 +376,14 @@ $(BOOT_LIFECYCLE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/boot/lifecycle_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
 	$(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(MEDIA_PIPELINE_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/media/media_pipeline_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/config/boot_config.o \
+	$(TEST_BUILD_DIR)/obj/src/filesystems/fat32.o \
+	$(TEST_BUILD_DIR)/obj/src/storage/block.o \
+	$(TEST_BUILD_DIR)/obj/src/storage/gpt.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(PLUGIN_DESCRIPTOR_TEST): \
@@ -486,18 +500,11 @@ $(UEFI_FIXTURE): tools/make_elf64_fixture.py
 	@mkdir -p $(@D)
 	$(PYTHON) $< --arch x86_64 --base 0x200000 --entry-at-base --output $@
 
-$(UEFI_EMBED_C): $(UEFI_FIXTURE) tools/embed_binary.py
-	$(PYTHON) tools/embed_binary.py --input $< --output $@
-
 $(UEFI_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_DIR)/obj/generated/plugin_registry.o: $(UEFI_REGISTRY_C)
-	@mkdir -p $(@D)
-	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(UEFI_DIR)/obj/generated/embedded_payload.o: $(UEFI_EMBED_C)
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
@@ -509,9 +516,18 @@ $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_APP)
 	@mkdir -p $(@D)
 	cp $< $@
 
-x86_64-uefi-app: $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI
+$(UEFI_CONFIG): tools/make_boot_config.py
+	@mkdir -p $(@D)
+	$(PYTHON) $< --output $@ --entry primary --priority 100 \
+		--protocol parus --image elf64 --kernel /RIBON/PAYLOAD.ELF
 
-x86_64-uefi-app-smoke: $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI
+$(UEFI_PAYLOAD): $(UEFI_FIXTURE)
+	@mkdir -p $(@D)
+	cp $< $@
+
+x86_64-uefi-app: $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI $(UEFI_CONFIG) $(UEFI_PAYLOAD)
+
+x86_64-uefi-app-smoke: x86_64-uefi-app
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
 		--esp $(UEFI_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
@@ -568,6 +584,12 @@ check-core-service: $(CORE_SERVICE_TEST)
 
 check-boot-lifecycle: $(BOOT_LIFECYCLE_TEST)
 	$(BOOT_LIFECYCLE_TEST)
+
+check-media-pipeline: $(MEDIA_PIPELINE_TEST)
+	$(MEDIA_PIPELINE_TEST) --fuzz-smoke
+
+check-normal-media-surface: x86_64-uefi-app
+	$(PYTHON) tools/lint/normal_media_surface_lint.py $(UEFI_DIR)/ribon.map
 
 check-mode-descriptors: $(MODE_DESCRIPTOR_TESTS)
 	@for test_binary in $(MODE_DESCRIPTOR_TESTS); do \
@@ -726,11 +748,11 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
-	check-core-service check-boot-lifecycle check-mode-descriptors check-plugin-descriptors \
+	check-core-service check-boot-lifecycle check-media-pipeline check-mode-descriptors check-plugin-descriptors \
 	check-protocol-contract check-library-embed check-composition-schemas \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
 	check-external-plugin check-firmware-personalities \
-	check-firmware-object-graphs check-object-graphs qstar-check
+	check-firmware-object-graphs check-object-graphs check-normal-media-surface qstar-check
 	@for arch in $(RIBON_ARCHES); do \
 		$(MAKE) --no-print-directory RIBON_ARCH=$$arch check-one || exit $$?; \
 	done

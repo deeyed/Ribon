@@ -47,10 +47,17 @@ Ribon/boot/source.h
 Ribon/boot/image.h
 Ribon/boot/plan.h
 Ribon/boot/transfer.h
+Ribon/config/boot_config.h
+Ribon/filesystem/fat32.h
+Ribon/storage/block.h
 ```
 
 Boot API는 caller-owned source, component, load plan, `RibonBootTransaction`, failure receipt와
 prepare/commit/quiesce/terminal transfer를 제공한다. 특정 handoff wire field를 선언하지 않는다.
+
+Boot media API는 read-only block geometry, GPT/MBR 검증, bounded FAT32 8.3 reader와
+configuration candidate parser를 제공한다. Update writer, network transport와 native UEFI file
+handle은 이 public generic API에 포함하지 않는다.
 
 ## Plugin SDK API
 

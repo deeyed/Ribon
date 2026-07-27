@@ -15,12 +15,12 @@
   ],
   "image": {
     "format": "pe-coff",
-    "recipe": "uefi-application",
+    "recipe": "uefi-esp-read-only-config",
     "artifact": "BOOTX64.EFI"
   },
   "evidence": {
     "class": "qemu-smoke",
-    "claim": "x86_64 UEFI application consumer boot"
+    "claim": "x86_64 UEFI application reads config-selected ELF64 fixture from ESP"
   },
   "max_plugins": 16,
   "services": [

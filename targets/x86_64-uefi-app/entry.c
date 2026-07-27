@@ -2,6 +2,7 @@
 
 #include <Ribon/arch/entry.h>
 #include <Ribon/boot/transfer.h>
+#include <Ribon/config/boot_config.h>
 #include <Ribon/platform/facts.h>
 #include <Ribon/protocols/parus/rph1.h>
 
@@ -10,9 +11,8 @@
 #define RIBON_UEFI_SEGMENT_CAPACITY 16u
 #define RIBON_UEFI_HANDOFF_CAPACITY 65536u
 #define RIBON_UEFI_ARENA_CAPACITY (256u * 1024u)
-
-extern const unsigned char ribon_embedded_payload[];
-extern const uint64_t ribon_embedded_payload_size;
+#define RIBON_UEFI_CONFIG_CAPACITY 4096u
+#define RIBON_UEFI_PAYLOAD_CAPACITY (2u * 1024u * 1024u)
 
 static _Alignas(16) unsigned char raw_memory_map[RIBON_UEFI_MEMORY_MAP_CAPACITY];
 static struct RibonMemoryRegion environment_regions[RIBON_UEFI_REGION_CAPACITY];
@@ -20,6 +20,9 @@ static struct RibonMemoryRegion normalized_regions[RIBON_UEFI_REGION_CAPACITY];
 static struct RibonLoadSegment load_segments[RIBON_UEFI_SEGMENT_CAPACITY];
 static _Alignas(4096) unsigned char handoff_buffer[RIBON_UEFI_HANDOFF_CAPACITY];
 static _Alignas(16) unsigned char arena_storage[RIBON_UEFI_ARENA_CAPACITY];
+static unsigned char boot_config_bytes[RIBON_UEFI_CONFIG_CAPACITY];
+static _Alignas(4096) unsigned char payload_bytes[RIBON_UEFI_PAYLOAD_CAPACITY];
+static struct RibonBootConfiguration boot_configuration;
 
 struct UefiRefreshContext {
     struct RibonBootTransaction *transaction;
@@ -76,6 +79,30 @@ static EFI_STATUS uefi_fail(uint16_t serial_base, const char *stage) {
     return EFI_LOAD_ERROR;
 }
 
+/** @brief NUL-terminated stable identifier 두 개가 정확히 같은지 검사한다. */
+static int uefi_text_equals(const char *left, const char *right) {
+    uint32_t index = 0u;
+    if (left == 0 || right == 0) {
+        return 0;
+    }
+    while (left[index] == right[index]) {
+        if (left[index] == '\0') {
+            return 1;
+        }
+        ++index;
+    }
+    return 0;
+}
+
+/** @brief Bounded configuration command line의 NUL 제외 byte 수를 계산한다. */
+static uint32_t uefi_text_length(const char *text, uint32_t capacity) {
+    uint32_t length = 0u;
+    while (length < capacity && text[length] != '\0') {
+        ++length;
+    }
+    return length;
+}
+
 /** @brief Final memory-map capture 뒤 committed handoff plan을 재생성한다. */
 static int uefi_refresh_plan(
     void *context,
@@ -126,11 +153,7 @@ EFI_STATUS EFIAPI efi_main(
     struct RibonArena arena;
     struct RibonCoreContext core;
     struct RibonBootTransaction transaction;
-    struct RibonBootSource source = {
-        .kind = RIBON_BOOT_MEDIA_MEMORY,
-        .source_id = 0u,
-        .size = ribon_embedded_payload_size,
-    };
+    struct RibonBootSource source;
     struct RibonLoadedPayload layout = {
         .segments = load_segments,
         .segment_capacity = RIBON_UEFI_SEGMENT_CAPACITY,
@@ -144,6 +167,8 @@ EFI_STATUS EFIAPI efi_main(
         .transaction = &transaction,
         .handoff = &handoff,
     };
+    const struct RibonBootConfigEntry *selected_config = 0;
+    uint64_t config_size = 0u;
     uint16_t serial_base;
     int status;
 
@@ -159,16 +184,50 @@ EFI_STATUS EFIAPI efi_main(
     status = ribon_uefi_app_initialize(
         &native,
         image_handle,
-        system_table,
-        ribon_embedded_payload,
-        ribon_embedded_payload_size);
+        system_table);
     if (status != RIBON_UEFI_APP_STATUS_OK) {
         return uefi_fail(serial_base, "environment-initialize");
     }
+    if (ribon_uefi_app_read_file(
+            &native,
+            "/RIBON/BOOT.CFG",
+            boot_config_bytes,
+            sizeof(boot_config_bytes),
+            &config_size) != RIBON_UEFI_APP_STATUS_OK ||
+        ribon_boot_configuration_parse(
+            boot_config_bytes,
+            config_size,
+            &boot_configuration) != RIBON_BOOT_CONFIG_STATUS_OK ||
+        ribon_boot_configuration_select(
+            &boot_configuration,
+            &selected_config) != RIBON_BOOT_CONFIG_STATUS_OK ||
+        !uefi_text_equals(selected_config->protocol, "parus") ||
+        !uefi_text_equals(selected_config->image_format, "elf64") ||
+        selected_config->module_count != 0u ||
+        ribon_uefi_app_open_boot_source(
+            &native,
+            selected_config->kernel_path,
+            &source) != RIBON_UEFI_APP_STATUS_OK ||
+        source.size > sizeof(payload_bytes)) {
+        return uefi_fail(serial_base, "esp-config");
+    }
+    uefi_marker(serial_base, "RIBON-R8-UEFI-CONFIG-OK");
     if (ribon_uefi_app_capture_environment(&native, &environment) !=
         RIBON_UEFI_APP_STATUS_OK) {
         return uefi_fail(serial_base, "environment-capture");
     }
+    environment.boot_media = (struct RibonBootMedia){
+        .kind = source.kind,
+        .path = selected_config->kernel_path,
+        .size = source.size,
+    };
+    environment.command_line = (struct RibonCommandLine){
+        .text = selected_config->command_line,
+        .length = uefi_text_length(
+            selected_config->command_line,
+            RIBON_BOOT_CONFIG_COMMAND_LINE_CAPACITY),
+    };
+    environment.flags |= RIBON_BOOT_ENV_HAS_BOOT_MEDIA | RIBON_BOOT_ENV_HAS_COMMAND_LINE;
     uefi_marker(serial_base, "RIBON-R4-UEFI-MEMORY-MAP");
 
     ribon_arena_init(&arena, arena_storage, sizeof(arena_storage));
@@ -195,10 +254,10 @@ EFI_STATUS EFIAPI efi_main(
             .normalized_memory_map = &normalized,
             .source = &source,
             .source_offset = 0u,
-            .source_size = ribon_embedded_payload_size,
-            .payload_buffer = (void *)ribon_embedded_payload,
-            .payload_buffer_capacity = ribon_embedded_payload_size,
-            .source_name = "boot/payload.elf",
+            .source_size = source.size,
+            .payload_buffer = payload_bytes,
+            .payload_buffer_capacity = sizeof(payload_bytes),
+            .source_name = selected_config->kernel_path,
             .kernel_layout = &layout,
             .handoff_buffer = handoff_buffer,
             .handoff_buffer_capacity = sizeof(handoff_buffer),
@@ -210,6 +269,7 @@ EFI_STATUS EFIAPI efi_main(
         return uefi_fail(serial_base, "boot-prepare");
     }
     uefi_marker(serial_base, "RIBON-R4-UEFI-PAYLOAD-LOADED");
+    uefi_marker(serial_base, "RIBON-R8-UEFI-ESP-PAYLOAD-OK");
     status = ribon_uefi_app_exit_boot_services(
         &native,
         &environment,

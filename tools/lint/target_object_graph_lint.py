@@ -37,6 +37,7 @@ EXPECTED = {
         "map": "ribon.map",
         "needles": (
             "uefi_app.o",
+            "boot_config.o",
             "ribon_platform_selected",
         ),
     },
@@ -93,6 +94,8 @@ def main() -> int:
         )
         if forbidden and forbidden in link_map:
             fail(f"{target}: forbidden object leaked into link map: {forbidden}")
+        if target == "x86_64-uefi-app" and "embedded_payload" in link_map:
+            fail(f"{target}: embedded payload object remains in the runtime object graph")
     print("RIBON-R4-TARGET-OBJECT-GRAPHS-OK")
     return 0
 

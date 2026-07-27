@@ -3,6 +3,8 @@
 #include <Ribon/core/memory.h>
 #include <Ribon/plugin/descriptor.h>
 
+#include <Protocol/LoadedImage.h>
+
 #include <string.h>
 
 static struct RibonUefiAppContext *uefi_context;
@@ -63,7 +65,133 @@ static uint64_t uefi_memory_attributes(const EFI_MEMORY_DESCRIPTOR *descriptor) 
     return attributes;
 }
 
-/** @brief Embedded memory source에서 bounded byte range를 복사한다. */
+/** @brief Canonical ASCII absolute path를 bounded UEFI UTF-16 path로 변환한다. */
+static int uefi_path_to_utf16(const char *path, CHAR16 out[RIBON_UEFI_PATH_CAPACITY]) {
+    uint32_t component_bytes = 0u;
+    uint32_t components = 0u;
+    uint32_t dots = 0u;
+    if (path == 0 || out == 0 || path[0] != '/' || path[1] == '\0') {
+        return 0;
+    }
+    for (uint32_t index = 1u; index < RIBON_UEFI_PATH_CAPACITY; ++index) {
+        const unsigned char byte = (unsigned char)path[index];
+        if (byte == '/' || byte == '\0') {
+            if (component_bytes == 0u || dots == component_bytes ||
+                ++components > RIBON_UEFI_FILE_SOURCE_CAPACITY * 2u) {
+                return 0;
+            }
+            out[index - 1u] = byte == '\0' ? 0u : (CHAR16)'\\';
+            if (byte == '\0') {
+                return 1;
+            }
+            component_bytes = 0u;
+            dots = 0u;
+            continue;
+        }
+        if (byte < 0x21u || byte > 0x7eu || byte == '\\' || ++component_bytes >= 64u) {
+            return 0;
+        }
+        if (byte == '.') {
+            ++dots;
+        }
+        out[index - 1u] = (CHAR16)byte;
+    }
+    return 0;
+}
+
+/** @brief UEFI root handle에서 one canonical path를 read-only로 연다. */
+static int uefi_open_file(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    EFI_FILE_PROTOCOL **out) {
+    CHAR16 native_path[RIBON_UEFI_PATH_CAPACITY];
+    EFI_STATUS status;
+    if (context == 0 || context->boot_services == 0 || context->root == 0 || out == 0 ||
+        !uefi_path_to_utf16(path, native_path) || context->root->Open == 0) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    *out = 0;
+    status = context->root->Open(
+        context->root,
+        out,
+        native_path,
+        EFI_FILE_MODE_READ,
+        0u);
+    return EFI_ERROR(status) || *out == 0 ?
+        RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR : RIBON_UEFI_APP_STATUS_OK;
+}
+
+/** @brief UEFI file handle의 exact byte size를 seek-only query로 검사한다. */
+static int uefi_file_size(EFI_FILE_PROTOCOL *file, uint64_t *out) {
+    EFI_STATUS status;
+    if (file == 0 || out == 0 || file->SetPosition == 0 || file->GetPosition == 0) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    status = file->SetPosition(file, UINT64_MAX);
+    if (EFI_ERROR(status)) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    status = file->GetPosition(file, out);
+    if (EFI_ERROR(status) || *out == 0u || EFI_ERROR(file->SetPosition(file, 0u))) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    return RIBON_UEFI_APP_STATUS_OK;
+}
+
+/** @brief UEFI file handle에서 exact byte range를 partial read 없이 복사한다. */
+static int uefi_file_read_exact(
+    EFI_FILE_PROTOCOL *file,
+    uint64_t offset,
+    void *buffer,
+    uint64_t size) {
+    UINTN native_size;
+    EFI_STATUS status;
+    if (file == 0 || buffer == 0 || size == 0u || size > (uint64_t)(UINTN)-1 ||
+        file->SetPosition == 0 || file->Read == 0) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    status = file->SetPosition(file, offset);
+    if (EFI_ERROR(status)) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    native_size = (UINTN)size;
+    status = file->Read(file, &native_size, buffer);
+    return EFI_ERROR(status) || native_size != (UINTN)size ?
+        RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR : RIBON_UEFI_APP_STATUS_OK;
+}
+
+/** @brief UEFI Block I/O를 exact bounded generic read callback으로 변환한다. */
+static int uefi_block_read(
+    void *context,
+    uint64_t first_block,
+    void *buffer,
+    uint32_t block_count,
+    uint64_t deadline_ticks) {
+    struct RibonUefiAppContext *native = context;
+    EFI_BLOCK_IO_MEDIA *media;
+    uint64_t bytes;
+    (void)deadline_ticks;
+    if (native == 0 || native->boot_services == 0 || native->block_io == 0 ||
+        native->block_io->Media == 0 || native->block_io->ReadBlocks == 0 || buffer == 0 ||
+        block_count == 0u) {
+        return RIBON_BLOCK_STATUS_BAD_ARGUMENT;
+    }
+    media = native->block_io->Media;
+    if (!media->MediaPresent || media->BlockSize == 0u || first_block > media->LastBlock ||
+        block_count - 1u > media->LastBlock - first_block ||
+        (uint64_t)block_count > UINT64_MAX / media->BlockSize ||
+        (bytes = (uint64_t)block_count * media->BlockSize) > (uint64_t)(UINTN)-1) {
+        return RIBON_BLOCK_STATUS_OUT_OF_RANGE;
+    }
+    return EFI_ERROR(native->block_io->ReadBlocks(
+            native->block_io,
+            media->MediaId,
+            first_block,
+            (UINTN)bytes,
+            buffer)) ? RIBON_BLOCK_STATUS_IO : RIBON_BLOCK_STATUS_OK;
+}
+
+/** @brief UEFI file source slot에서 bounded byte range를 exact copy한다. */
 static int uefi_boot_source_read(
     void *context,
     const struct RibonBootSource *source,
@@ -71,24 +199,19 @@ static int uefi_boot_source_read(
     void *buffer,
     uint64_t size,
     uint64_t deadline_ticks) {
-    const struct RibonUefiAppContext *native =
-        (const struct RibonUefiAppContext *)context;
+    struct RibonUefiAppContext *native = context;
+    const struct RibonUefiFileSource *file;
     (void)deadline_ticks;
-    if (native == 0 || source == 0 ||
-        source->kind != RIBON_BOOT_MEDIA_MEMORY ||
-        source->size != native->payload_size ||
+    if (native == 0 || native->boot_services == 0 || source == 0 ||
+        source->kind != RIBON_BOOT_MEDIA_FILE || source->source_id == 0u ||
+        source->source_id > RIBON_UEFI_FILE_SOURCE_CAPACITY ||
         buffer == 0 || size == 0u ||
-        offset > native->payload_size ||
-        size > native->payload_size - offset) {
+        (file = &native->files[source->source_id - 1u])->handle == 0 ||
+        source->size != file->size || offset > file->size || size > file->size - offset) {
         return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
     }
-    if (buffer == (const unsigned char *)native->payload + offset) {
-        return RIBON_SERVICE_STATUS_OK;
-    }
-    for (uint64_t index = 0u; index < size; ++index) {
-        ((unsigned char *)buffer)[index] = ((const unsigned char *)native->payload)[offset + index];
-    }
-    return RIBON_SERVICE_STATUS_OK;
+    return uefi_file_read_exact(file->handle, offset, buffer, size) == RIBON_UEFI_APP_STATUS_OK ?
+        RIBON_SERVICE_STATUS_OK : RIBON_SERVICE_STATUS_IO;
 }
 
 /** @brief UEFI monotonic service를 firmware-neutral timer callback으로 변환한다. */
@@ -332,16 +455,19 @@ static const struct RibonServiceDirectory uefi_service_directory = {
     .service_count = (uint32_t)(sizeof(uefi_services) / sizeof(uefi_services[0])),
 };
 
-/** @brief UEFI native state와 memory-source service를 결합한다. */
+/** @brief UEFI native state와 loaded-image volume의 read-only service를 결합한다. */
 int ribon_uefi_app_initialize(
     struct RibonUefiAppContext *context,
     EFI_HANDLE image_handle,
-    EFI_SYSTEM_TABLE *system_table,
-    const void *payload,
-    uint64_t payload_size) {
+    EFI_SYSTEM_TABLE *system_table) {
+    EFI_GUID loaded_image_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+    EFI_GUID file_system_guid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+    EFI_GUID block_io_guid = EFI_BLOCK_IO_PROTOCOL_GUID;
+    EFI_LOADED_IMAGE_PROTOCOL *loaded_image = 0;
+    EFI_STATUS status;
     if (context == 0 || image_handle == 0 || system_table == 0 ||
-        system_table->BootServices == 0 || payload == 0 ||
-        payload_size == 0u || context->raw_memory_map == 0 ||
+        system_table->BootServices == 0 || system_table->BootServices->HandleProtocol == 0 ||
+        context->raw_memory_map == 0 ||
         context->raw_memory_map_capacity == 0u ||
         context->regions == 0 || context->region_capacity == 0u) {
         return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
@@ -349,12 +475,39 @@ int ribon_uefi_app_initialize(
     context->image_handle = image_handle;
     context->system_table = system_table;
     context->boot_services = system_table->BootServices;
-    context->payload = payload;
-    context->payload_size = payload_size;
+    context->file_system = 0;
+    context->root = 0;
+    context->block_io = 0;
+    for (uint32_t index = 0u; index < RIBON_UEFI_FILE_SOURCE_CAPACITY; ++index) {
+        context->files[index] = (struct RibonUefiFileSource){0};
+    }
     context->region_count = 0u;
     context->map_key = 0u;
     context->descriptor_size = 0u;
     context->descriptor_version = 0u;
+    status = context->boot_services->HandleProtocol(
+        image_handle,
+        &loaded_image_guid,
+        (void **)&loaded_image);
+    if (EFI_ERROR(status) || loaded_image == 0 || loaded_image->DeviceHandle == 0) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    status = context->boot_services->HandleProtocol(
+        loaded_image->DeviceHandle,
+        &file_system_guid,
+        (void **)&context->file_system);
+    if (EFI_ERROR(status) || context->file_system == 0 || context->file_system->OpenVolume == 0 ||
+        EFI_ERROR(context->file_system->OpenVolume(context->file_system, &context->root)) ||
+        context->root == 0) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    status = context->boot_services->HandleProtocol(
+        loaded_image->DeviceHandle,
+        &block_io_guid,
+        (void **)&context->block_io);
+    if (EFI_ERROR(status)) {
+        context->block_io = 0;
+    }
     uefi_context = context;
     uefi_boot_source_operations.context = context;
     uefi_timer_operations.context = context;
@@ -362,6 +515,108 @@ int ribon_uefi_app_initialize(
     uefi_flush_operations.context = context;
     uefi_quiesce_operations.context = context;
     uefi_services_initialized = 1;
+    return RIBON_UEFI_APP_STATUS_OK;
+}
+
+/** @brief Canonical UEFI file을 one-shot bounded read로 caller-owned bytes에 복사한다. */
+int ribon_uefi_app_read_file(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    void *buffer,
+    uint64_t buffer_capacity,
+    uint64_t *size_out) {
+    EFI_FILE_PROTOCOL *file = 0;
+    uint64_t size;
+    int status;
+    if (size_out != 0) {
+        *size_out = 0u;
+    }
+    if (context == 0 || buffer == 0 || buffer_capacity == 0u || size_out == 0) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    status = uefi_open_file(context, path, &file);
+    if (status != RIBON_UEFI_APP_STATUS_OK ||
+        uefi_file_size(file, &size) != RIBON_UEFI_APP_STATUS_OK || size > buffer_capacity ||
+        uefi_file_read_exact(file, 0u, buffer, size) != RIBON_UEFI_APP_STATUS_OK) {
+        if (file != 0 && file->Close != 0) {
+            (void)file->Close(file);
+        }
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    if (file->Close == 0 || EFI_ERROR(file->Close(file))) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    *size_out = size;
+    return RIBON_UEFI_APP_STATUS_OK;
+}
+
+/** @brief UEFI file handle을 transaction이 소비할 opaque bounded source slot으로 고정한다. */
+int ribon_uefi_app_open_boot_source(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    struct RibonBootSource *out) {
+    EFI_FILE_PROTOCOL *file = 0;
+    uint64_t size;
+    int status;
+    if (out != 0) {
+        *out = (struct RibonBootSource){0};
+    }
+    if (context == 0 || out == 0) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    for (uint32_t index = 0u; index < RIBON_UEFI_FILE_SOURCE_CAPACITY; ++index) {
+        if (context->files[index].handle != 0) {
+            continue;
+        }
+        status = uefi_open_file(context, path, &file);
+        if (status != RIBON_UEFI_APP_STATUS_OK ||
+            uefi_file_size(file, &size) != RIBON_UEFI_APP_STATUS_OK) {
+            if (file != 0 && file->Close != 0) {
+                (void)file->Close(file);
+            }
+            return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+        }
+        context->files[index] = (struct RibonUefiFileSource){
+            .handle = file,
+            .size = size,
+        };
+        *out = (struct RibonBootSource){
+            .kind = RIBON_BOOT_MEDIA_FILE,
+            .source_id = index + 1u,
+            .size = size,
+            .block_size = 0u,
+        };
+        return RIBON_UEFI_APP_STATUS_OK;
+    }
+    return RIBON_UEFI_APP_STATUS_OUT_OF_CAPACITY;
+}
+
+/** @brief Captured UEFI Block I/O를 immutable generic read-only block descriptor로 반환한다. */
+int ribon_uefi_app_read_only_block_device(
+    struct RibonUefiAppContext *context,
+    struct RibonReadOnlyBlockDevice *out) {
+    EFI_BLOCK_IO_MEDIA *media;
+    if (out != 0) {
+        *out = (struct RibonReadOnlyBlockDevice){0};
+    }
+    if (context == 0 || out == 0 || context->boot_services == 0 || context->block_io == 0 ||
+        context->block_io->Media == 0) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    media = context->block_io->Media;
+    if (!media->MediaPresent || media->BlockSize < 512u || media->BlockSize > 4096u ||
+        (media->BlockSize & (media->BlockSize - 1u)) != 0u || media->LastBlock == UINT64_MAX) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    *out = (struct RibonReadOnlyBlockDevice){
+        .size = sizeof(*out),
+        .abi_version = RIBON_READ_ONLY_BLOCK_DEVICE_ABI_VERSION,
+        .logical_block_bytes = media->BlockSize,
+        .max_read_blocks = 128u,
+        .block_count = media->LastBlock + 1u,
+        .context = context,
+        .read = uefi_block_read,
+    };
     return RIBON_UEFI_APP_STATUS_OK;
 }
 
@@ -429,16 +684,11 @@ int ribon_uefi_app_capture_environment(
     out->raw_memory_map.size = map_size;
     out->raw_memory_map.descriptor_size = (uint32_t)context->descriptor_size;
     out->raw_memory_map.descriptor_version = context->descriptor_version;
-    out->boot_media.kind = RIBON_BOOT_MEDIA_MEMORY;
-    out->boot_media.path = "boot/payload.elf";
-    out->boot_media.physical_address = (uint64_t)(uintptr_t)context->payload;
-    out->boot_media.size = context->payload_size;
     out->command_line.text = "environment=uefi-app";
     out->command_line.length = 20u;
     out->flags =
         RIBON_BOOT_ENV_HAS_MEMORY_MAP |
         RIBON_BOOT_ENV_HAS_RAW_MEMORY_MAP |
-        RIBON_BOOT_ENV_HAS_BOOT_MEDIA |
         RIBON_BOOT_ENV_HAS_COMMAND_LINE;
     return RIBON_UEFI_APP_STATUS_OK;
 }
