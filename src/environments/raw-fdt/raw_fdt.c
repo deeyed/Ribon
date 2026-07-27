@@ -6,6 +6,8 @@
 
 static struct RibonRawFdtEntry *raw_fdt_entry;
 static int raw_fdt_services_initialized;
+static unsigned char raw_fdt_attempt_metadata[64];
+static uint64_t raw_fdt_attempt_metadata_size;
 
 /** @brief Memory boot source에서 bounded byte range를 복사한다. */
 static int raw_fdt_boot_source_read(
@@ -27,6 +29,9 @@ static int raw_fdt_boot_source_read(
     }
     input = (const unsigned char *)entry->payload + offset;
     output = (unsigned char *)buffer;
+    if (output == input) {
+        return RIBON_SERVICE_STATUS_OK;
+    }
     for (uint64_t index = 0u; index < size; ++index) {
         output[index] = input[index];
     }
@@ -55,6 +60,58 @@ static struct RibonMonotonicTimerServiceOperations raw_fdt_timer_operations = {
     .size = sizeof(raw_fdt_timer_operations),
     .abi_version = RIBON_SERVICE_ABI_VERSION,
     .now = raw_fdt_timer_now,
+};
+
+/** @brief raw-FDT target-owned attempt metadata를 bounded range에서 읽는다. */
+static int raw_fdt_metadata_read(void *context, uint64_t offset, void *buffer, uint64_t size) {
+    if (context != raw_fdt_entry || buffer == 0 || offset > raw_fdt_attempt_metadata_size ||
+        size > raw_fdt_attempt_metadata_size - offset) {
+        return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+    }
+    for (uint64_t index = 0u; index < size; ++index) {
+        ((unsigned char *)buffer)[index] = raw_fdt_attempt_metadata[offset + index];
+    }
+    return RIBON_SERVICE_STATUS_OK;
+}
+
+/** @brief raw-FDT target-owned attempt metadata에 bounded write를 기록한다. */
+static int raw_fdt_metadata_write(void *context, uint64_t offset, const void *buffer, uint64_t size) {
+    if (context != raw_fdt_entry || buffer == 0 || offset > sizeof(raw_fdt_attempt_metadata) ||
+        size > sizeof(raw_fdt_attempt_metadata) - offset) {
+        return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+    }
+    for (uint64_t index = 0u; index < size; ++index) {
+        raw_fdt_attempt_metadata[offset + index] = ((const unsigned char *)buffer)[index];
+    }
+    if (offset + size > raw_fdt_attempt_metadata_size) {
+        raw_fdt_attempt_metadata_size = offset + size;
+    }
+    return RIBON_SERVICE_STATUS_OK;
+}
+
+/** @brief raw-FDT in-memory metadata write의 ordering barrier를 확정한다. */
+static int raw_fdt_metadata_flush(void *context, uint32_t slot, uint64_t deadline_ticks) {
+    (void)slot;
+    (void)deadline_ticks;
+    return context == raw_fdt_entry ? RIBON_SERVICE_STATUS_OK : RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+}
+
+/** @brief raw-FDT environment가 종료 전 native callback 사용을 닫는다. */
+static int raw_fdt_environment_quiesce(void *context) {
+    return context == raw_fdt_entry ? RIBON_SERVICE_STATUS_OK : RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+}
+
+static struct RibonPersistentMetadataServiceOperations raw_fdt_metadata_operations = {
+    .size = sizeof(raw_fdt_metadata_operations), .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .read = raw_fdt_metadata_read, .write = raw_fdt_metadata_write,
+};
+static struct RibonStorageFlushServiceOperations raw_fdt_flush_operations = {
+    .size = sizeof(raw_fdt_flush_operations), .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .flush = raw_fdt_metadata_flush,
+};
+static struct RibonEnvironmentQuiesceServiceOperations raw_fdt_quiesce_operations = {
+    .size = sizeof(raw_fdt_quiesce_operations), .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .quiesce = raw_fdt_environment_quiesce,
 };
 
 static int raw_fdt_boot_source_validate(
@@ -86,6 +143,30 @@ static int raw_fdt_timer_validate(
            operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
            operations->frequency_hz == raw_fdt_entry->timer_frequency_hz &&
            operations->now == raw_fdt_timer_now;
+}
+
+/** @brief raw-FDT lifecycle metadata operation table가 live context를 쓰는지 검사한다. */
+static int raw_fdt_metadata_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonPersistentMetadataServiceOperations *operations = descriptor == 0 ? 0 : descriptor->operations;
+    return raw_fdt_services_initialized && operations == &raw_fdt_metadata_operations &&
+           descriptor->operations_size == sizeof(*operations) && operations->context == raw_fdt_entry &&
+           operations->read == raw_fdt_metadata_read && operations->write == raw_fdt_metadata_write;
+}
+
+/** @brief raw-FDT lifecycle flush operation table가 live context를 쓰는지 검사한다. */
+static int raw_fdt_flush_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonStorageFlushServiceOperations *operations = descriptor == 0 ? 0 : descriptor->operations;
+    return raw_fdt_services_initialized && operations == &raw_fdt_flush_operations &&
+           descriptor->operations_size == sizeof(*operations) && operations->context == raw_fdt_entry &&
+           operations->flush == raw_fdt_metadata_flush;
+}
+
+/** @brief raw-FDT lifecycle quiesce operation table가 live context를 쓰는지 검사한다. */
+static int raw_fdt_quiesce_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonEnvironmentQuiesceServiceOperations *operations = descriptor == 0 ? 0 : descriptor->operations;
+    return raw_fdt_services_initialized && operations == &raw_fdt_quiesce_operations &&
+           descriptor->operations_size == sizeof(*operations) && operations->context == raw_fdt_entry &&
+           operations->quiesce == raw_fdt_environment_quiesce;
 }
 
 /** @brief raw-FDT consumer가 제공하는 typed boot-source authority다. */
@@ -136,9 +217,51 @@ const struct RibonServiceDescriptor ribon_raw_fdt_monotonic_timer_service_descri
     .validate_operations = raw_fdt_timer_validate,
 };
 
+/** @brief raw-FDT consumer가 제공하는 durable attempt metadata authority다. */
+const struct RibonServiceDescriptor ribon_raw_fdt_persistent_metadata_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC, .size = sizeof(ribon_raw_fdt_persistent_metadata_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_PERSISTENT_METADATA,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION, .id = "service.raw-fdt.persistent-metadata",
+    .provides = RIBON_CAP_PERSISTENT_METADATA, .architecture_mask = RIBON_ARCH_MASK_AARCH64 | RIBON_ARCH_MASK_RISCV64,
+    .environment_mask = RIBON_ENV_MASK_RAW_FDT, .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
+    .operations = &raw_fdt_metadata_operations, .operations_size = sizeof(raw_fdt_metadata_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION, .validate_operations = raw_fdt_metadata_validate,
+};
+
+/** @brief raw-FDT consumer가 제공하는 metadata flush authority다. */
+const struct RibonServiceDescriptor ribon_raw_fdt_storage_flush_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC, .size = sizeof(ribon_raw_fdt_storage_flush_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_STORAGE_FLUSH,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION, .id = "service.raw-fdt.storage-flush",
+    .provides = RIBON_CAP_STORAGE_FLUSH, .architecture_mask = RIBON_ARCH_MASK_AARCH64 | RIBON_ARCH_MASK_RISCV64,
+    .environment_mask = RIBON_ENV_MASK_RAW_FDT, .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
+    .operations = &raw_fdt_flush_operations, .operations_size = sizeof(raw_fdt_flush_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION, .validate_operations = raw_fdt_flush_validate,
+};
+
+/** @brief raw-FDT consumer가 제공하는 environment closure authority다. */
+const struct RibonServiceDescriptor ribon_raw_fdt_environment_quiesce_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC, .size = sizeof(ribon_raw_fdt_environment_quiesce_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_QUIESCE,
+    .phase = RIBON_PLUGIN_PHASE_QUIESCE, .id = "service.raw-fdt.environment-quiesce",
+    .provides = RIBON_CAP_ENVIRONMENT_QUIESCE, .architecture_mask = RIBON_ARCH_MASK_AARCH64 | RIBON_ARCH_MASK_RISCV64,
+    .environment_mask = RIBON_ENV_MASK_RAW_FDT, .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
+    .operations = &raw_fdt_quiesce_operations, .operations_size = sizeof(raw_fdt_quiesce_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION, .validate_operations = raw_fdt_quiesce_validate,
+};
+
 static const struct RibonServiceDescriptor *const raw_fdt_services[] = {
     &ribon_raw_fdt_boot_source_service_descriptor,
+    &ribon_raw_fdt_environment_quiesce_service_descriptor,
     &ribon_raw_fdt_monotonic_timer_service_descriptor,
+    &ribon_raw_fdt_persistent_metadata_service_descriptor,
+    &ribon_raw_fdt_storage_flush_service_descriptor,
 };
 
 static const struct RibonServiceDirectory raw_fdt_service_directory = {
@@ -323,6 +446,9 @@ int ribon_raw_fdt_environment_capture(
     raw_fdt_boot_source_operations.context = entry;
     raw_fdt_timer_operations.context = entry;
     raw_fdt_timer_operations.frequency_hz = entry->timer_frequency_hz;
+    raw_fdt_metadata_operations.context = entry;
+    raw_fdt_flush_operations.context = entry;
+    raw_fdt_quiesce_operations.context = entry;
     raw_fdt_services_initialized = 1;
     return RIBON_RAW_FDT_STATUS_OK;
 }
@@ -354,7 +480,10 @@ const struct RibonPluginDescriptor ribon_raw_fdt_environment_plugin_descriptor =
     .id = "environment.raw-fdt",
     .provides =
         RIBON_CAP_BOOT_SOURCE_READ |
-        RIBON_CAP_MONOTONIC_TIMER,
+        RIBON_CAP_MONOTONIC_TIMER |
+        RIBON_CAP_PERSISTENT_METADATA |
+        RIBON_CAP_STORAGE_FLUSH |
+        RIBON_CAP_ENVIRONMENT_QUIESCE,
     .requires =
         RIBON_CAP_ARCHITECTURE |
         RIBON_CAP_PLATFORM_FACTS,

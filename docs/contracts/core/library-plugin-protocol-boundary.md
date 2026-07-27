@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-27
 code_paths:
   - include/Ribon/core/
   - include/Ribon/boot/
@@ -40,13 +40,31 @@ Library public operation은 다음 phase를 구분한다.
 | Operation | 효과 |
 | --- | --- |
 | `context_initialize` | descriptor, service, arena를 검증한다 |
-| `boot_prepare` | source와 payload를 검증하고 변경 없는 plan을 만든다 |
-| `boot_commit` | attempt와 metadata를 durable state에 반영한다 |
-| `environment_quiesce` | firmware service 종료와 final memory map을 동결한다 |
-| `boot_transfer` | architecture register ABI를 적용하고 반환하지 않는다 |
+| `boot_transaction_initialize` | validated context에서 exact service authority를 고정한다 |
+| `boot_transaction_prepare` | source read, image plan, protocol handoff를 caller-owned storage에 만든다 |
+| `boot_transaction_commit_attempt` | metadata write와 flush를 durable boundary로 만든다 |
+| `boot_transaction_refresh_after_commit` | final platform fact로 handoff만 다시 만든다 |
+| `boot_transaction_quiesce_environment` | selected native closure authority를 실행한다 |
+| `boot_transaction_transfer` | architecture register ABI를 적용하고 반환하지 않는다 |
 
-`boot_prepare` 실패는 durable state를 변경하지 않는다. `boot_commit` 뒤 실패는
-명시적인 recovery transition을 요구하며 prepare 단계로 암묵 복귀하지 않는다.
+Transaction input의 environment, source, payload buffer, normalized memory map, image layout,
+handoff buffer와 artifact storage는 caller가 transfer까지 소유한다. Boot Library는 heap을
+할당하지 않고 native pointer를 receipt나 plan에 저장하지 않는다.
+
+`boot_transaction_prepare` 실패는 durable state를 변경하지 않는다.
+`boot_transaction_commit_attempt` 뒤 실패는 명시적인 recovery transition을 요구하며
+prepare 단계로 암묵 복귀하지 않는다. API는 `RibonBootSession`, `RibonBootRequest`,
+`boot_prepare`, `boot_commit`, `environment_quiesce`, `boot_transfer` compatibility alias를
+제공하지 않는다.
+
+`RibonBootFailureReceipt`는 failure stage, stable reason, static provider ID, consumed byte,
+component, retry budget을 보존한다. Receipt는 terminal failure에만 읽을 수 있고 native
+handle, heap pointer, firmware pointer를 포함하지 않는다.
+
+`environment-quiesce` callback은 non-blocking이고 bounded여야 한다. Closure는 timer
+authority를 함께 철회할 수 있으므로 Boot Library는 callback 전후에 timer를 재호출하지
+않는다. Source read, protocol handoff, metadata write/flush는 selected timer authority로
+deadline을 검사한다.
 
 ## Plugin descriptor
 
@@ -115,6 +133,7 @@ Library는 다음 service를 typed operation으로 소비한다.
 - boot source read
 - memory allocation reservation
 - monotonic timer
+- environment quiesce
 - diagnostic sink
 - metadata read/write/flush
 - inactive storage write/erase
@@ -178,5 +197,7 @@ network, inactive-slot writer, diagnostic fixture는 normal product에 링크하
 - handoff capacity 초과
 - quiesce 뒤 firmware service 재호출
 - 선택하지 않은 fallback protocol 실행
+- retry budget 또는 operation deadline 초과
+- partial metadata write 또는 flush failure 뒤 transfer
 
 Malformed protocol artifact를 다른 protocol 입력으로 재해석하지 않는다.

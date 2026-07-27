@@ -13,7 +13,7 @@ struct RibonProductDescriptor;
 #define RIBON_SERVICE_DESCRIPTOR_MAGIC 0x52425356u
 
 /** @brief Service descriptor와 operation table ABI다. */
-#define RIBON_SERVICE_ABI_VERSION 1u
+#define RIBON_SERVICE_ABI_VERSION 2u
 
 /** @brief Caller-owned immutable service directory ABI다. */
 #define RIBON_SERVICE_DIRECTORY_ABI_VERSION 1u
@@ -46,6 +46,7 @@ enum RibonServiceKind {
     RIBON_SERVICE_KIND_NETWORK_TRANSPORT = 7,
     RIBON_SERVICE_KIND_RANDOM_NONCE = 8,
     RIBON_SERVICE_KIND_DIAGNOSTIC_SINK = 9,
+    RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE = 10,
 };
 
 /** @brief Service directory 안에서 같은 role이 갖는 provider cardinality다. */
@@ -84,6 +85,7 @@ typedef int (*RibonServiceNetworkFetchFn)(
     void *, const struct RibonBootSource *, uint64_t, void *, uint64_t, uint64_t *, uint64_t);
 typedef int (*RibonServiceRandomFillFn)(void *, void *, uint64_t);
 typedef int (*RibonServiceDiagnosticWriteFn)(void *, const void *, uint64_t);
+typedef int (*RibonServiceEnvironmentQuiesceFn)(void *);
 
 /** @brief Boot-source role의 typed operation table이다. */
 struct RibonBootSourceServiceOperations {
@@ -100,6 +102,31 @@ struct RibonMonotonicTimerServiceOperations {
     void *context; /**< Environment-owned borrowed context다. */
     uint64_t frequency_hz; /**< Non-zero monotonic tick frequency다. */
     RibonServiceTimerNowFn now; /**< Monotonic counter snapshot callback이다. */
+};
+
+/** @brief Persistent attempt metadata role의 typed operation table이다. */
+struct RibonPersistentMetadataServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    void *context; /**< Environment-owned borrowed context다. */
+    RibonServiceMetadataReadFn read; /**< Bounded durable metadata read다. */
+    RibonServiceMetadataWriteFn write; /**< Bounded durable metadata write다. */
+};
+
+/** @brief Persistent metadata flush role의 typed operation table이다. */
+struct RibonStorageFlushServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    void *context; /**< Environment-owned borrowed context다. */
+    RibonServiceStorageFlushFn flush; /**< Bounded durability barrier다. */
+};
+
+/** @brief Environment native service closure role의 typed operation table이다. */
+struct RibonEnvironmentQuiesceServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    void *context; /**< Environment-owned borrowed context다. */
+    RibonServiceEnvironmentQuiesceFn quiesce; /**< Native service closure callback이다. */
 };
 
 struct RibonServiceDescriptor;

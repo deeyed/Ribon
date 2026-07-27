@@ -58,7 +58,7 @@ def main() -> int:
     installed = sorted(path for path in root.rglob("*") if path.is_file())
     manifest = {
         "schema_version": 1,
-        "sdk_abi": 2,
+        "sdk_abi": 3,
         "core_abi": 3,
         "plugin_abi": {"major": 3, "minor": 0},
         "source_version": "0.4.0",

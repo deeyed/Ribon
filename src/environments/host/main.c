@@ -56,7 +56,7 @@ static int read_host_payload(const char *path, struct HostPayloadBuffer *out) {
 /** @brief Host reference plan의 stable diagnostic fields를 출력한다. */
 static void print_plan(
     const struct RibonCoreContext *core,
-    const struct RibonBootSession *session,
+    const struct RibonBootTransaction *transaction,
     const struct RibonBootPlan *plan) {
     printf("ribon=%s\n", ribon_version_string());
     printf("product=%s\n", core->product->id);
@@ -78,7 +78,7 @@ static void print_plan(
            (unsigned long long)plan->kernel_runtime_entry_address);
     printf("handoff-format=%s\n", plan->handoff_artifact_format);
     printf("handoff-size=%llu\n", (unsigned long long)plan->handoff_artifact_size);
-    printf("session-state=%u\n", (unsigned)session->state);
+    printf("lifecycle-stage=%u\n", (unsigned)transaction->stage);
 }
 
 /** @brief Generated host product graph로 protocol-neutral boot plan을 만든다. */
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
     unsigned char arena_storage[256u * 1024u];
     struct RibonArena arena;
     struct RibonCoreContext core;
-    struct RibonBootSession session;
+    struct RibonBootTransaction transaction;
     struct RibonBootEnvironment environment;
     struct HostPayloadBuffer kernel_buffer;
     struct RibonLoadSegment kernel_segments[16];
@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
     };
     unsigned char handoff_buffer[64u * 1024u];
     struct RibonHandoffArtifact handoff = {0};
-    struct RibonBootPlan plan;
+    struct RibonBootSource source;
     int status;
 
     for (int index = 1; index < argc; ++index) {
@@ -158,8 +158,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "context initialization failed: %d\n", status);
         return 1;
     }
-    status = ribon_boot_session_initialize(
-        &session,
+    status = ribon_boot_transaction_initialize(
+        &transaction,
         &core,
         arch,
         protocol,
@@ -177,36 +177,48 @@ int main(int argc, char **argv) {
         fprintf(stderr, "payload read failed: %s\n", kernel_path);
         return 1;
     }
+    if (ribon_host_boot_source_bind(kernel_buffer.data, kernel_buffer.size) !=
+        RIBON_SERVICE_STATUS_OK) {
+        fputs("host source bind failed\n", stderr);
+        free(kernel_buffer.data);
+        return 1;
+    }
+    ribon_host_lifecycle_fixture_reset();
+    source = (struct RibonBootSource){
+        .kind = RIBON_BOOT_MEDIA_MEMORY,
+        .source_id = 0u,
+        .size = kernel_buffer.size,
+        .block_size = 0u,
+    };
 
-    status = ribon_boot_prepare(
-        &session,
-        &(const struct RibonBootRequest){
+    status = ribon_boot_transaction_prepare(
+        &transaction,
+        &(const struct RibonBootTransactionInput){
             .environment = &environment,
             .normalized_memory_map = &normalized_map,
-            .kernel_payload =
-                &(const struct RibonPayloadImage){
-                    .data = kernel_buffer.data,
-                    .size = kernel_buffer.size,
-                    .source_name = kernel_path,
-                },
+            .source = &source,
+            .source_offset = 0u,
+            .source_size = kernel_buffer.size,
+            .payload_buffer = kernel_buffer.data,
+            .payload_buffer_capacity = kernel_buffer.size,
+            .source_name = kernel_path,
             .kernel_layout = &kernel_layout,
             .handoff_buffer = handoff_buffer,
             .handoff_buffer_capacity = sizeof(handoff_buffer),
             .handoff_artifact = &handoff,
-        },
-        &plan);
+        });
     if (status == RIBON_BOOT_STATUS_OK) {
-        status = ribon_boot_commit(&session);
+        status = ribon_boot_transaction_commit_attempt(&transaction);
     }
     if (status == RIBON_BOOT_STATUS_OK) {
-        status = ribon_environment_quiesce(&session);
+        status = ribon_boot_transaction_quiesce_environment(&transaction);
     }
     if (status != RIBON_BOOT_STATUS_OK) {
         fprintf(stderr, "boot plan failed: %d\n", status);
         free(kernel_buffer.data);
         return 1;
     }
-    print_plan(&core, &session, &plan);
+    print_plan(&core, &transaction, ribon_boot_transaction_plan(&transaction));
     free(kernel_buffer.data);
     return 0;
 }

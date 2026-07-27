@@ -116,13 +116,12 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
     struct RibonBootEnvironment environment;
     struct RibonArena arena;
     struct RibonCoreContext core;
-    struct RibonBootSession session;
-    struct RibonPayloadImage payload;
+    struct RibonBootTransaction transaction;
+    struct RibonBootSource source;
     struct RibonLoadedPayload layout;
     struct RibonMutableMemoryMap normalized;
     struct RibonHandoffArtifact handoff;
-    struct RibonBootRequest request;
-    struct RibonBootPlan plan;
+    const struct RibonBootPlan *plan;
     int status;
 
     if (!ribon_platform_facts_are_valid(platform) ||
@@ -183,20 +182,20 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
         bootmgr_fail("product-graph", status);
     }
     bootmgr_marker("RIBON-R4-PRODUCT-GRAPH-OK");
-    status = ribon_boot_session_initialize(
-        &session,
+    status = ribon_boot_transaction_initialize(
+        &transaction,
         &core,
         arch,
         protocol,
         image_format);
     if (status != RIBON_BOOT_STATUS_OK) {
-        bootmgr_fail("session", status);
+        bootmgr_fail("transaction", status);
     }
 
-    payload = (struct RibonPayloadImage){
-        .data = ribon_embedded_payload,
+    source = (struct RibonBootSource){
+        .kind = RIBON_BOOT_MEDIA_MEMORY,
+        .source_id = 0u,
         .size = ribon_embedded_payload_size,
-        .source_name = "boot/payload.elf",
     };
     layout = (struct RibonLoadedPayload){
         .segments = load_segments,
@@ -207,16 +206,20 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
         .capacity = RIBON_BOOTMGR_MAX_MEMORY_REGIONS,
     };
     handoff = (struct RibonHandoffArtifact){0};
-    request = (struct RibonBootRequest){
+    status = ribon_boot_transaction_prepare(&transaction, &(struct RibonBootTransactionInput){
         .environment = &environment,
         .normalized_memory_map = &normalized,
-        .kernel_payload = &payload,
+        .source = &source,
+        .source_offset = 0u,
+        .source_size = ribon_embedded_payload_size,
+        .payload_buffer = (void *)ribon_embedded_payload,
+        .payload_buffer_capacity = ribon_embedded_payload_size,
+        .source_name = "boot/payload.elf",
         .kernel_layout = &layout,
         .handoff_buffer = handoff_buffer,
         .handoff_buffer_capacity = sizeof(handoff_buffer),
         .handoff_artifact = &handoff,
-    };
-    status = ribon_boot_prepare(&session, &request, &plan);
+    });
     if (status != RIBON_BOOT_STATUS_OK ||
         ribon_parus_parse_rph1(
             handoff.data,
@@ -224,20 +227,23 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
             &(struct RibonParusRph1View){0}) != RIBON_PARUS_RPH1_PARSE_OK) {
         bootmgr_fail("protocol-handoff", status);
     }
+    plan = ribon_boot_transaction_plan(&transaction);
+    if (plan == 0) {
+        bootmgr_fail("transaction-plan", RIBON_BOOT_STATUS_BAD_STATE);
+    }
     bootmgr_marker("RIBON-R4-PARUS-RPH1-OK");
-    status = bootmgr_place_payload(platform, &payload, &layout);
+    status = bootmgr_place_payload(platform, &transaction.payload, &layout);
     if (status != RIBON_BOOT_STATUS_OK) {
         bootmgr_fail("payload-place", status);
     }
     bootmgr_marker("RIBON-R4-PAYLOAD-LOADED");
-    if (ribon_boot_commit(&session) != RIBON_BOOT_STATUS_OK ||
-        ribon_environment_quiesce(&session) != RIBON_BOOT_STATUS_OK) {
+    if (ribon_boot_transaction_commit_attempt(&transaction) != RIBON_BOOT_STATUS_OK ||
+        ribon_boot_transaction_quiesce_environment(&transaction) != RIBON_BOOT_STATUS_OK) {
         bootmgr_fail("quiesce", RIBON_BOOT_STATUS_BAD_STATE);
     }
     bootmgr_marker("RIBON-R4-RAW-FDT-TRANSFER");
-    ribon_boot_transfer(
-        &session,
-        &plan,
+    ribon_boot_transaction_transfer(
+        &transaction,
         (uint64_t)(uintptr_t)handoff.data,
         RIBON_KERNEL_ENTRY_FLAG_RPH1,
         0u);

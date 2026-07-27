@@ -30,9 +30,24 @@
       "symbol": "ribon_raw_fdt_boot_source_service_descriptor"
     },
     {
+      "id": "service.raw-fdt.environment-quiesce",
+      "kind": "environment-quiesce",
+      "symbol": "ribon_raw_fdt_environment_quiesce_service_descriptor"
+    },
+    {
       "id": "service.raw-fdt.monotonic-timer",
       "kind": "monotonic-timer",
       "symbol": "ribon_raw_fdt_monotonic_timer_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.persistent-metadata",
+      "kind": "persistent-metadata",
+      "symbol": "ribon_raw_fdt_persistent_metadata_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.storage-flush",
+      "kind": "storage-flush",
+      "symbol": "ribon_raw_fdt_storage_flush_service_descriptor"
     }
   ],
   "service_selections": [],
@@ -43,10 +58,13 @@
     "BOOT_PROTOCOL",
     "BOOT_SOURCE_READ",
     "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
     "HANDOFF",
     "IMAGE_ELF64",
     "MONOTONIC_TIMER",
-    "PLATFORM_FACTS"
+    "PERSISTENT_METADATA",
+    "PLATFORM_FACTS",
+    "STORAGE_FLUSH"
   ],
   "allowed_capabilities": [
     "ARCHITECTURE",
@@ -54,10 +72,13 @@
     "BOOT_PROTOCOL",
     "BOOT_SOURCE_READ",
     "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
     "HANDOFF",
     "IMAGE_ELF64",
     "MONOTONIC_TIMER",
-    "PLATFORM_FACTS"
+    "PERSISTENT_METADATA",
+    "PLATFORM_FACTS",
+    "STORAGE_FLUSH"
   ],
   "limits": {
     "max_memory_regions": 256,

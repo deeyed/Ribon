@@ -50,6 +50,8 @@ static uint64_t service_capabilities(enum RibonServiceKind kind) {
         return RIBON_CAP_RANDOM_NONCE;
     case RIBON_SERVICE_KIND_DIAGNOSTIC_SINK:
         return RIBON_CAP_DIAGNOSTIC_SINK;
+    case RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE:
+        return RIBON_CAP_ENVIRONMENT_QUIESCE;
     default:
         return 0u;
     }
@@ -78,6 +80,8 @@ const char *ribon_service_kind_name(enum RibonServiceKind kind) {
         return "random-nonce";
     case RIBON_SERVICE_KIND_DIAGNOSTIC_SINK:
         return "diagnostic-sink";
+    case RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE:
+        return "environment-quiesce";
     default:
         return "unknown";
     }

@@ -20,38 +20,64 @@ enum RibonBootStatus {
     RIBON_BOOT_STATUS_INVALID_HANDOFF = -6,
     RIBON_BOOT_STATUS_BUDGET_EXCEEDED = -7,
     RIBON_BOOT_STATUS_UNSUPPORTED = -8,
+    RIBON_BOOT_STATUS_TIMEOUT = -9,
+    RIBON_BOOT_STATUS_PROVIDER_FAILURE = -10,
 };
 
-/** @brief Prepare부터 terminal transfer까지의 단방향 session state다. */
-enum RibonBootSessionState {
-    RIBON_BOOT_SESSION_INITIALIZED = 0,
-    RIBON_BOOT_SESSION_PREPARED = 1,
-    RIBON_BOOT_SESSION_COMMITTED = 2,
-    RIBON_BOOT_SESSION_QUIESCED = 3,
-    RIBON_BOOT_SESSION_TRANSFERRED = 4,
+/** @brief Bounded boot transaction의 단방향 lifecycle stage다. */
+enum RibonBootLifecycleStage {
+    RIBON_BOOT_STAGE_CAPTURE = 0,
+    RIBON_BOOT_STAGE_VALIDATE_PRODUCT = 1,
+    RIBON_BOOT_STAGE_FREEZE_PLATFORM_FACTS = 2,
+    RIBON_BOOT_STAGE_SELECT_SOURCE = 3,
+    RIBON_BOOT_STAGE_VERIFY_MANIFEST = 4,
+    RIBON_BOOT_STAGE_LOAD_IMAGE = 5,
+    RIBON_BOOT_STAGE_PREPARE_PROTOCOL = 6,
+    RIBON_BOOT_STAGE_COMMIT_ATTEMPT = 7,
+    RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT = 8,
+    RIBON_BOOT_STAGE_TRANSFER = 9,
+    RIBON_BOOT_STAGE_FAILED = 10,
 };
 
-/** @brief Validated Core, service, architecture와 protocol을 묶는 boot session이다. */
-struct RibonBootSession {
-    uint32_t size; /**< Session byte 크기다. */
-    uint32_t abi_version; /**< `RIBON_CORE_ABI_VERSION`과 일치해야 한다. */
-    enum RibonBootSessionState state; /**< 단방향 lifecycle state다. */
-    const struct RibonCoreContext *core; /**< Validated Core context다. */
-    const struct RibonServiceDirectory *services; /**< Generated typed service directory다. */
-    const struct RibonArchOps *arch; /**< 선택한 architecture backend다. */
-    const struct RibonBootProtocol *protocol; /**< 선택한 OS Boot Protocol이다. */
-    const struct RibonImageFormatOps *image_format; /**< 선택한 image parser다. */
+/** @brief Terminal failure receipt의 stable reason이다. */
+enum RibonBootFailureReason {
+    RIBON_BOOT_FAILURE_NONE = 0,
+    RIBON_BOOT_FAILURE_BAD_INPUT = 1,
+    RIBON_BOOT_FAILURE_PRODUCT = 2,
+    RIBON_BOOT_FAILURE_BUDGET = 3,
+    RIBON_BOOT_FAILURE_TIMEOUT = 4,
+    RIBON_BOOT_FAILURE_SOURCE = 5,
+    RIBON_BOOT_FAILURE_IMAGE = 6,
+    RIBON_BOOT_FAILURE_PROTOCOL = 7,
+    RIBON_BOOT_FAILURE_COMMIT = 8,
+    RIBON_BOOT_FAILURE_QUIESCE = 9,
 };
 
-/** @brief Caller가 Boot Library prepare에 제공하는 immutable input이다. */
-struct RibonBootRequest {
-    const struct RibonBootEnvironment *environment;
-    struct RibonMutableMemoryMap *normalized_memory_map;
-    const struct RibonPayloadImage *kernel_payload;
-    struct RibonLoadedPayload *kernel_layout;
-    void *handoff_buffer;
-    uint64_t handoff_buffer_capacity;
-    struct RibonHandoffArtifact *handoff_artifact;
+/** @brief Failure 뒤에도 native pointer 없이 보존되는 deterministic receipt다. */
+struct RibonBootFailureReceipt {
+    enum RibonBootLifecycleStage stage; /**< 실패한 stage다. */
+    enum RibonBootFailureReason reason; /**< Stable failure reason이다. */
+    const char *provider_id; /**< 실패를 보고한 static provider ID다. */
+    uint64_t consumed_input_bytes; /**< 누적 source input byte다. */
+    uint64_t consumed_output_bytes; /**< 누적 handoff output byte다. */
+    uint32_t consumed_components; /**< Image component 소비 수다. */
+    uint32_t consumed_retries; /**< 수행한 bounded retry 수다. */
+};
+
+/** @brief Caller가 source와 output storage를 transaction에 제공하는 immutable input이다. */
+struct RibonBootTransactionInput {
+    const struct RibonBootEnvironment *environment; /**< Capture할 environment facts다. */
+    struct RibonMutableMemoryMap *normalized_memory_map; /**< Caller-owned normalized map이다. */
+    const struct RibonBootSource *source; /**< 선택할 immutable boot source다. */
+    uint64_t source_offset; /**< Source 안의 candidate 시작 byte다. */
+    uint64_t source_size; /**< 읽을 candidate byte 수다. */
+    void *payload_buffer; /**< Source read 결과를 받을 caller-owned buffer다. */
+    uint64_t payload_buffer_capacity; /**< Payload buffer byte 상한이다. */
+    const char *source_name; /**< Stable candidate 이름이다. */
+    struct RibonLoadedPayload *kernel_layout; /**< Caller-owned image load plan이다. */
+    void *handoff_buffer; /**< Protocol handoff 출력 buffer다. */
+    uint64_t handoff_buffer_capacity; /**< Handoff buffer byte 상한이다. */
+    struct RibonHandoffArtifact *handoff_artifact; /**< Protocol handoff 결과다. */
 };
 
 /** @brief Prepare가 caller-owned storage와 borrowed views로 만드는 immutable boot plan이다. */
@@ -99,9 +125,35 @@ struct RibonBootPlan {
     struct RibonEntryContract entry_contract;
 };
 
-/** @brief Validated Core와 selected plugin operation으로 새 boot session을 만든다. */
-int ribon_boot_session_initialize(
-    struct RibonBootSession *out,
+/** @brief Validated Core와 selected service를 묶는 caller-owned boot transaction이다. */
+struct RibonBootTransaction {
+    uint32_t size; /**< Transaction byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_CORE_ABI_VERSION`과 일치해야 한다. */
+    enum RibonBootLifecycleStage stage; /**< 마지막으로 성공한 lifecycle stage다. */
+    const struct RibonCoreContext *core; /**< Validated Core context다. */
+    const struct RibonArchOps *arch; /**< 선택한 architecture backend다. */
+    const struct RibonBootProtocol *protocol; /**< 선택한 OS Boot Protocol이다. */
+    const struct RibonImageFormatOps *image_format; /**< 선택한 image parser다. */
+    const struct RibonServiceDescriptor *boot_source; /**< Selected source authority다. */
+    const struct RibonServiceDescriptor *timer; /**< Deadline timer authority다. */
+    const struct RibonServiceDescriptor *metadata; /**< Attempt metadata authority다. */
+    const struct RibonServiceDescriptor *flush; /**< Metadata flush authority다. */
+    const struct RibonServiceDescriptor *quiesce; /**< Environment closure authority다. */
+    struct RibonBootEnvironment environment; /**< Frozen environment descriptor다. */
+    struct RibonBootSource source; /**< Frozen selected source descriptor다. */
+    struct RibonBootTransactionInput input; /**< Borrowed caller-owned transaction buffers다. */
+    struct RibonPayloadImage payload; /**< Source read 뒤 immutable payload view다. */
+    struct RibonBootPlan plan; /**< Prepared immutable boot plan이다. */
+    struct RibonBootFailureReceipt receipt; /**< Terminal failure receipt다. */
+    uint64_t consumed_input_bytes; /**< Runtime source byte 소비량이다. */
+    uint64_t consumed_output_bytes; /**< Runtime handoff byte 소비량이다. */
+    uint32_t consumed_components; /**< Runtime component 소비량이다. */
+    uint32_t consumed_retries; /**< Runtime retry 소비량이다. */
+};
+
+/** @brief Validated Core와 selected operation으로 bounded transaction을 초기화한다. */
+int ribon_boot_transaction_initialize(
+    struct RibonBootTransaction *out,
     const struct RibonCoreContext *core,
     const struct RibonArchOps *arch,
     const struct RibonBootProtocol *protocol,
@@ -110,24 +162,34 @@ int ribon_boot_session_initialize(
 /**
  * @brief Input을 검증하고 durable state를 바꾸지 않는 immutable plan을 만든다.
  *
- * 성공하면 session은 `PREPARED`가 되며 실패하면 `INITIALIZED`를 유지한다.
+ * 성공하면 `PREPARE_PROTOCOL`까지 전진하고 failure는 terminal receipt로 고정된다.
  */
-int ribon_boot_prepare(
-    struct RibonBootSession *session,
-    const struct RibonBootRequest *request,
-    struct RibonBootPlan *out);
+int ribon_boot_transaction_prepare(
+    struct RibonBootTransaction *transaction,
+    const struct RibonBootTransactionInput *input);
 
-/** @brief Prepared attempt의 durable metadata commit 경계를 전진시킨다. */
-int ribon_boot_commit(struct RibonBootSession *session);
+/** @brief Prepared attempt를 metadata write와 flush 뒤 durable하게 commit한다. */
+int ribon_boot_transaction_commit_attempt(struct RibonBootTransaction *transaction);
 
 /**
  * @brief Commit 뒤 갱신된 final platform fact로 handoff plan만 다시 만든다.
  *
- * Source, payload, protocol 선택은 바꾸지 않으며 session은 `COMMITTED`를 유지한다.
+ * Source, payload, protocol 선택은 바꾸지 않으며 transaction은 `COMMIT_ATTEMPT`를 유지한다.
  */
-int ribon_boot_refresh_after_commit(
-    struct RibonBootSession *session,
-    const struct RibonBootRequest *request,
-    struct RibonBootPlan *out);
+int ribon_boot_transaction_refresh_after_commit(
+    struct RibonBootTransaction *transaction,
+    const struct RibonBootEnvironment *environment);
+
+/** @brief Selected environment closure operation을 실행하고 service lifetime을 닫는다. */
+int ribon_boot_transaction_quiesce_environment(
+    struct RibonBootTransaction *transaction);
+
+/** @brief Prepared plan의 borrowed immutable view를 반환한다. */
+const struct RibonBootPlan *ribon_boot_transaction_plan(
+    const struct RibonBootTransaction *transaction);
+
+/** @brief Terminal failure receipt의 borrowed immutable view를 반환한다. */
+const struct RibonBootFailureReceipt *ribon_boot_transaction_failure_receipt(
+    const struct RibonBootTransaction *transaction);
 
 #endif

@@ -106,6 +106,7 @@ ARCH_X86_64_TEST := $(TEST_BUILD_DIR)/x86_64_direct_high_tests
 ARCH_AARCH64_TEST := $(TEST_BUILD_DIR)/aarch64_direct_high_tests
 ARCH_OPS_TESTS := $(RIBON_ARCHES:%=$(TEST_BUILD_DIR)/arch_ops_%_tests)
 CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
+BOOT_LIFECYCLE_TEST := $(TEST_BUILD_DIR)/boot_lifecycle_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
@@ -255,7 +256,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 
 .PHONY: all lib sdk-install host-reference check check-one check-loader check-pe-coff \
 	check-fdt check-rph1 check-arch-x86_64 check-arch-aarch64 \
-	check-arch-ops check-core-service \
+	check-arch-ops check-core-service check-boot-lifecycle \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
@@ -361,6 +362,12 @@ $(TEST_BUILD_DIR)/arch_ops_%_tests: \
 
 $(CORE_SERVICE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/core/service_boundary_tests.o \
+	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
+	$(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(BOOT_LIFECYCLE_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/boot/lifecycle_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
 	$(BOOT_LIB) $(CORE_LIB)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
@@ -559,6 +566,9 @@ check-arch-ops: $(ARCH_OPS_TESTS)
 check-core-service: $(CORE_SERVICE_TEST)
 	$(CORE_SERVICE_TEST)
 
+check-boot-lifecycle: $(BOOT_LIFECYCLE_TEST)
+	$(BOOT_LIFECYCLE_TEST)
+
 check-mode-descriptors: $(MODE_DESCRIPTOR_TESTS)
 	@for test_binary in $(MODE_DESCRIPTOR_TESTS); do \
 		$$test_binary || exit $$?; \
@@ -706,7 +716,7 @@ check-one: $(HOST_REFERENCE) $(KERNEL_FIXTURE)
 	grep -q "image-format=elf64" $(BUILD_DIR)/host-reference.txt
 	grep -q "normalized-memory-regions=5" $(BUILD_DIR)/host-reference.txt
 	grep -q "handoff-format=synthetic-v1" $(BUILD_DIR)/host-reference.txt
-	grep -q "session-state=3" $(BUILD_DIR)/host-reference.txt
+	grep -q "lifecycle-stage=8" $(BUILD_DIR)/host-reference.txt
 	@echo "RIBON-R4-HOST-REFERENCE-OK $(RIBON_ARCH)"
 
 check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
@@ -716,7 +726,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
-	check-core-service check-mode-descriptors check-plugin-descriptors \
+	check-core-service check-boot-lifecycle check-mode-descriptors check-plugin-descriptors \
 	check-protocol-contract check-library-embed check-composition-schemas \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
 	check-external-plugin check-firmware-personalities \

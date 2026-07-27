@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-27
 code_paths:
   - include/Ribon/
   - sdk/
@@ -64,7 +64,7 @@ Core Library는 다음만 소유한다.
 - immutable product 및 plugin descriptor 검증
 - bounded state transition과 failure vocabulary
 - capability graph와 operation deadline
-- prepare, commit, point-of-no-return 순서
+- caller-owned `RibonBootTransaction` stage와 terminal failure receipt
 
 Core는 OS protocol, executable format, architecture instruction, firmware header,
 device MMIO, network packet을 해석하지 않는다. Core에는 `main`, `_start`, selected
@@ -74,13 +74,13 @@ protocol global, native firmware handle이 없다.
 
 Boot Library는 OS 중립적인 boot orchestration을 소유한다.
 
-- boot source의 bounded byte-range read
+- boot source의 bounded byte-range read와 product retry budget
 - image format plugin을 통한 load plan
 - component와 destination overlap 검증
 - trust result와 provenance의 immutable snapshot
 - slot 선택과 journal service 호출 순서
 - 선택된 boot protocol의 prepare와 handoff 호출
-- environment quiesce 뒤 architecture transfer 호출
+- metadata write/flush commit, selected environment quiesce 뒤 architecture transfer 호출
 
 Boot Library는 RPH1, Linux `boot_params`, FreeBSD metadata, Multiboot tag를 직접 알지
 않는다.
@@ -273,6 +273,12 @@ native entry
   -> journal commit and environment quiesce
   -> architecture transfer
 ```
+
+Boot Library transaction은 `CAPTURE -> VALIDATE_PRODUCT -> FREEZE_PLATFORM_FACTS ->
+SELECT_SOURCE -> VERIFY_MANIFEST -> LOAD_IMAGE -> PREPARE_PROTOCOL -> COMMIT_ATTEMPT ->
+QUIESCE_ENVIRONMENT -> TRANSFER` 순서를 가진다. Stage failure는 pointer-free receipt로
+종료하며 generic library가 fallback source, resident overseer 또는 OS runtime을 시작하지
+않는다.
 
 Firmware product는 다음 확장 phase를 사용할 수 있다.
 

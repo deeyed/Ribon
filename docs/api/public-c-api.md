@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-27
 code_paths:
   - include/Ribon/core/
   - include/Ribon/boot/
@@ -49,8 +49,8 @@ Ribon/boot/plan.h
 Ribon/boot/transfer.h
 ```
 
-Boot API는 source, component, load plan, prepare/commit/transfer를 제공한다. 특정 handoff
-wire field를 선언하지 않는다.
+Boot API는 caller-owned source, component, load plan, `RibonBootTransaction`, failure receipt와
+prepare/commit/quiesce/terminal transfer를 제공한다. 특정 handoff wire field를 선언하지 않는다.
 
 ## Plugin SDK API
 

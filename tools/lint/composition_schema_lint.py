@@ -98,7 +98,7 @@ def main() -> int:
         fail("external package keys do not match plugin-package schema")
     if (
         package.get("schema_version") != 1
-        or package.get("sdk_abi") != 2
+        or package.get("sdk_abi") != 3
         or package.get("package_id") != "example.diagnostic-sink"
         or package.get("plugin_id") != "service.diagnostic-sink"
         or package.get("plugin_kind") != "service"

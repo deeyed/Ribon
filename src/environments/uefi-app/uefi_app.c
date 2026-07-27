@@ -7,6 +7,8 @@
 
 static struct RibonUefiAppContext *uefi_context;
 static int uefi_services_initialized;
+static unsigned char uefi_attempt_metadata[64];
+static uint64_t uefi_attempt_metadata_size;
 
 /** @brief UEFI memory type을 Ribon ownership kind로 변환한다. */
 static enum RibonMemoryRegionKind uefi_memory_kind(UINT32 type) {
@@ -80,10 +82,12 @@ static int uefi_boot_source_read(
         size > native->payload_size - offset) {
         return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
     }
-    memcpy(
-        buffer,
-        (const unsigned char *)native->payload + offset,
-        (size_t)size);
+    if (buffer == (const unsigned char *)native->payload + offset) {
+        return RIBON_SERVICE_STATUS_OK;
+    }
+    for (uint64_t index = 0u; index < size; ++index) {
+        ((unsigned char *)buffer)[index] = ((const unsigned char *)native->payload)[offset + index];
+    }
     return RIBON_SERVICE_STATUS_OK;
 }
 
@@ -118,6 +122,59 @@ static struct RibonMonotonicTimerServiceOperations uefi_timer_operations = {
     .now = uefi_timer_now,
 };
 
+/** @brief UEFI consumer attempt metadata를 caller-owned static range에서 읽는다. */
+static int uefi_metadata_read(void *context, uint64_t offset, void *buffer, uint64_t size) {
+    if (context != uefi_context || buffer == 0 || offset > uefi_attempt_metadata_size ||
+        size > uefi_attempt_metadata_size - offset) {
+        return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+    }
+    for (uint64_t index = 0u; index < size; ++index) {
+        ((unsigned char *)buffer)[index] = uefi_attempt_metadata[offset + index];
+    }
+    return RIBON_SERVICE_STATUS_OK;
+}
+
+/** @brief UEFI consumer attempt metadata를 bounded durable candidate로 기록한다. */
+static int uefi_metadata_write(void *context, uint64_t offset, const void *buffer, uint64_t size) {
+    if (context != uefi_context || buffer == 0 || offset > sizeof(uefi_attempt_metadata) ||
+        size > sizeof(uefi_attempt_metadata) - offset) {
+        return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+    }
+    for (uint64_t index = 0u; index < size; ++index) {
+        uefi_attempt_metadata[offset + index] = ((const unsigned char *)buffer)[index];
+    }
+    if (offset + size > uefi_attempt_metadata_size) {
+        uefi_attempt_metadata_size = offset + size;
+    }
+    return RIBON_SERVICE_STATUS_OK;
+}
+
+/** @brief UEFI consumer metadata flush ordering을 transaction boundary로 확정한다. */
+static int uefi_metadata_flush(void *context, uint32_t slot, uint64_t deadline_ticks) {
+    (void)slot;
+    (void)deadline_ticks;
+    return context == uefi_context ? RIBON_SERVICE_STATUS_OK : RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+}
+
+/** @brief ExitBootServices 이후에도 native handle을 호출하지 않는 closure boundary다. */
+static int uefi_environment_quiesce(void *context) {
+    return context == uefi_context && uefi_context->boot_services == 0 ?
+        RIBON_SERVICE_STATUS_OK : RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+}
+
+static struct RibonPersistentMetadataServiceOperations uefi_metadata_operations = {
+    .size = sizeof(uefi_metadata_operations), .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .read = uefi_metadata_read, .write = uefi_metadata_write,
+};
+static struct RibonStorageFlushServiceOperations uefi_flush_operations = {
+    .size = sizeof(uefi_flush_operations), .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .flush = uefi_metadata_flush,
+};
+static struct RibonEnvironmentQuiesceServiceOperations uefi_quiesce_operations = {
+    .size = sizeof(uefi_quiesce_operations), .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .quiesce = uefi_environment_quiesce,
+};
+
 /** @brief UEFI boot-source descriptor가 live native context를 참조하는지 검사한다. */
 static int uefi_boot_source_validate(
     const struct RibonServiceDescriptor *descriptor) {
@@ -147,6 +204,30 @@ static int uefi_timer_validate(const struct RibonServiceDescriptor *descriptor) 
            operations->size == sizeof(*operations) &&
            operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
            operations->frequency_hz == 1u && operations->now == uefi_timer_now;
+}
+
+/** @brief UEFI metadata operation table가 live context와 exact callback을 쓰는지 검사한다. */
+static int uefi_metadata_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonPersistentMetadataServiceOperations *operations = descriptor == 0 ? 0 : descriptor->operations;
+    return uefi_services_initialized && operations == &uefi_metadata_operations &&
+           descriptor->operations_size == sizeof(*operations) && operations->context == uefi_context &&
+           operations->read == uefi_metadata_read && operations->write == uefi_metadata_write;
+}
+
+/** @brief UEFI flush operation table가 live context와 exact callback을 쓰는지 검사한다. */
+static int uefi_flush_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonStorageFlushServiceOperations *operations = descriptor == 0 ? 0 : descriptor->operations;
+    return uefi_services_initialized && operations == &uefi_flush_operations &&
+           descriptor->operations_size == sizeof(*operations) && operations->context == uefi_context &&
+           operations->flush == uefi_metadata_flush;
+}
+
+/** @brief UEFI closure operation table가 live context와 exact callback을 쓰는지 검사한다. */
+static int uefi_quiesce_validate(const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonEnvironmentQuiesceServiceOperations *operations = descriptor == 0 ? 0 : descriptor->operations;
+    return uefi_services_initialized && operations == &uefi_quiesce_operations &&
+           descriptor->operations_size == sizeof(*operations) && operations->context == uefi_context &&
+           operations->quiesce == uefi_environment_quiesce;
 }
 
 /** @brief UEFI application이 제공하는 typed boot-source authority다. */
@@ -197,9 +278,51 @@ const struct RibonServiceDescriptor ribon_uefi_app_monotonic_timer_service_descr
     .validate_operations = uefi_timer_validate,
 };
 
+/** @brief UEFI application이 제공하는 durable attempt metadata authority다. */
+const struct RibonServiceDescriptor ribon_uefi_app_persistent_metadata_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC, .size = sizeof(ribon_uefi_app_persistent_metadata_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_PERSISTENT_METADATA,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION, .id = "service.uefi-app.persistent-metadata",
+    .provides = RIBON_CAP_PERSISTENT_METADATA, .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .environment_mask = RIBON_ENV_MASK_UEFI, .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
+    .operations = &uefi_metadata_operations, .operations_size = sizeof(uefi_metadata_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION, .validate_operations = uefi_metadata_validate,
+};
+
+/** @brief UEFI application이 제공하는 metadata flush authority다. */
+const struct RibonServiceDescriptor ribon_uefi_app_storage_flush_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC, .size = sizeof(ribon_uefi_app_storage_flush_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_STORAGE_FLUSH,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION, .id = "service.uefi-app.storage-flush",
+    .provides = RIBON_CAP_STORAGE_FLUSH, .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .environment_mask = RIBON_ENV_MASK_UEFI, .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
+    .operations = &uefi_flush_operations, .operations_size = sizeof(uefi_flush_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION, .validate_operations = uefi_flush_validate,
+};
+
+/** @brief UEFI application이 제공하는 environment closure authority다. */
+const struct RibonServiceDescriptor ribon_uefi_app_environment_quiesce_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC, .size = sizeof(ribon_uefi_app_environment_quiesce_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_QUIESCE,
+    .phase = RIBON_PLUGIN_PHASE_QUIESCE, .id = "service.uefi-app.environment-quiesce",
+    .provides = RIBON_CAP_ENVIRONMENT_QUIESCE, .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .environment_mask = RIBON_ENV_MASK_UEFI, .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
+    .operations = &uefi_quiesce_operations, .operations_size = sizeof(uefi_quiesce_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION, .validate_operations = uefi_quiesce_validate,
+};
+
 static const struct RibonServiceDescriptor *const uefi_services[] = {
     &ribon_uefi_app_boot_source_service_descriptor,
+    &ribon_uefi_app_environment_quiesce_service_descriptor,
     &ribon_uefi_app_monotonic_timer_service_descriptor,
+    &ribon_uefi_app_persistent_metadata_service_descriptor,
+    &ribon_uefi_app_storage_flush_service_descriptor,
 };
 
 static const struct RibonServiceDirectory uefi_service_directory = {
@@ -235,6 +358,9 @@ int ribon_uefi_app_initialize(
     uefi_context = context;
     uefi_boot_source_operations.context = context;
     uefi_timer_operations.context = context;
+    uefi_metadata_operations.context = context;
+    uefi_flush_operations.context = context;
+    uefi_quiesce_operations.context = context;
     uefi_services_initialized = 1;
     return RIBON_UEFI_APP_STATUS_OK;
 }
@@ -462,7 +588,10 @@ const struct RibonPluginDescriptor ribon_uefi_app_environment_plugin_descriptor 
     .id = "environment.uefi-app",
     .provides =
         RIBON_CAP_BOOT_SOURCE_READ |
-        RIBON_CAP_MONOTONIC_TIMER,
+        RIBON_CAP_MONOTONIC_TIMER |
+        RIBON_CAP_PERSISTENT_METADATA |
+        RIBON_CAP_STORAGE_FLUSH |
+        RIBON_CAP_ENVIRONMENT_QUIESCE,
     .requires =
         RIBON_CAP_ARCHITECTURE |
         RIBON_CAP_PLATFORM_FACTS,

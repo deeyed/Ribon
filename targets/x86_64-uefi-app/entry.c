@@ -22,9 +22,8 @@ static _Alignas(4096) unsigned char handoff_buffer[RIBON_UEFI_HANDOFF_CAPACITY];
 static _Alignas(16) unsigned char arena_storage[RIBON_UEFI_ARENA_CAPACITY];
 
 struct UefiRefreshContext {
-    struct RibonBootSession *session;
-    struct RibonBootRequest *request;
-    struct RibonBootPlan *plan;
+    struct RibonBootTransaction *transaction;
+    struct RibonHandoffArtifact *handoff;
 };
 
 /** @brief x86 port I/O로 한 byte를 기록한다. */
@@ -85,18 +84,16 @@ static int uefi_refresh_plan(
         (struct UefiRefreshContext *)context;
     struct RibonParusRph1View view;
     int status;
-    (void)environment;
     if (refresh == 0) {
         return -1;
     }
-    status = ribon_boot_refresh_after_commit(
-        refresh->session,
-        refresh->request,
-        refresh->plan);
+    status = ribon_boot_transaction_refresh_after_commit(
+        refresh->transaction,
+        environment);
     if (status != RIBON_BOOT_STATUS_OK ||
         ribon_parus_parse_rph1(
-            refresh->request->handoff_artifact->data,
-            refresh->request->handoff_artifact->size,
+            refresh->handoff->data,
+            refresh->handoff->size,
             &view) != RIBON_PARUS_RPH1_PARSE_OK) {
         return -1;
     }
@@ -128,11 +125,11 @@ EFI_STATUS EFIAPI efi_main(
     struct RibonBootEnvironment environment;
     struct RibonArena arena;
     struct RibonCoreContext core;
-    struct RibonBootSession session;
-    struct RibonPayloadImage payload = {
-        .data = ribon_embedded_payload,
+    struct RibonBootTransaction transaction;
+    struct RibonBootSource source = {
+        .kind = RIBON_BOOT_MEDIA_MEMORY,
+        .source_id = 0u,
         .size = ribon_embedded_payload_size,
-        .source_name = "boot/payload.elf",
     };
     struct RibonLoadedPayload layout = {
         .segments = load_segments,
@@ -143,20 +140,9 @@ EFI_STATUS EFIAPI efi_main(
         .capacity = RIBON_UEFI_REGION_CAPACITY,
     };
     struct RibonHandoffArtifact handoff = {0};
-    struct RibonBootRequest request = {
-        .environment = &environment,
-        .normalized_memory_map = &normalized,
-        .kernel_payload = &payload,
-        .kernel_layout = &layout,
-        .handoff_buffer = handoff_buffer,
-        .handoff_buffer_capacity = sizeof(handoff_buffer),
-        .handoff_artifact = &handoff,
-    };
-    struct RibonBootPlan plan;
     struct UefiRefreshContext refresh = {
-        .session = &session,
-        .request = &request,
-        .plan = &plan,
+        .transaction = &transaction,
+        .handoff = &handoff,
     };
     uint16_t serial_base;
     int status;
@@ -179,13 +165,6 @@ EFI_STATUS EFIAPI efi_main(
     if (status != RIBON_UEFI_APP_STATUS_OK) {
         return uefi_fail(serial_base, "environment-initialize");
     }
-    status = image_format->analyze(&payload, arch->descriptor, &layout);
-    if (status != RIBON_LOADER_STATUS_OK ||
-        ribon_uefi_app_place_payload(&native, &payload, &layout) !=
-            RIBON_UEFI_APP_STATUS_OK) {
-        return uefi_fail(serial_base, "payload-place");
-    }
-    uefi_marker(serial_base, "RIBON-R4-UEFI-PAYLOAD-LOADED");
     if (ribon_uefi_app_capture_environment(&native, &environment) !=
         RIBON_UEFI_APP_STATUS_OK) {
         return uefi_fail(serial_base, "environment-capture");
@@ -204,18 +183,33 @@ EFI_STATUS EFIAPI efi_main(
         return uefi_fail(serial_base, "product-graph");
     }
     uefi_marker(serial_base, "RIBON-R4-UEFI-PRODUCT-GRAPH-OK");
-    status = ribon_boot_session_initialize(
-        &session,
+    status = ribon_boot_transaction_initialize(
+        &transaction,
         &core,
         arch,
         protocol,
         image_format);
     if (status != RIBON_BOOT_STATUS_OK ||
-        ribon_boot_prepare(&session, &request, &plan) !=
-            RIBON_BOOT_STATUS_OK ||
-        ribon_boot_commit(&session) != RIBON_BOOT_STATUS_OK) {
+        ribon_boot_transaction_prepare(&transaction, &(struct RibonBootTransactionInput){
+            .environment = &environment,
+            .normalized_memory_map = &normalized,
+            .source = &source,
+            .source_offset = 0u,
+            .source_size = ribon_embedded_payload_size,
+            .payload_buffer = (void *)ribon_embedded_payload,
+            .payload_buffer_capacity = ribon_embedded_payload_size,
+            .source_name = "boot/payload.elf",
+            .kernel_layout = &layout,
+            .handoff_buffer = handoff_buffer,
+            .handoff_buffer_capacity = sizeof(handoff_buffer),
+            .handoff_artifact = &handoff,
+        }) != RIBON_BOOT_STATUS_OK ||
+        ribon_uefi_app_place_payload(&native, &transaction.payload, &layout) !=
+            RIBON_UEFI_APP_STATUS_OK ||
+        ribon_boot_transaction_commit_attempt(&transaction) != RIBON_BOOT_STATUS_OK) {
         return uefi_fail(serial_base, "boot-prepare");
     }
+    uefi_marker(serial_base, "RIBON-R4-UEFI-PAYLOAD-LOADED");
     status = ribon_uefi_app_exit_boot_services(
         &native,
         &environment,
@@ -226,7 +220,7 @@ EFI_STATUS EFIAPI efi_main(
     }
     uefi_marker(serial_base, "RIBON-R4-UEFI-FINAL-MAP-RPH1-OK");
     uefi_marker(serial_base, "RIBON-R4-UEFI-EXIT-BOOT-SERVICES-OK");
-    if (ribon_environment_quiesce(&session) != RIBON_BOOT_STATUS_OK) {
+    if (ribon_boot_transaction_quiesce_environment(&transaction) != RIBON_BOOT_STATUS_OK) {
         arch->halt();
     }
     if (arch->cache_sync(
@@ -236,9 +230,8 @@ EFI_STATUS EFIAPI efi_main(
         arch->halt();
     }
     uefi_marker(serial_base, "RIBON-R4-UEFI-TRANSFER");
-    ribon_boot_transfer(
-        &session,
-        &plan,
+    ribon_boot_transaction_transfer(
+        &transaction,
         (uint64_t)(uintptr_t)handoff.data,
         RIBON_KERNEL_ENTRY_FLAG_RPH1,
         0u);

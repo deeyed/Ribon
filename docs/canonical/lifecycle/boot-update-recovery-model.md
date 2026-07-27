@@ -2,16 +2,18 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-27
 code_paths:
-  - src/common/boot/
+  - include/Ribon/boot/plan.h
+  - include/Ribon/service/directory.h
+  - src/common/boot.c
   - src/plugins/update/
   - src/plugins/policy/
   - src/plugins/watchdog/
   - src/protocols/
   - products/
 tests:
-  - ribon-boot-lifecycle-state-test
+  - make check-boot-lifecycle
   - ribon-update-power-loss-test
   - ribon-product-mode-graph-lint
 hardware:
@@ -41,6 +43,24 @@ CAPTURE
   -> TRANSFER
 ```
 
+`RibonBootTransaction`은 caller-owned object이며, `CAPTURE`에서만 초기화할 수 있다.
+성공 stage는 되돌아가지 않는다. 오류는 `FAILED` terminal stage와
+`RibonBootFailureReceipt`로 고정한다. Receipt는 stage, stable reason, static provider ID와
+입력·출력 byte, component, retry 소비량만 포함하며 native pointer를 포함하지 않는다.
+
+| Stage | 허용하는 외부 효과 | 실패 뒤 상태 |
+| --- | --- | --- |
+| `CAPTURE` | 없음 | `FAILED` |
+| `VALIDATE_PRODUCT` | 없음 | `FAILED` |
+| `FREEZE_PLATFORM_FACTS` | caller-owned map 정규화 | `FAILED` |
+| `SELECT_SOURCE` | 없음 | `FAILED` |
+| `VERIFY_MANIFEST` | 없음 | `FAILED` |
+| `LOAD_IMAGE` | 선택 source의 bounded read | `FAILED` |
+| `PREPARE_PROTOCOL` | caller-owned handoff buffer write | `FAILED` |
+| `COMMIT_ATTEMPT` | metadata write와 flush | `FAILED` |
+| `QUIESCE_ENVIRONMENT` | 선택된 environment closure | `FAILED` |
+| `TRANSFER` | terminal architecture entry | 반환하지 않음 |
+
 ### Capture
 
 Architecture와 environment consumer는 native entry state를 typed descriptor로 변환한다.
@@ -58,8 +78,15 @@ Firmware table, FDT, memory map, boot source, reset reason을 검증하고 immut
 
 ### Select and verify
 
-Boot policy가 source와 candidate를 선택한다. Image와 manifest는 선택된 security,
-image-format, boot-protocol plugin의 모든 요구사항을 만족해야 한다.
+Boot policy가 source와 candidate를 선택한다. `VERIFY_MANIFEST`는 stable source name과
+선택된 candidate 범위를 검증한다. 이 단계는 signature, digest, anti-rollback 또는 network
+metadata를 검증하지 않는다. 그런 trust assertion은 Security와 Update Policy plugin 계약이
+결정하며, 검증 결과는 이후 transaction input으로 전달된다.
+
+`LOAD_IMAGE`는 selected boot-source authority만 호출한다. 한 callback의 deadline과 product
+retry budget을 동시에 적용하고, 자동 fallback source·protocol·network discovery를 수행하지
+않는다. Source가 memory mapping을 zero-copy로 노출하려면 environment service가 input/output
+alias를 명시적으로 보장해야 한다.
 
 ### Prepare protocol
 
@@ -68,13 +95,21 @@ Boot Protocol은 검증된 component plan으로 handoff와 entry contract를 생
 
 ### Commit
 
-Attempt journal과 필요한 watchdog state를 durable하게 기록한다. Commit 뒤 source 선택을
-바꾸려면 명시적인 failure transition을 수행한다.
+`COMMIT_ATTEMPT`는 attempt record를 persistent-metadata authority에 기록하고
+storage-flush authority의 durability barrier가 성공한 뒤에만 완료된다. Partial write,
+write failure, flush failure, deadline expiry는 모두 terminal receipt를 남기고 transfer를
+금지한다. Commit 뒤 source 선택을 바꾸려면 명시적인 failure transition을 수행한다.
 
 ### Quiesce
 
-Environment는 final memory map과 reclaim 상태를 확정하고 종료할 service를 폐쇄한다.
-Quiesce 뒤 종료된 firmware service를 호출하지 않는다.
+Environment는 final memory map과 reclaim 상태를 확정하고 selected
+`environment-quiesce` authority를 호출한다. UEFI처럼 final map을 얻는 과정이 있는
+environment는 commit 뒤 source 선택 없이 handoff만 갱신하고, native closure가 성공한 뒤
+transaction quiesce를 수행한다. Quiesce 뒤 종료된 firmware service를 호출하지 않는다.
+Closure callback은 bounded non-blocking operation이어야 한다. Closure는 timer authority를
+동시에 철회할 수 있으므로 Boot Library는 closure callback 자체를 계측하려고 timer를
+재호출하지 않는다. Source read, protocol handoff, metadata write/flush의 deadline은 closure
+전에 monotonic timer로 검사한다.
 
 ### Transfer
 
