@@ -107,7 +107,16 @@ def main() -> int:
         ):
             return fail(f"invalid or unbound file: {relative}")
     config = (args.package / "config.txt").read_text(encoding="utf-8")
-    for required in ("arm_64bit=1", "kernel=kernel8.img", "enable_uart=1"):
+    for required in (
+        "device_tree=bcm2712-rpi-5-b.dtb",
+        "arm_64bit=1",
+        "kernel=kernel8.img",
+        "enable_uart=1",
+        "enable_rp1_uart=1",
+        "uart_2ndstage=1",
+        "os_check=0",
+        "pciex4_reset=0",
+    ):
         if required not in config:
             return fail(f"config.txt missing {required}")
     cmdline = (args.package / "cmdline.txt").read_text(encoding="utf-8").strip()

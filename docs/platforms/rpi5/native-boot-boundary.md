@@ -81,6 +81,12 @@ Target image recipe는 다음을 소유한다.
 - `config.txt`와 `cmdline.txt`
 - padding, digest, signing, package manifest
 
+현재 RPi5 raw-FDT recipe는 firmware가 선택한 BCM2712 DTB와 RP1 UART 초기화를
+명시적으로 보존한다. Package checker는 `device_tree=bcm2712-rpi-5-b.dtb`,
+`enable_uart=1`, `enable_rp1_uart=1`, `uart_2ndstage=1`, `os_check=0`,
+`pciex4_reset=0`을 모두 요구한다. 이 값은 generic Core 정책이 아니라 RPi5
+firmware/image recipe의 bring-up 계약이다.
+
 Package 생성은 live boot evidence가 아니다. Package gate는 file, size, digest, target
 identity, image header, selected object manifest만 검증한다.
 
