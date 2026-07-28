@@ -11,7 +11,7 @@ code_paths:
   - include/Ribon/firmware/
   - include/Ribon/sdk/
   - include/Ribon/arch/
-  - include/Ribon/platform/
+  - include/Ribon/port/
 tests:
   - ribon-public-api-lint
   - ribon-doxygen
@@ -126,16 +126,17 @@ Ribon/arch/entry.h
 Architecture operation은 machine, canonical address, cache, privilege, transfer를
 제공한다. Board resource와 OS permanent page table을 노출하지 않는다.
 
-## Platform API
+## Port API
 
 ```text
-Ribon/platform/facts.h
+Ribon/port/port.h
 ```
 
-Platform fact는 target이 선택한 architecture와 environment, diagnostic resource,
-native input 상한, payload load window를 고정한다. Runtime-discovered FDT 또는 firmware
-fact와 충돌하면 environment capture가 fail-closed한다. Platform API는 OS wire
-artifact를 포함하지 않는다.
+Port descriptor는 target recipe가 선택한 architecture/environment tuple와 independent
+diagnostic, machine-description, payload-placement service descriptor를 묶는다. Core와
+Boot Library는 aggregate port descriptor를 소비하지 않는다. Runtime-discovered FDT
+또는 firmware fact와 service constraint가 충돌하면 environment capture가
+fail-closed한다. Port API는 OS wire artifact를 포함하지 않는다.
 
 ## ABI 규칙
 

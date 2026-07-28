@@ -2,12 +2,12 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 code_paths:
   - src/environments/
   - src/image-formats/
   - src/arch/
-  - platforms/
+  - ports/
   - products/bootmgr/
   - targets/
 tests:
@@ -21,7 +21,7 @@ supersedes:
   - monolithic boot frontend ownership
 ---
 
-# Environment·Platform·Image 경계 계약
+# Environment·Port·Image 경계 계약
 
 Boot target은 native 실행환경, machine resource, executable parser와 OS protocol을 서로
 다른 component로 결합한다. 한 component는 다른 축의 identity나 policy를 추론하지
@@ -32,12 +32,13 @@ Boot target은 native 실행환경, machine resource, executable parser와 OS pr
 Boot manager product는 다음 tuple을 source manifest에 선언한다.
 
 ```text
-architecture × environment × platform × image format × boot protocol × mode
+architecture × environment × typed port services × image format × boot protocol × mode
 ```
 
-각 product는 architecture, environment, platform provider를 정확히 하나씩 포함한다.
-Generated registry와 final link map이 이 선택을 검증한다. Directory scan, weak fallback,
-board alias, runtime probe로 다른 provider를 선택하지 않는다.
+각 product는 architecture와 environment provider를 정확히 하나씩 포함하고 필요한
+port service role만 선언한다. Generated registry, service directory와 final link map이
+이 선택을 검증한다. Directory scan, weak fallback, board alias, runtime probe로 다른
+provider를 선택하지 않는다.
 
 ## Environment consumer
 
@@ -65,22 +66,22 @@ exact read를 검증하고, configuration-selected payload path가 아닌 build-
 media product의 source로 사용하지 않는다.
 
 Raw-FDT parser는 allocation과 MMIO 없이 header, structure, string bounds를 검증한다.
-Platform이 선언한 native input 상한을 넘는 blob과 memory reservation 충돌을 거부한다.
+Product와 machine-description service가 선언한 native input 상한을 넘는 blob과 memory
+reservation 충돌을 거부한다.
 
-## Platform facts
+## Typed port services
 
-Platform provider는 다음 immutable fact만 제공한다.
+Port는 machine wiring을 아래처럼 독립 service descriptor로 제공한다.
 
-- stable platform ID
-- architecture와 environment tuple
-- diagnostic UART resource와 polling 상한
-- timer frequency
-- native input capacity
-- payload load window
+- diagnostic sink의 initialize/write operation과 polling 상한
+- machine-description input 주소, 크기와 format
+- payload-placement의 허용 physical window와 alignment
 
-Board source는 OS handoff, image parser, boot policy를 포함하지 않는다. QEMU `virt`와
-RPi5는 AArch64, raw-FDT, FDT parser, PL011 driver를 공유하지만 platform object, linker,
-artifact, package와 evidence marker를 공유하지 않는다.
+Core와 Boot Library는 stable board ID나 monolithic fact table을 요구하지 않는다.
+Standard firmware가 모든 resource authority를 제공하면 port service 없이도 product를
+조합할 수 있다. Board source는 OS handoff, image parser, boot policy를 포함하지
+않는다. QEMU `virt`와 RPi5는 AArch64, raw-FDT, FDT parser, PL011 driver를 공유하지만
+port object, linker, artifact, package와 evidence marker를 공유하지 않는다.
 
 ## Image format
 

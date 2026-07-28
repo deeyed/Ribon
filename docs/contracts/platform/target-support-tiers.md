@@ -2,12 +2,12 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-29
 code_paths:
   - src/arch/
   - src/environments/
   - src/image-formats/
-  - platforms/
+  - ports/
   - products/
   - targets/
 tests:
@@ -26,7 +26,7 @@ supersedes:
 
 ```text
 product + architecture + environment 또는 personality
-        + platform + protocol set + image recipe
+        + typed port services + protocol set + image recipe
 ```
 
 등급은 실행 성공 주장이 아니며 target마다 독립 evidence를 요구한다.

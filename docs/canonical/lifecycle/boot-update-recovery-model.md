@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 code_paths:
   - include/Ribon/boot/plan.h
   - include/Ribon/service/directory.h
@@ -33,7 +33,7 @@ policy와 service plugin이며 Core의 고정 OS 의미론이 아니다.
 ```text
 CAPTURE
   -> VALIDATE_PRODUCT
-  -> FREEZE_PLATFORM_FACTS
+  -> NORMALIZE_ENVIRONMENT
   -> SELECT_SOURCE
   -> VERIFY_MANIFEST
   -> LOAD_IMAGE
@@ -52,7 +52,7 @@ CAPTURE
 | --- | --- | --- |
 | `CAPTURE` | 없음 | `FAILED` |
 | `VALIDATE_PRODUCT` | 없음 | `FAILED` |
-| `FREEZE_PLATFORM_FACTS` | caller-owned map 정규화 | `FAILED` |
+| `NORMALIZE_ENVIRONMENT` | caller-owned map과 native input 정규화 | `FAILED` |
 | `SELECT_SOURCE` | 없음 | `FAILED` |
 | `VERIFY_MANIFEST` | 없음 | `FAILED` |
 | `LOAD_IMAGE` | 선택 source의 bounded read | `FAILED` |
@@ -71,10 +71,12 @@ Native pointer는 address, size, alignment, lifetime, reclaim 조건과 함께 �
 Generated product descriptor, plugin ABI, capability graph, phase dependency, resource budget을
 검증한다. 검증 실패 전에는 plugin callback을 호출하지 않는다.
 
-### Freeze platform facts
+### Normalize environment
 
 Firmware table, FDT, memory map, boot source, reset reason을 검증하고 immutable snapshot으로
-동결한다. 이후 native source를 다시 해석하지 않는다.
+동결한다. Machine-specific resource가 필요하면 선택된 typed port service를 통해
+검증하며 monolithic platform fact table은 만들지 않는다. 이후 native source를 다시
+해석하지 않는다.
 
 ### Select and verify
 

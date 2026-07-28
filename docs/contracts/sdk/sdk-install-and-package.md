@@ -39,7 +39,7 @@ share/ribon/templates/
 
 `libribon-sdk`는 plugin package ABI, host contract harness, firmware personality와
 personality-private service directory를 제공한다. Product가 선택한 architecture,
-environment, protocol, platform implementation은 SDK archive에 포함하지 않는다.
+environment, protocol, port implementation은 SDK archive에 포함하지 않는다.
 
 ## ABI tuple
 
@@ -63,7 +63,7 @@ Plugin package는 다음 source-owned 파일을 모두 제공한다.
 - contract test: positive graph와 malformed descriptor negative case
 - documentation: ownership, budget, lifetime과 non-claim
 
-Package source는 설치된 `include/Ribon/`만 소비한다. `src/`, `platforms/`, `products/`
+Package source는 설치된 `include/Ribon/`만 소비한다. `src/`, `ports/`, `products/`
 header와 generated registry를 include하지 않는다.
 
 ## Host contract harness

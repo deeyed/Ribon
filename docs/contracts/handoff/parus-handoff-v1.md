@@ -4,7 +4,7 @@ status: accepted
 authority: normative
 last_verified: 2026-07-26
 code_paths:
-  - src/protocols/parus/
+  - src/protocols/os/parus/
   - include/Ribon/protocol/
   - ../../../../sys/include/parus/boot/
   - ../../../../sys/kern/boot/

@@ -109,7 +109,7 @@ Boot Protocol은 다음 operation을 제공한다.
 | `validate_components` | kernel, module, DTB, command line 역할을 검증한다 |
 | `select_image_formats` | 허용 image format plugin을 제한한다 |
 | `prepare_handoff` | caller-owned 고정 용량 buffer에 wire artifact를 생성한다 |
-| `select_entry_contract` | architecture별 register ABI와 entry precondition을 반환한다 |
+| `prepare_entry_invocation` | OS 의미를 봉인한 argument와 architecture entry precondition을 반환한다 |
 | `validate_confirmation` | OS-specific confirmation payload를 검증한다 |
 
 Protocol은 I/O, crypto, watchdog, update journal, firmware native service를 직접 호출하지
@@ -117,6 +117,9 @@ Protocol은 I/O, crypto, watchdog, update journal, firmware native service를 �
 
 Protocol의 architecture-specific 코드는 해당 protocol의 `arch/<arch>/` 아래에
 격리한다. Generic protocol code에 board 또는 firmware 조건문을 두지 않는다.
+
+Boot manager와 environment frontend는 generated registry/configuration으로 protocol을
+선택하며 Parus, RPH1, Linux, ZBI 같은 OS-specific symbol과 parser를 직접 참조하지 않는다.
 
 ## Image format 분리
 

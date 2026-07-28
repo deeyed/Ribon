@@ -12,6 +12,8 @@ bootloader executable, embeddable library, firmware/plugin SDK product로 조합
 - Image-format plugin: ELF, PE/COFF 등의 bounded parser와 load plan
 - Boot Protocol plugin: OS component, handoff wire ABI, register ABI와 confirmation
 - Environment plugin: UEFI, BIOS, raw-FDT, SBI, host service의 consumer
+- Port service: machine wiring을 diagnostic, machine-description, payload-placement
+  authority로 분리
 - Firmware Personality plugin: UEFI/BIOS-compatible service의 provider
 
 Plugin은 runtime scan이나 constructor로 등록하지 않는다. QStar product manifest가
@@ -21,7 +23,11 @@ API는 제공하지 않는다.
 
 Parus는 generic Core의 특수 분기가 아니라 `protocol.parus` Boot Protocol plugin이다.
 Parus Handoff v1(`RPH1`) serializer와 parser는
-`src/protocols/parus/`와 `include/Ribon/protocols/parus/`가 소유한다.
+`src/protocols/os/parus/`와 `include/Ribon/protocols/os/parus/`가 소유한다.
+Linux, FreeBSD, Zircon은 같은 generic frontend를 소비하는 독립 OS protocol package다.
+Package 존재와 실제 runtime support는
+[`docs/contracts/protocols/os-package-support-matrix.md`](docs/contracts/protocols/os-package-support-matrix.md)
+기준으로 구분한다.
 
 ## Build와 검증
 

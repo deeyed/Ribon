@@ -48,7 +48,7 @@ canonical/lifecycle/boot-update-recovery-model
 
 contracts/core/library-plugin-protocol-boundary
 contracts/composition/product-plugin-composition
-contracts/frontends/environment-platform-image-boundary
+contracts/frontends/environment-port-image-boundary
 contracts/storage/deterministic-boot-media
 contracts/firmware/firmware-personality-plugin
 contracts/firmware/reference-provider-products
@@ -61,11 +61,13 @@ api/public-c-api
 :caption: Boot와 복구 계약
 
 contracts/handoff/parus-handoff-v1
+contracts/boot/generic-entry-and-port-services
+contracts/protocols/os-package-support-matrix
 contracts/entry/os-entry-ownership
 contracts/update/update-authority
 contracts/recovery/overseer-plugin-boundary
 contracts/network/recovery-network-surface
-contracts/platform/platform-support-tiers
+contracts/platform/target-support-tiers
 contracts/evidence/qemu-payload-evidence
 contracts/documentation/documentation-quality-gate
 ```
@@ -78,6 +80,7 @@ adr/0009-limine-library-plugin-hard-cut
 adr/0010-typed-service-graph-hard-cut
 adr/0011-bounded-boot-transaction-hard-cut
 adr/0012-deterministic-boot-media-pipeline
+adr/0013-generic-entry-port-protocol-hard-cut
 ```
 
 ```{toctree}

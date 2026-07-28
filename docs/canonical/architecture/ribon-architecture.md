@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 code_paths:
   - include/Ribon/
   - sdk/
@@ -11,7 +11,7 @@ code_paths:
   - src/environments/
   - src/image-formats/
   - src/protocols/
-  - platforms/
+  - ports/
   - products/
   - targets/
 tests:
@@ -173,7 +173,7 @@ product
 
 target
   = product + architecture + environment or firmware personality
-            + platform + image recipe + evidence policy
+            + typed port services + image recipe + evidence policy
 ```
 
 QStar는 검증된 조합만 허용하고 immutable plugin registry, typed service directory와
@@ -210,12 +210,11 @@ ABI mismatch와 budget/mode violation을 fail-closed한다.
 | `ARCHITECTURE` | x86_64, AArch64, RISC-V 64 |
 | `ENVIRONMENT` | UEFI application, BIOS client, raw-FDT, host |
 | `IMAGE_FORMAT` | ELF64, PE/COFF |
-| `BOOT_PROTOCOL` | Parus, synthetic contract fixture |
-| `PLATFORM` | QEMU virt, RPi5, PC UEFI, PC BIOS |
+| `BOOT_PROTOCOL` | Parus, Linux, FreeBSD, Zircon, synthetic contract fixture |
+| `SERVICE` | diagnostic sink 같은 SDK typed service package |
 
 `POLICY`와 `FIRMWARE_PERSONALITY`는 firmware product가 사용할 수 있는 활성 kind다.
-`SERVICE`는 SDK package가 제공하는 typed service operation의 활성 kind다. Mode
-descriptor는 plugin descriptor와 별도 계약이다.
+Mode descriptor는 plugin descriptor와 별도 계약이다.
 
 Driver, filesystem, transport, security와 firmware service는 SDK 확장에서 독립 kind가
 될 수 있다. 해당 kind가 public descriptor ABI에 추가되기 전에는 product가 선택한
@@ -246,7 +245,7 @@ registry에 의존하지 않는다.
 
 `libribon-sdk`는 SDK ABI tuple, package descriptor validation, host package contract와
 firmware personality service directory를 제공한다. Architecture, environment, boot
-protocol, platform implementation은 해당 archive에 포함하지 않는다.
+protocol, port implementation은 해당 archive에 포함하지 않는다.
 
 ## Plugin graph 불변식
 
@@ -276,7 +275,7 @@ native entry
   -> architecture early normalization
   -> environment capture
   -> product and plugin graph validation
-  -> platform facts and services freeze
+  -> environment snapshot normalization
   -> boot policy and source selection
   -> image load and trust validation
   -> boot protocol handoff preparation
@@ -284,7 +283,7 @@ native entry
   -> architecture transfer
 ```
 
-Boot Library transaction은 `CAPTURE -> VALIDATE_PRODUCT -> FREEZE_PLATFORM_FACTS ->
+Boot Library transaction은 `CAPTURE -> VALIDATE_PRODUCT -> NORMALIZE_ENVIRONMENT ->
 SELECT_SOURCE -> VERIFY_MANIFEST -> LOAD_IMAGE -> PREPARE_PROTOCOL -> COMMIT_ATTEMPT ->
 QUIESCE_ENVIRONMENT -> TRANSFER` 순서를 가진다. Stage failure는 pointer-free receipt로
 종료하며 generic library가 fallback source, resident overseer 또는 OS runtime을 시작하지
@@ -317,13 +316,14 @@ RPi5는 architecture나 firmware 종류가 아니다. 다음 component 조합이
 
 ```text
 AArch64 + raw-FDT 또는 VideoCore environment
-        + BCM2712/RPi5 platform
+        + BCM2712/RPi5 typed port services
         + Raspberry Pi image recipe
 ```
 
-QEMU `virt`는 별도의 machine target이다. RPi5와 QEMU는 AArch64, FDT, PL011 같은
-component를 공유할 수 있지만 identity, memory fallback, linker, package, evidence
-claim을 공유하지 않는다.
+QEMU `virt`는 별도의 machine target이다. RPi5와 QEMU는 AArch64, FDT parser, PL011
+driver를 공유할 수 있지만 port service descriptor, memory fallback, linker, package와
+evidence claim을 공유하지 않는다. Port는 monolithic platform identity를 Core에
+전달하지 않고 필요한 service authority만 제공한다.
 
 ## 결정성
 

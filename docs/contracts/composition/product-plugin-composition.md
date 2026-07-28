@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 code_paths:
   - qstar.lua
   - qstar/
@@ -50,7 +50,7 @@ Target은 다음 축을 명시한다.
 product
 architecture
 entry environment 또는 firmware personality
-platform
+typed port service set
 boot protocol set
 policy set
 image recipe
@@ -80,9 +80,12 @@ Bootloader product는 다음 provider 수를 만족한다.
 | --- | ---: |
 | architecture backend | 1 |
 | entry environment | 1 |
-| platform facts | 1 |
 | selected mode object | 1 |
 | stable plugin ID | 1 이하 |
+
+Port service는 target이 실제로 필요한 role만 0개 이상 제공한다. 각 role의
+authority/collection cardinality는 service directory가 독립적으로 검증하며 generic
+Core가 한 개의 board 또는 platform plugin 존재를 요구하지 않는다.
 
 Boot manager product는 하나 이상의 Boot Protocol, image format, filesystem 또는 transport
 provider를 정적으로 포함할 수 있으나 한 boot session은 manifest selection으로 정확히 하나의
@@ -99,7 +102,7 @@ Firmware product는 entry environment 대신 정확히 하나의 firmware person
 
 Library product는 Boot Protocol provider가 없는 protocol-free embed를 허용한다.
 Generated registry를 사용하는 host contract product는 실행할 architecture,
-environment와 platform tuple을 명시한다. Library에 포함된 service package도 generated
+environment와 service tuple을 명시한다. Library에 포함된 service package도 generated
 registry와 ABI validator를 통과해야 한다.
 
 ## Plugin phase
