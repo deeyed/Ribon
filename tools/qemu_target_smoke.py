@@ -191,6 +191,7 @@ def main() -> int:
     parser.add_argument("--esp", type=Path)
     parser.add_argument("--firmware", type=Path)
     parser.add_argument("--payload", type=Path, required=True)
+    parser.add_argument("--product-manifest", type=Path)
     parser.add_argument(
         "--expected-payload-class",
         choices=("fixture", "kernel"),
@@ -324,6 +325,17 @@ def main() -> int:
             "sha256_after_run": payload_hash_after,
             "immutable": payload_hash == payload_hash_after,
         },
+        "product_manifest": (
+            {
+                "path": str(args.product_manifest),
+                "sha256": artifact_sha256(args.product_manifest),
+                "product_id": json.loads(
+                    args.product_manifest.read_text(encoding="utf-8")
+                ).get("product_id"),
+            }
+            if args.product_manifest is not None
+            else None
+        ),
         "composed_artifact": {
             "path": str(composed_path),
             "sha256": composed_hash,

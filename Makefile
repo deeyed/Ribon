@@ -160,6 +160,7 @@ QEMU_RAW_MANIFEST := products/bootmgr/manifests/qemu-aarch64-virt-parus.json
 QEMU_RAW_REGISTRY_C := $(QEMU_RAW_DIR)/generated/plugin_registry.c
 QEMU_RAW_GRAPH := $(QEMU_RAW_DIR)/results/object-graph.json
 QEMU_RAW_FIXTURE := $(QEMU_RAW_DIR)/payload.elf
+QEMU_RAW_PAYLOAD ?= $(QEMU_RAW_FIXTURE)
 QEMU_RAW_EMBED_C := $(QEMU_RAW_DIR)/generated/embedded_payload.c
 QEMU_RAW_ELF := $(QEMU_RAW_DIR)/ribon.elf
 QEMU_RAW_IMAGE := $(QEMU_RAW_DIR)/ribon.bin
@@ -169,6 +170,12 @@ QEMU_RAW_OBJS += \
 	$(QEMU_RAW_DIR)/obj/generated/plugin_registry.o \
 	$(QEMU_RAW_DIR)/obj/generated/embedded_payload.o \
 	$(QEMU_RAW_DIR)/obj/targets/qemu-aarch64-virt-raw-fdt/entry.o
+
+QEMU_PARUS_DIR := $(TARGET_BUILD_ROOT)/qemu-aarch64-virt-parus
+QEMU_PARUS_MANIFEST := products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
+QEMU_PARUS_PAYLOAD ?=
+QEMU_PARUS_IMAGE := $(QEMU_PARUS_DIR)/ribon.bin
+QEMU_PARUS_VALIDATION := $(QEMU_PARUS_DIR)/results/external-payload.json
 
 RPI5_DIR := $(TARGET_BUILD_ROOT)/rpi5-aarch64-raw-fdt
 RPI5_MANIFEST := products/bootmgr/manifests/rpi5-aarch64-parus.json
@@ -270,7 +277,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
-	qemu-aarch64-virt-raw-fdt-smoke x86_64-uefi-app \
+	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
+	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
 	x86_64-uefi-app-smoke bios-compile rpi5-aarch64-raw-fdt-package \
 	legacy-hard-cut qstar-check docs docs-lint docs-clean clean
 
@@ -414,7 +422,7 @@ $(QEMU_RAW_FIXTURE): tools/make_elf64_fixture.py
 	@mkdir -p $(@D)
 	$(PYTHON) $< --arch aarch64 --base 0x41000000 --entry-at-base --output $@
 
-$(QEMU_RAW_EMBED_C): $(QEMU_RAW_FIXTURE) tools/embed_binary.py
+$(QEMU_RAW_EMBED_C): $(QEMU_RAW_PAYLOAD) tools/embed_binary.py
 	$(PYTHON) tools/embed_binary.py --input $< --output $@
 
 $(QEMU_RAW_DIR)/obj/%.o: %.c
@@ -451,6 +459,29 @@ qemu-aarch64-virt-raw-fdt-smoke: $(QEMU_RAW_IMAGE)
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.log \
 		--result $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.json
+
+qemu-aarch64-virt-parus-product:
+	@test -n "$(QEMU_PARUS_PAYLOAD)" || \
+		{ echo "QEMU_PARUS_PAYLOAD is required" >&2; exit 2; }
+	$(PYTHON) tools/validate_external_parus_payload.py \
+		--manifest $(QEMU_PARUS_MANIFEST) \
+		--payload $(QEMU_PARUS_PAYLOAD) \
+		--result $(QEMU_PARUS_VALIDATION)
+	$(MAKE) --no-print-directory \
+		QEMU_RAW_DIR=$(QEMU_PARUS_DIR) \
+		QEMU_RAW_MANIFEST=$(QEMU_PARUS_MANIFEST) \
+		QEMU_RAW_PAYLOAD=$(abspath $(QEMU_PARUS_PAYLOAD)) \
+		$(QEMU_PARUS_IMAGE)
+
+qemu-aarch64-virt-parus-smoke: qemu-aarch64-virt-parus-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-virt-raw-fdt --qemu $(QEMU_AARCH64) \
+		--image $(QEMU_PARUS_IMAGE) \
+		--payload $(QEMU_PARUS_PAYLOAD) --expected-payload-class kernel \
+		--product-manifest $(QEMU_PARUS_MANIFEST) \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(RESULTS_DIR)/qemu-aarch64-virt-parus.log \
+		--result $(RESULTS_DIR)/qemu-aarch64-virt-parus.json
 
 $(RPI5_REGISTRY_C): $(RPI5_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
@@ -615,6 +646,7 @@ check-composition-schemas:
 
 check-qemu-evidence:
 	$(PYTHON) tests/tools/qemu_target_smoke_tests.py
+	$(PYTHON) tests/tools/external_parus_payload_tests.py
 
 sdk-install: lib
 	$(PYTHON) tools/install_sdk.py \

@@ -5,9 +5,13 @@ authority: normative
 last_verified: 2026-07-28
 code_paths:
   - tools/qemu_target_smoke.py
+  - tools/validate_external_parus_payload.py
+  - products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
   - tests/tools/qemu_target_smoke_tests.py
+  - tests/tools/external_parus_payload_tests.py
 tests:
   - make check-qemu-evidence
+  - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
 hardware:
   - none
 supersedes:
@@ -27,6 +31,12 @@ artifact와 선택적 firmware다. Payload bytes에서 ELF identity와 fixture m
 검사해 observed payload class를 별도로 기록한다. Expected class 선언은 observed
 class를 덮어쓰지 않는다.
 
+AArch64 actual product는 `arm64-rph1-v1`, AArch64 ELF64, load window
+`[0x41000000, 0x42000000)`를 manifest로 고정한다. Product build 전 검증은 모든
+`PT_LOAD`의 file/memory bound, 비중첩, W^X, executable entry와 실행 중 payload
+immutability를 확인한다. Fixture target은 별도 build directory와 generated fixture를
+계속 사용한다.
+
 External-kernel class는 actual payload identity와 Ribon transfer 증거를 연다. Parus
 boot stage 또는 runtime 성공은 별도 required marker graph와 Parus integration
 harness가 검증해야 하며, payload class만으로 열리지 않는다.
@@ -38,6 +48,7 @@ Result는 다음 authority를 분리해 보존한다.
 - expected product class와 observed payload class
 - Ribon source revision
 - payload와 composed artifact SHA-256
+- 선택한 product manifest의 ID와 SHA-256
 - firmware SHA-256
 - QEMU version과 실제 command
 - bounded timeout과 terminal reason

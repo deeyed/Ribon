@@ -111,6 +111,14 @@ LIMIT_KEYS = (
 )
 IMAGE_KEYS = {"format", "recipe", "artifact"}
 EVIDENCE_KEYS = {"class", "claim"}
+PAYLOAD_KEYS = {
+    "architecture",
+    "class",
+    "entry_abi",
+    "format",
+    "load_base",
+    "load_size",
+}
 
 
 def _string(manifest: dict[str, object], key: str) -> str:
@@ -261,6 +269,23 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         or not evidence["claim"]
     ):
         raise ValueError("evidence must define a supported class and bounded claim")
+    payload = manifest.get("payload")
+    if payload is not None:
+        if (
+            product_kind != "bootloader"
+            or not isinstance(payload, dict)
+            or set(payload) != PAYLOAD_KEYS
+            or payload.get("class") != "external-kernel"
+            or payload.get("format") != "elf64"
+            or payload.get("architecture") != architecture
+            or not isinstance(payload.get("entry_abi"), str)
+            or not payload["entry_abi"]
+            or not isinstance(payload.get("load_base"), int)
+            or payload["load_base"] <= 0
+            or not isinstance(payload.get("load_size"), int)
+            or payload["load_size"] <= 0
+        ):
+            raise ValueError("payload must define one typed external kernel contract")
 
     plugins = manifest.get("plugins")
     if not isinstance(plugins, list) or not plugins:
@@ -498,6 +523,7 @@ def main() -> int:
             "packages": [item["package"] for item in manifest["plugins"]],
             "image": manifest["image"],
             "evidence": manifest["evidence"],
+            "payload": manifest.get("payload"),
             "source_manifest": str(args.manifest),
         }
         args.report.parent.mkdir(parents=True, exist_ok=True)

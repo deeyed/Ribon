@@ -10,6 +10,20 @@ import sys
 
 
 EXPECTED = {
+    "qemu-aarch64-virt-parus": {
+        "architecture": "aarch64",
+        "environment": "raw-fdt",
+        "platform": "platform.virt-aarch64",
+        "map": "ribon.map",
+        "optional": True,
+        "product_id": "bootmgr.qemu-aarch64-virt-parus-external",
+        "payload_entry_abi": "arm64-rph1-v1",
+        "needles": (
+            "src/environments/raw-fdt/raw_fdt",
+            "platforms/qemu/virt-aarch64/platform",
+            "generated/embedded_payload",
+        ),
+    },
     "qemu-aarch64-virt-raw-fdt": {
         "architecture": "aarch64",
         "environment": "raw-fdt",
@@ -63,9 +77,12 @@ def main() -> int:
         directory = args.target_root / target
         report_path = directory / "results" / "object-graph.json"
         if not report_path.is_file():
+            if expected.get("optional") is True:
+                continue
             fail(f"{target}: missing generated report")
         report = json.loads(report_path.read_text(encoding="utf-8"))
         plugins = report.get("plugins")
+        payload = report.get("payload")
         if (
             report.get("architecture") != expected["architecture"]
             or report.get("environment") != expected["environment"]
@@ -76,6 +93,15 @@ def main() -> int:
             or sum(item.startswith("platform.") for item in plugins) != 1
         ):
             fail(f"{target}: generated tuple is not exact")
+        if (
+            expected.get("product_id") is not None
+            and (
+                report.get("product_id") != expected["product_id"]
+                or not isinstance(payload, dict)
+                or payload.get("entry_abi") != expected["payload_entry_abi"]
+            )
+        ):
+            fail(f"{target}: external payload product contract is not exact")
         map_name = expected.get("map")
         if map_name is None:
             continue

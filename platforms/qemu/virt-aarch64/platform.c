@@ -12,7 +12,7 @@ static const struct RibonPlatformFacts selected_platform = {
     .timer_frequency_hz = 62500000u,
     .native_input_capacity = 2ull * 1024ull * 1024ull,
     .payload_load_base = 0x41000000ull,
-    .payload_load_size = 2ull * 1024ull * 1024ull,
+    .payload_load_size = 16ull * 1024ull * 1024ull,
 };
 
 /** @brief 선택된 virtual-machine platform fact를 반환한다. */

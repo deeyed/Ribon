@@ -38,6 +38,25 @@
     "policies": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "image": {"$ref": "image-v1.json"},
     "evidence": {"type": "object"},
+    "payload": {
+      "type": "object",
+      "required": [
+        "architecture",
+        "class",
+        "entry_abi",
+        "format",
+        "load_base",
+        "load_size"
+      ],
+      "properties": {
+        "architecture": {"enum": ["x86_64", "aarch64", "riscv64"]},
+        "class": {"const": "external-kernel"},
+        "entry_abi": {"type": "string", "minLength": 1},
+        "format": {"const": "elf64"},
+        "load_base": {"type": "integer", "minimum": 1},
+        "load_size": {"type": "integer", "minimum": 1}
+      }
+    },
     "max_plugins": {"type": "integer", "minimum": 1, "maximum": 64},
     "services": {
       "type": "array",
