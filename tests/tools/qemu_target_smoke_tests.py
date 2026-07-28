@@ -17,7 +17,7 @@ TRANSFER_MARKERS = (
     "RIBON-R4-RAW-FDT-ENTRY",
     "RIBON-R4-FDT-ACCEPTED",
     "RIBON-R4-PRODUCT-GRAPH-OK",
-    "RIBON-R4-PARUS-RPH1-OK",
+    "RIBON-R4-PROTOCOL-HANDOFF-OK",
     "RIBON-R4-PAYLOAD-LOADED",
     "RIBON-R4-RAW-FDT-TRANSFER",
 )
@@ -32,6 +32,8 @@ class QemuTargetSmokeTests(unittest.TestCase):
         payload: Path,
         payload_class: str,
         target: str = "aarch64-virt-raw-fdt",
+        required_markers: tuple[str, ...] = (),
+        extra_output: str = "",
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
         """Run the harness against a deterministic fake QEMU process."""
         fake_qemu = directory / "fake-qemu.py"
@@ -41,7 +43,8 @@ class QemuTargetSmokeTests(unittest.TestCase):
             "if '--version' in sys.argv:\n"
             "    print('QEMU emulator version test')\n"
             "else:\n"
-            f"    print({' '.join(TRANSFER_MARKERS)!r})\n",
+            f"    print({' '.join(TRANSFER_MARKERS)!r})\n"
+            f"    print({extra_output!r})\n",
             encoding="utf-8",
         )
         fake_qemu.chmod(0o755)
@@ -75,6 +78,8 @@ class QemuTargetSmokeTests(unittest.TestCase):
         ]
         if target == "riscv64-virt-opensbi":
             command.extend(("--firmware", str(firmware)))
+        for marker in required_markers:
+            command.extend(("--required-marker", marker))
         completed = subprocess.run(
             command,
             check=False,
@@ -141,6 +146,66 @@ class QemuTargetSmokeTests(unittest.TestCase):
             self.assertEqual(result["observed_payload_class"], "fixture")
             self.assertFalse(result["cleanup"]["launched"])
             self.assertTrue(result["cleanup"]["complete"])
+
+    def test_external_kernel_requires_payload_terminal_receipt(self) -> None:
+        """A transfer marker alone cannot satisfy an external-kernel claim."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            payload = directory / "parus.elf"
+            payload.write_bytes(b"\x7fELF" + b"\0" * 128)
+            completed, result = self.run_harness(
+                directory,
+                payload,
+                "kernel",
+                required_markers=("PARUS:BM:v0:06000200:IDLE:OK:NONE",),
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertEqual(result["outcome"], "early-exit")
+            self.assertEqual(
+                result["first_divergence"],
+                "missing:PARUS:BM:v0:06000200:IDLE:OK:NONE",
+            )
+
+    def test_repeated_required_marker_is_canonicalized(self) -> None:
+        """Repeated CLI requirements do not create a false ordering failure."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            payload = directory / "parus.elf"
+            payload.write_bytes(b"\x7fELF" + b"\0" * 128)
+            completed, result = self.run_harness(
+                directory,
+                payload,
+                "kernel",
+                required_markers=(
+                    "RIBON-R4-RAW-FDT-TRANSFER",
+                    "RIBON-R4-RAW-FDT-TRANSFER",
+                ),
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout)
+            self.assertEqual(
+                result["required_markers"].count(
+                    "RIBON-R4-RAW-FDT-TRANSFER"
+                ),
+                1,
+            )
+
+    def test_zero_failure_counter_is_not_terminal_failure(self) -> None:
+        """A diagnostic field named FAIL with zero count is not a boot failure."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            payload = directory / "parus.elf"
+            payload.write_bytes(b"\x7fELF" + b"\0" * 128)
+            completed, result = self.run_harness(
+                directory,
+                payload,
+                "kernel",
+                extra_output=(
+                    "PARUS:ATTACH:v0:ATTACH:FAIL:COUNT="
+                    "0x0000000000000000"
+                ),
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout)
+            self.assertEqual(result["outcome"], "passed")
 
 
 if __name__ == "__main__":

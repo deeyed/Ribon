@@ -52,6 +52,10 @@ static uint64_t service_capabilities(enum RibonServiceKind kind) {
         return RIBON_CAP_DIAGNOSTIC_SINK;
     case RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE:
         return RIBON_CAP_ENVIRONMENT_QUIESCE;
+    case RIBON_SERVICE_KIND_MACHINE_DESCRIPTION:
+        return RIBON_CAP_MACHINE_DESCRIPTION;
+    case RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT:
+        return RIBON_CAP_PAYLOAD_PLACEMENT;
     default:
         return 0u;
     }
@@ -82,6 +86,10 @@ const char *ribon_service_kind_name(enum RibonServiceKind kind) {
         return "diagnostic-sink";
     case RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE:
         return "environment-quiesce";
+    case RIBON_SERVICE_KIND_MACHINE_DESCRIPTION:
+        return "machine-description";
+    case RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT:
+        return "payload-placement";
     default:
         return "unknown";
     }
@@ -152,6 +160,21 @@ int ribon_service_directory_validate(
     enum RibonMode mode) {
     uint64_t aggregate = 0u;
     uint64_t arena_budget = 0u;
+    const uint64_t service_capability_mask =
+        RIBON_CAP_BOOT_SOURCE_READ |
+        RIBON_CAP_INACTIVE_SLOT_WRITE |
+        RIBON_CAP_INACTIVE_SLOT_ERASE |
+        RIBON_CAP_STORAGE_FLUSH |
+        RIBON_CAP_MONOTONIC_TIMER |
+        RIBON_CAP_WATCHDOG |
+        RIBON_CAP_RESET |
+        RIBON_CAP_PERSISTENT_METADATA |
+        RIBON_CAP_NETWORK_TRANSPORT |
+        RIBON_CAP_RANDOM_NONCE |
+        RIBON_CAP_DIAGNOSTIC_SINK |
+        RIBON_CAP_ENVIRONMENT_QUIESCE |
+        RIBON_CAP_MACHINE_DESCRIPTION |
+        RIBON_CAP_PAYLOAD_PLACEMENT;
 
     if (directory == 0 || product == 0 ||
         directory->size != sizeof(*directory) ||
@@ -196,8 +219,8 @@ int ribon_service_directory_validate(
         aggregate |= service->provides;
     }
     if (arena_budget > product->limits.arena_bytes ||
-        (aggregate & product->required_capabilities & ((1ull << 11) - 1ull)) !=
-            (product->required_capabilities & ((1ull << 11) - 1ull))) {
+        (aggregate & product->required_capabilities & service_capability_mask) !=
+            (product->required_capabilities & service_capability_mask)) {
         return RIBON_CORE_STATUS_MISSING_CAPABILITY;
     }
     for (uint32_t index = 0u; index < product->service_selection_count; ++index) {
@@ -280,4 +303,63 @@ int ribon_environment_plugin_operations_are_valid(
         aggregate |= directory->services[index]->provides;
     }
     return aggregate == descriptor->provides;
+}
+
+/** @brief Diagnostic sink service operation table을 검사한다. */
+int ribon_diagnostic_sink_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonDiagnosticSinkServiceOperations *operations;
+    if (descriptor == 0 ||
+        descriptor->kind != RIBON_SERVICE_KIND_DIAGNOSTIC_SINK ||
+        descriptor->provides != RIBON_CAP_DIAGNOSTIC_SINK ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return operations != 0 &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->initialize != 0 &&
+           operations->write != 0;
+}
+
+/** @brief Machine-description service operation table을 검사한다. */
+int ribon_machine_description_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonMachineDescriptionServiceOperations *operations;
+    if (descriptor == 0 ||
+        descriptor->kind != RIBON_SERVICE_KIND_MACHINE_DESCRIPTION ||
+        descriptor->provides != RIBON_CAP_MACHINE_DESCRIPTION ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return operations != 0 &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->machine_id != 0 &&
+           operations->machine_id[0] != '\0' &&
+           operations->native_input_capacity != 0u;
+}
+
+/** @brief Payload-placement service operation table을 검사한다. */
+int ribon_payload_placement_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonPayloadPlacementServiceOperations *operations;
+    if (descriptor == 0 ||
+        descriptor->kind != RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT ||
+        descriptor->provides != RIBON_CAP_PAYLOAD_PLACEMENT ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return operations != 0 &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->physical_base != 0u &&
+           operations->physical_size != 0u &&
+           operations->physical_base <= UINT64_MAX - operations->physical_size;
 }

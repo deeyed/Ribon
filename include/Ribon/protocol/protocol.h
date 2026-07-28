@@ -15,7 +15,7 @@ struct RibonMutableMemoryMap;
 struct RibonPluginDescriptor;
 
 /** @brief Boot Protocol operation table ABI다. */
-#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 1u
+#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 2u
 
 /** @brief Protocol이 environment에서 요구하거나 허용하는 input bit다. */
 enum RibonProtocolExpectation {
@@ -93,10 +93,13 @@ typedef int (*RibonProtocolValidateComponentsFn)(const struct RibonManifestView 
 /** @brief Protocol이 허용하는 image-format bitset을 반환한다. */
 typedef uint64_t (*RibonProtocolSelectImageFormatsFn)(void);
 
-/** @brief Architecture에 맞는 register와 entry flag 계약을 선택한다. */
-typedef int (*RibonProtocolSelectEntryContractFn)(
+/** @brief Handoff artifact와 image plan에서 protocol-owned entry invocation을 완성한다. */
+typedef int (*RibonProtocolPrepareEntryInvocationFn)(
     const struct RibonArchDescriptor *arch,
-    struct RibonEntryContract *out);
+    const struct RibonBootPlan *plan,
+    const struct RibonBootEnvironment *environment,
+    const struct RibonHandoffArtifact *handoff,
+    struct RibonEntryInvocation *out);
 
 /** @brief Caller-owned buffer에 protocol handoff artifact를 생성한다. */
 typedef int (*RibonProtocolPrepareHandoffFn)(
@@ -120,7 +123,7 @@ struct RibonBootProtocolOps {
     RibonProtocolValidateComponentsFn validate_components; /**< Component validator다. */
     RibonProtocolSelectImageFormatsFn select_image_formats; /**< Image allowlist callback이다. */
     RibonProtocolPrepareHandoffFn prepare_handoff; /**< Handoff serializer다. */
-    RibonProtocolSelectEntryContractFn select_entry_contract; /**< Entry contract callback이다. */
+    RibonProtocolPrepareEntryInvocationFn prepare_entry_invocation; /**< Entry invocation callback이다. */
     RibonProtocolValidateConfirmationFn validate_confirmation; /**< Confirmation callback이다. */
 };
 

@@ -48,30 +48,31 @@ int ribon_arch_prepare_direct_high_entry(
     return RIBON_ARCH_DIRECT_HIGH_UNSUPPORTED;
 }
 
-_Noreturn void ribon_arch_enter_kernel(
-    uint64_t entry,
-    uint64_t handoff,
-    uint64_t entry_flags,
-    uint64_t bootstrap0) {
+_Noreturn void ribon_arch_transfer_prepared(
+    const struct RibonPreparedEntry *prepared) {
 #if defined(__riscv) && __riscv_xlen == 64
+    const uint64_t entry = prepared->invocation.entry_address;
+    const uint64_t argument0 = prepared->invocation.arguments[0];
+    const uint64_t argument1 = prepared->invocation.arguments[1];
+    const uint64_t argument2 = prepared->invocation.arguments[2];
+    const uint64_t argument3 = prepared->invocation.arguments[3];
     __asm__ __volatile__(
-        "mv t0, %3\n"
+        "mv t0, %4\n"
         "mv a0, %0\n"
         "mv a1, %1\n"
         "mv a2, %2\n"
+        "mv a3, %3\n"
         "csrci sstatus, 2\n"
         "csrw sie, zero\n"
         "fence rw, rw\n"
         "fence.i\n"
         "jr t0\n"
         :
-        : "r"(handoff), "r"(entry_flags), "r"(bootstrap0), "r"(entry)
-        : "t0", "a0", "a1", "a2", "memory");
+        : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
+          "r"(entry)
+        : "t0", "a0", "a1", "a2", "a3", "memory");
 #else
-    (void)entry;
-    (void)handoff;
-    (void)entry_flags;
-    (void)bootstrap0;
+    (void)prepared;
 #endif
     for (;;) {
 #if defined(__riscv)
@@ -127,7 +128,8 @@ static const struct RibonArchOps riscv64_ops = {
     .normalize_privilege = 0,
     .direct_high_page_table_pages = 0,
     .prepare_direct_high_entry = 0,
-    .enter_kernel = ribon_arch_enter_kernel,
+    .prepare_entry = ribon_arch_prepare_entry,
+    .transfer_prepared = ribon_arch_transfer_prepared,
     .halt = riscv64_halt,
     .reset = 0,
     .monotonic_counter = riscv64_monotonic_counter,

@@ -3,7 +3,7 @@
   "package_id": "example.diagnostic-sink",
   "plugin_id": "service.diagnostic-sink",
   "plugin_kind": "service",
-  "sdk_abi": 3,
+  "sdk_abi": 4,
   "public_headers": [
     "include/RibonExamples/diagnostic_sink.h"
   ],

@@ -25,8 +25,8 @@ qstar.test "protocol_free_embed_tests" {
 qstar.test "rph1_builder_tests" {
   sources = {
     "tests/rph1/rph1_builder_tests.c",
-    "src/protocols/parus/rph1_builder.c",
-    "src/protocols/parus/rph1_parser.c",
+    "src/protocols/os/parus/rph1_builder.c",
+    "src/protocols/os/parus/rph1_parser.c",
     "src/core/memory.c",
   },
   configs = {
@@ -56,6 +56,34 @@ qstar.test "fdt_parser_tests" {
   },
 }
 
+qstar.test "os_package_tests" {
+  sources = {
+    "tests/protocol/os_package_tests.c",
+    "src/protocols/os/linux/protocol.c",
+    "src/protocols/os/freebsd/protocol.c",
+    "src/protocols/os/zircon/protocol.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.test "port_service_tests" {
+  sources = {
+    "tests/core/port_service_tests.c",
+    "src/common/port.c",
+    "src/core/service_directory.c",
+    "src/common/drivers/serial/pl011.c",
+    "ports/qemu/virt-aarch64/port.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
@@ -63,5 +91,7 @@ qstar.group "ribon_tests" {
     "//tests:rph1_builder_tests",
     "//tests:pe_coff_loader_tests",
     "//tests:fdt_parser_tests",
+    "//tests:os_package_tests",
+    "//tests:port_service_tests",
   },
 }

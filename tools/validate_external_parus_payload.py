@@ -14,15 +14,33 @@ PT_LOAD = 1
 PF_X = 1
 PF_W = 2
 ARCHITECTURE_CONTRACTS = {
+    "x86_64": {
+        "machine": 62,
+        "entry_abi": "amd64-rph1-v1",
+    },
     "aarch64": {
         "machine": 183,
         "entry_abi": "arm64-rph1-v1",
-        "load_base": 0x41000000,
-        "load_size": 16 * 1024 * 1024,
     },
     "riscv64": {
         "machine": 243,
         "entry_abi": "riscv-rph1-v1",
+    },
+}
+PRODUCT_LOAD_WINDOWS = {
+    "bootmgr.x86_64-uefi-parus-external": {
+        "load_base": 0x00100000,
+        "load_size": 16 * 1024 * 1024,
+    },
+    "bootmgr.qemu-aarch64-virt-parus-external": {
+        "load_base": 0x41000000,
+        "load_size": 16 * 1024 * 1024,
+    },
+    "bootmgr.rpi5-aarch64-parus-external": {
+        "load_base": 0x04000000,
+        "load_size": 32 * 1024 * 1024,
+    },
+    "bootmgr.qemu-riscv64-virt-parus-external": {
         "load_base": 0x80400000,
         "load_size": 32 * 1024 * 1024,
     },
@@ -92,13 +110,17 @@ def validate(
     architecture_contract = ARCHITECTURE_CONTRACTS.get(architecture)
     if architecture_contract is None:
         raise ValueError("product payload architecture is unsupported")
+    product_id = manifest.get("product_id")
+    load_window = PRODUCT_LOAD_WINDOWS.get(product_id)
+    if load_window is None:
+        raise ValueError("product payload load window is unsupported")
     expected = {
         "architecture": architecture,
         "class": "external-kernel",
         "entry_abi": architecture_contract["entry_abi"],
         "format": "elf64",
-        "load_base": architecture_contract["load_base"],
-        "load_size": architecture_contract["load_size"],
+        "load_base": load_window["load_base"],
+        "load_size": load_window["load_size"],
     }
     if contract != expected:
         raise ValueError("product payload contract is not the selected RPH1 tuple")
@@ -142,7 +164,7 @@ def validate(
         raise ValueError("payload changed during validation")
     return {
         "schema": "ribon-external-parus-payload-v0",
-        "product_id": manifest.get("product_id"),
+        "product_id": product_id,
         "architecture": contract["architecture"],
         "entry_abi": contract["entry_abi"],
         "payload": {

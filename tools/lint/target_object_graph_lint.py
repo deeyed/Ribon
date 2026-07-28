@@ -13,7 +13,7 @@ EXPECTED = {
     "qemu-riscv64-virt-opensbi": {
         "architecture": "riscv64",
         "environment": "raw-fdt",
-        "platform": "platform.virt-riscv64",
+        "port": "qemu-virt-riscv64",
         "map": "ribon.map",
         "optional": True,
         "product_id": "bootmgr.qemu-riscv64-virt-parus-external",
@@ -21,63 +21,63 @@ EXPECTED = {
         "needles": (
             "src/arch/riscv64/arch",
             "src/environments/raw-fdt/raw_fdt",
-            "platforms/qemu/virt-riscv64/platform",
+            "ports/qemu/virt-riscv64/port",
             "generated/embedded_payload",
         ),
         "forbidden": (
             "src/arch/aarch64/arch",
-            "platforms/qemu/virt-aarch64/platform",
+            "ports/qemu/virt-aarch64/port",
         ),
     },
     "qemu-aarch64-virt-parus": {
         "architecture": "aarch64",
         "environment": "raw-fdt",
-        "platform": "platform.virt-aarch64",
+        "port": "qemu-virt-aarch64",
         "map": "ribon.map",
         "optional": True,
         "product_id": "bootmgr.qemu-aarch64-virt-parus-external",
         "payload_entry_abi": "arm64-rph1-v1",
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
-            "platforms/qemu/virt-aarch64/platform",
+            "ports/qemu/virt-aarch64/port",
             "generated/embedded_payload",
         ),
     },
     "qemu-aarch64-virt-raw-fdt": {
         "architecture": "aarch64",
         "environment": "raw-fdt",
-        "platform": "platform.virt-aarch64",
+        "port": "qemu-virt-aarch64",
         "map": "ribon.map",
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
-            "platforms/qemu/virt-aarch64/platform",
+            "ports/qemu/virt-aarch64/port",
         ),
     },
     "rpi5-aarch64-raw-fdt": {
         "architecture": "aarch64",
         "environment": "raw-fdt",
-        "platform": "platform.raspberrypi-rpi5",
+        "port": "raspberrypi-rpi5",
         "map": "ribon.map",
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
-            "platforms/raspberrypi/rpi5/platform",
+            "ports/raspberrypi/rpi5/port",
         ),
     },
     "x86_64-uefi-app": {
         "architecture": "x86_64",
         "environment": "uefi",
-        "platform": "platform.pc-uefi-x86_64",
+        "port": "qemu-pc-x86_64",
         "map": "ribon.map",
         "needles": (
             "uefi_app.o",
             "boot_config.o",
-            "ribon_platform_selected",
+            "ribon_port_selected",
         ),
     },
     "x86-bios-client": {
         "architecture": "x86_64",
         "environment": "bios",
-        "platform": "platform.pc-bios-x86",
+        "port": None,
         "needles": (),
     },
 }
@@ -106,10 +106,10 @@ def main() -> int:
             report.get("architecture") != expected["architecture"]
             or report.get("environment") != expected["environment"]
             or not isinstance(plugins, list)
-            or expected["platform"] not in plugins
+            or report.get("port") != expected["port"]
             or sum(item.startswith("arch.") for item in plugins) != 1
             or sum(item.startswith("environment.") for item in plugins) != 1
-            or sum(item.startswith("platform.") for item in plugins) != 1
+            or any(item.startswith("platform.") for item in plugins)
         ):
             fail(f"{target}: generated tuple is not exact")
         if (

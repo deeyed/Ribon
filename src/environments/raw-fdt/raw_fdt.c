@@ -433,10 +433,12 @@ int ribon_raw_fdt_environment_capture(
     out->boot_media.path = entry->payload_name;
     out->boot_media.physical_address = (uint64_t)(uintptr_t)entry->payload;
     out->boot_media.size = entry->payload_size;
+    out->boot_cpu_id = entry->boot_cpu_id;
     out->flags =
         RIBON_BOOT_ENV_HAS_MEMORY_MAP |
         RIBON_BOOT_ENV_HAS_DEVICE_TREE |
-        RIBON_BOOT_ENV_HAS_BOOT_MEDIA;
+        RIBON_BOOT_ENV_HAS_BOOT_MEDIA |
+        RIBON_BOOT_ENV_HAS_BOOT_CPU_ID;
     if (facts.boot_arguments != 0) {
         out->command_line.text = facts.boot_arguments;
         out->command_line.length = facts.boot_arguments_size;
@@ -484,9 +486,7 @@ const struct RibonPluginDescriptor ribon_raw_fdt_environment_plugin_descriptor =
         RIBON_CAP_PERSISTENT_METADATA |
         RIBON_CAP_STORAGE_FLUSH |
         RIBON_CAP_ENVIRONMENT_QUIESCE,
-    .requires =
-        RIBON_CAP_ARCHITECTURE |
-        RIBON_CAP_PLATFORM_FACTS,
+    .requires = RIBON_CAP_ARCHITECTURE,
     .architecture_mask = RIBON_ARCH_MASK_AARCH64 | RIBON_ARCH_MASK_RISCV64,
     .environment_mask = RIBON_ENV_MASK_RAW_FDT,
     .mode_mask = RIBON_MODE_MASK_ALL,

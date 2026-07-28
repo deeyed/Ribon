@@ -117,12 +117,9 @@ static int test_prepare_direct_high_tables(void) {
 
     failures += expect_u64("handoff entry", handoff.entry, TEST_HIGH_BASE);
     failures += expect_u64(
-        "handoff flags",
-        handoff.entry_flags,
-        RIBON_KERNEL_ENTRY_FLAG_RPH1 |
-            RIBON_KERNEL_ENTRY_FLAG_ENTERED_HIGH |
-            RIBON_KERNEL_ENTRY_FLAG_DIRECT_HIGH);
-    failures += expect_u64("handoff ttbr0", handoff.bootstrap0, TEST_TABLE_BASE);
+        "handoff translation root",
+        handoff.translation_root,
+        TEST_TABLE_BASE);
     failures += expect_u64("handoff high load", handoff.high_load_start, TEST_HIGH_LOAD);
     failures += expect_u64("identity l0", identity_l0[0], test_table_desc(TEST_TABLE_BASE + TEST_PAGE_SIZE));
     failures += expect_u64("identity l1 0", identity_l1[0], test_block_desc(0));

@@ -45,7 +45,6 @@ PLUGIN_KIND_VALUES = {
     "boot-protocol": "RIBON_PLUGIN_KIND_BOOT_PROTOCOL",
     "policy": "RIBON_PLUGIN_KIND_POLICY",
     "firmware-personality": "RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY",
-    "platform": "RIBON_PLUGIN_KIND_PLATFORM",
     "service": "RIBON_PLUGIN_KIND_SERVICE",
 }
 SERVICE_KIND_VALUES = {
@@ -60,6 +59,8 @@ SERVICE_KIND_VALUES = {
     "random-nonce": "RIBON_SERVICE_KIND_RANDOM_NONCE",
     "diagnostic-sink": "RIBON_SERVICE_KIND_DIAGNOSTIC_SINK",
     "environment-quiesce": "RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE",
+    "machine-description": "RIBON_SERVICE_KIND_MACHINE_DESCRIPTION",
+    "payload-placement": "RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT",
 }
 PERSONALITY_MASKS = {
     "uefi-compatible": "RIBON_PERSONALITY_MASK_UEFI_COMPATIBLE",
@@ -93,10 +94,11 @@ CAPABILITIES = {
         "RIBON_CAP_ENTRY_CONTRACT",
         "RIBON_CAP_BOOT_CONFIRMATION",
         "RIBON_CAP_IMAGE_PE_COFF",
-        "RIBON_CAP_PLATFORM_FACTS",
+        "RIBON_CAP_MACHINE_DESCRIPTION",
         "RIBON_CAP_FIRMWARE_PERSONALITY",
         "RIBON_CAP_FIRMWARE_SERVICE_DIRECTORY",
         "RIBON_CAP_SDK_CONTRACT",
+        "RIBON_CAP_PAYLOAD_PLACEMENT",
     )
 }
 LIMIT_KEYS = (
@@ -244,7 +246,9 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             raise ValueError("consumer/library product requires one environment")
     if _string(manifest, "mode") not in MODE_VALUES:
         raise ValueError("unsupported mode")
-    platform = _string(manifest, "platform")
+    port = manifest.get("port")
+    if port is not None and (not isinstance(port, str) or not port):
+        raise ValueError("port must be a non-empty string when present")
     protocols = _sorted_strings(
         manifest,
         "boot_protocols",
@@ -313,7 +317,7 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         symbols.add(symbol)
     if ids != sorted(ids) or len(ids) != len(set(ids)):
         raise ValueError("plugin IDs must be unique and sorted")
-    required_prefixes = ["arch.", "platform."]
+    required_prefixes = ["arch."]
     required_prefixes.append(
         "personality." if product_kind == "firmware" else "environment."
     )
@@ -325,8 +329,6 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
     )
     if any(plugin_id.startswith(forbidden_prefix) for plugin_id in ids):
         raise ValueError(f"product must not select {forbidden_prefix[:-1]} plugin")
-    if f"platform.{platform}" not in ids:
-        raise ValueError("platform field and plugin ID disagree")
     if product_kind == "firmware":
         if f"personality.{personality}" not in ids:
             raise ValueError("personality field and plugin ID disagree")
@@ -514,7 +516,7 @@ def main() -> int:
             "architecture": manifest["resolved_architecture"],
             "environment": manifest.get("environment"),
             "firmware_personality": manifest.get("firmware_personality"),
-            "platform": manifest["platform"],
+            "port": manifest.get("port"),
             "services": manifest["services"],
             "service_selections": manifest["service_selections"],
             "plugin_selections": manifest["plugin_selections"],

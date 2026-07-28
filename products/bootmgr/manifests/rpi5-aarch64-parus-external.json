@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "product_id": "bootmgr.rpi5-aarch64-parus-external",
+  "product_kind": "bootloader",
+  "target_id": "rpi5-aarch64-raw-fdt",
+  "architecture": "aarch64",
+  "environment": "raw-fdt",
+  "port": "raspberrypi-rpi5",
+  "mode": "normal",
+  "boot_protocols": [
+    "parus"
+  ],
+  "policies": [
+    "normal"
+  ],
+  "image": {
+    "format": "raw-binary",
+    "recipe": "raspberrypi-firmware-image",
+    "artifact": "ribon-rpi5.img"
+  },
+  "evidence": {
+    "class": "package",
+    "claim": "RPi5 external Parus RPH1 package; no live execution claim"
+  },
+  "payload": {
+    "architecture": "aarch64",
+    "class": "external-kernel",
+    "entry_abi": "arm64-rph1-v1",
+    "format": "elf64",
+    "load_base": 67108864,
+    "load_size": 33554432
+  },
+  "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.port.diagnostic-sink",
+      "kind": "diagnostic-sink",
+      "symbol": "ribon_port_diagnostic_sink_service_descriptor"
+    },
+    {
+      "id": "service.port.machine-description",
+      "kind": "machine-description",
+      "symbol": "ribon_port_machine_description_service_descriptor"
+    },
+    {
+      "id": "service.port.payload-placement",
+      "kind": "payload-placement",
+      "symbol": "ribon_port_payload_placement_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_raw_fdt_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.environment-quiesce",
+      "kind": "environment-quiesce",
+      "symbol": "ribon_raw_fdt_environment_quiesce_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_raw_fdt_monotonic_timer_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.persistent-metadata",
+      "kind": "persistent-metadata",
+      "symbol": "ribon_raw_fdt_persistent_metadata_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.storage-flush",
+      "kind": "storage-flush",
+      "symbol": "ribon_raw_fdt_storage_flush_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.elf64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.parus",
+      "kind": "boot-protocol"
+    }
+  ],
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "MACHINE_DESCRIPTION",
+    "MONOTONIC_TIMER",
+    "PAYLOAD_PLACEMENT",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "MACHINE_DESCRIPTION",
+    "MONOTONIC_TIMER",
+    "PAYLOAD_PLACEMENT",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "limits": {
+    "max_memory_regions": 256,
+    "max_load_segments": 32,
+    "max_components": 32,
+    "max_retries": 2,
+    "max_input_bytes": 67108864,
+    "max_handoff_bytes": 65536,
+    "arena_bytes": 262144,
+    "operation_deadline_ms": 30000
+  },
+  "plugins": [
+    {
+      "id": "arch.aarch64",
+      "package": "ribon.arch.aarch64",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "environment.raw-fdt",
+      "package": "ribon.environment.raw-fdt",
+      "symbol": "ribon_raw_fdt_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.elf64",
+      "package": "ribon.image.elf64",
+      "symbol": "ribon_elf64_image_plugin_descriptor"
+    },
+    {
+      "id": "protocol.parus",
+      "package": "ribon.protocol.parus",
+      "symbol": "ribon_parus_protocol_plugin_descriptor"
+    }
+  ]
+}

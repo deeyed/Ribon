@@ -33,6 +33,12 @@ const struct RibonPluginDescriptor *ribon_plugin_registry_find(
     enum RibonPluginKind kind,
     const char *id);
 
+/** @brief Product selector 또는 유일 provider로 선택된 plugin을 반환한다. */
+const struct RibonPluginDescriptor *ribon_plugin_registry_find_selected(
+    const struct RibonPluginRegistry *registry,
+    const struct RibonProductDescriptor *product,
+    enum RibonPluginKind kind);
+
 /** @brief QStar가 생성한 product registry를 반환한다. */
 const struct RibonPluginRegistry *ribon_generated_plugin_registry(void);
 

@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "product_id": "bootmgr.x86_64-uefi-parus-external",
+  "product_kind": "bootloader",
+  "target_id": "x86_64-uefi-app",
+  "architecture": "x86_64",
+  "environment": "uefi",
+  "port": "qemu-pc-x86_64",
+  "mode": "normal",
+  "boot_protocols": [
+    "parus"
+  ],
+  "policies": [
+    "normal"
+  ],
+  "image": {
+    "format": "pe-coff",
+    "recipe": "uefi-esp-read-only-config",
+    "artifact": "BOOTX64.EFI"
+  },
+  "evidence": {
+    "class": "qemu-smoke",
+    "claim": "Ribon UEFI application transfers to an external Parus x86_64 ELF"
+  },
+  "payload": {
+    "architecture": "x86_64",
+    "class": "external-kernel",
+    "entry_abi": "amd64-rph1-v1",
+    "format": "elf64",
+    "load_base": 1048576,
+    "load_size": 16777216
+  },
+  "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.port.diagnostic-sink",
+      "kind": "diagnostic-sink",
+      "symbol": "ribon_port_diagnostic_sink_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_uefi_app_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.environment-quiesce",
+      "kind": "environment-quiesce",
+      "symbol": "ribon_uefi_app_environment_quiesce_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_uefi_app_monotonic_timer_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.persistent-metadata",
+      "kind": "persistent-metadata",
+      "symbol": "ribon_uefi_app_persistent_metadata_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.storage-flush",
+      "kind": "storage-flush",
+      "symbol": "ribon_uefi_app_storage_flush_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.elf64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.parus",
+      "kind": "boot-protocol"
+    }
+  ],
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "limits": {
+    "max_memory_regions": 256,
+    "max_load_segments": 32,
+    "max_components": 32,
+    "max_retries": 2,
+    "max_input_bytes": 67108864,
+    "max_handoff_bytes": 65536,
+    "arena_bytes": 262144,
+    "operation_deadline_ms": 30000
+  },
+  "plugins": [
+    {
+      "id": "arch.x86_64",
+      "package": "ribon.arch.x86_64",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "environment.uefi-app",
+      "package": "ribon.environment.uefi-app",
+      "symbol": "ribon_uefi_app_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.elf64",
+      "package": "ribon.image.elf64",
+      "symbol": "ribon_elf64_image_plugin_descriptor"
+    },
+    {
+      "id": "protocol.parus",
+      "package": "ribon.protocol.parus",
+      "symbol": "ribon_parus_protocol_plugin_descriptor"
+    }
+  ]
+}

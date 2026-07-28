@@ -5,7 +5,6 @@
   "target_id": "host-reference",
   "architecture": "selected",
   "environment": "host",
-  "platform": "host",
   "mode": "normal",
   "boot_protocols": [
     "synthetic"
@@ -51,7 +50,16 @@
     }
   ],
   "service_selections": [],
-  "plugin_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.elf64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.synthetic",
+      "kind": "boot-protocol"
+    }
+  ],
   "required_capabilities": [
     "ARCHITECTURE",
     "BOOT_CONFIRMATION",
@@ -63,7 +71,6 @@
     "IMAGE_ELF64",
     "MONOTONIC_TIMER",
     "PERSISTENT_METADATA",
-    "PLATFORM_FACTS",
     "STORAGE_FLUSH"
   ],
   "allowed_capabilities": [
@@ -77,7 +84,6 @@
     "IMAGE_ELF64",
     "MONOTONIC_TIMER",
     "PERSISTENT_METADATA",
-    "PLATFORM_FACTS",
     "STORAGE_FLUSH"
   ],
   "limits": {
@@ -105,11 +111,6 @@
       "id": "image.elf64",
       "package": "ribon.image.elf64",
       "symbol": "ribon_elf64_image_plugin_descriptor"
-    },
-    {
-      "id": "platform.host",
-      "package": "ribon.platform.host",
-      "symbol": "ribon_platform_plugin_descriptor"
     },
     {
       "id": "protocol.synthetic",

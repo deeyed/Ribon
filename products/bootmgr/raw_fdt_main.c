@@ -2,9 +2,7 @@
 
 #include <Ribon/arch/entry.h>
 #include <Ribon/boot/transfer.h>
-#include <Ribon/platform/facts.h>
-#include <Ribon/platform/diagnostic.h>
-#include <Ribon/protocols/parus/rph1.h>
+#include <Ribon/port/port.h>
 
 #include <string.h>
 
@@ -23,11 +21,18 @@ static struct RibonMemoryRegion normalized_regions[RIBON_BOOTMGR_MAX_MEMORY_REGI
 static struct RibonLoadSegment load_segments[RIBON_BOOTMGR_MAX_LOAD_SEGMENTS];
 static _Alignas(4096) unsigned char handoff_buffer[RIBON_BOOTMGR_HANDOFF_CAPACITY];
 static _Alignas(16) unsigned char arena_storage[RIBON_BOOTMGR_ARENA_CAPACITY];
+static const struct RibonDiagnosticSinkServiceOperations *diagnostic_sink;
 
 /** @brief Early serial에 stable marker를 기록한다. */
 static void bootmgr_marker(const char *marker) {
-    (void)ribon_platform_diagnostic_write(marker);
-    (void)ribon_platform_diagnostic_write("\r\n");
+    if (diagnostic_sink != 0) {
+        uint64_t length = 0u;
+        while (marker[length] != '\0') {
+            ++length;
+        }
+        (void)diagnostic_sink->write(diagnostic_sink->context, marker, length);
+        (void)diagnostic_sink->write(diagnostic_sink->context, "\r\n", 2u);
+    }
 }
 
 /** @brief 64-bit 값을 fixed-width hexadecimal marker로 기록한다. */
@@ -42,7 +47,13 @@ static void bootmgr_hex(const char *prefix, uint64_t value) {
             (char)(digit < 10u ? ('0' + digit) : ('a' + digit - 10u));
     }
     digits[18] = '\0';
-    (void)ribon_platform_diagnostic_write(prefix);
+    if (diagnostic_sink != 0) {
+        uint64_t length = 0u;
+        while (prefix[length] != '\0') {
+            ++length;
+        }
+        (void)diagnostic_sink->write(diagnostic_sink->context, prefix, length);
+    }
     bootmgr_marker(digits);
 }
 
@@ -58,15 +69,15 @@ static _Noreturn void bootmgr_fail(const char *stage, int status) {
 
 /** @brief Analyzed segment를 target payload window 안에 복사한다. */
 static int bootmgr_place_payload(
-    const struct RibonPlatformFacts *platform,
+    const struct RibonPayloadPlacementServiceOperations *placement,
     const struct RibonPayloadImage *payload,
     struct RibonLoadedPayload *layout) {
     const uint64_t window_end =
-        platform->payload_load_base + platform->payload_load_size;
+        placement->physical_base + placement->physical_size;
     for (uint32_t index = 0u; index < layout->segment_count; ++index) {
         struct RibonLoadSegment *segment = &layout->segments[index];
         uint64_t destination_end;
-        if (segment->load_address < platform->payload_load_base ||
+        if (segment->load_address < placement->physical_base ||
             segment->load_address > UINT64_MAX - segment->memory_size ||
             (destination_end = segment->load_address + segment->memory_size) >
                 window_end ||
@@ -100,18 +111,18 @@ static int bootmgr_place_payload(
  * 이 함수는 allocation과 interrupt를 사용하지 않으며 성공 시 payload로 terminal transfer한다.
  */
 _Noreturn void ribon_raw_fdt_boot_main(
-    uint64_t architecture_bootstrap0,
+    uint64_t boot_cpu_id,
     uint64_t fdt_address) {
-    const struct RibonPlatformFacts *platform = ribon_platform_selected();
+    const struct RibonPortDescriptor *port = ribon_port_selected();
     const struct RibonArchOps *arch = ribon_arch_selected_ops();
     const struct RibonPluginRegistry *registry;
     const struct RibonProductDescriptor *product;
-    const struct RibonBootProtocol *protocol =
-        (const struct RibonBootProtocol *)
-            ribon_parus_protocol_plugin_descriptor.operations;
-    const struct RibonImageFormatOps *image_format =
-        (const struct RibonImageFormatOps *)
-            ribon_elf64_image_plugin_descriptor.operations;
+    const struct RibonPluginDescriptor *protocol_plugin;
+    const struct RibonPluginDescriptor *image_plugin;
+    const struct RibonBootProtocol *protocol;
+    const struct RibonImageFormatOps *image_format;
+    const struct RibonMachineDescriptionServiceOperations *machine;
+    const struct RibonPayloadPlacementServiceOperations *placement;
     struct RibonRawFdtReservation reservations[2];
     struct RibonRawFdtEntry native_entry;
     struct RibonBootEnvironment environment;
@@ -125,19 +136,28 @@ _Noreturn void ribon_raw_fdt_boot_main(
     const struct RibonBootPlan *plan;
     int status;
 
-    if (!ribon_platform_facts_are_valid(platform) ||
+    if (!ribon_port_descriptor_is_valid(port) ||
         arch == 0 || arch->descriptor == 0 ||
-        platform->architecture != arch->descriptor->id ||
-        platform->environment != RIBON_ENVIRONMENT_RAW_FDT ||
-        ribon_platform_diagnostic_initialize(platform) != 0) {
+        port->architecture != arch->descriptor->id ||
+        port->environment != RIBON_ENVIRONMENT_RAW_FDT ||
+        port->diagnostic_sink == 0 ||
+        port->machine_description == 0 ||
+        port->payload_placement == 0) {
         if (arch != 0 && arch->halt != 0) {
             arch->halt();
         }
         for (;;) {
         }
     }
+    diagnostic_sink = port->diagnostic_sink->operations;
+    machine = port->machine_description->operations;
+    placement = port->payload_placement->operations;
+    if (diagnostic_sink->initialize(diagnostic_sink->context) !=
+        RIBON_SERVICE_STATUS_OK) {
+        arch->halt();
+    }
     bootmgr_marker("RIBON-R4-RAW-FDT-ENTRY");
-    bootmgr_marker(platform->id);
+    bootmgr_marker(port->id);
 
     reservations[0] = (struct RibonRawFdtReservation){
         .base = (uint64_t)(uintptr_t)__image_start,
@@ -145,16 +165,17 @@ _Noreturn void ribon_raw_fdt_boot_main(
         .kind = RIBON_MEMORY_REGION_BOOTLOADER,
     };
     reservations[1] = (struct RibonRawFdtReservation){
-        .base = platform->payload_load_base,
-        .size = platform->payload_load_size,
+        .base = placement->physical_base,
+        .size = placement->physical_size,
         .kind = RIBON_MEMORY_REGION_KERNEL_IMAGE,
     };
     native_entry = (struct RibonRawFdtEntry){
         .fdt = (const void *)(uintptr_t)fdt_address,
-        .fdt_capacity = platform->native_input_capacity,
-        .architecture = platform->architecture,
+        .fdt_capacity = machine->native_input_capacity,
+        .boot_cpu_id = boot_cpu_id,
+        .architecture = port->architecture,
         .arch_ops = arch,
-        .timer_frequency_hz = platform->timer_frequency_hz,
+        .timer_frequency_hz = port->timer_frequency_hz,
         .payload = ribon_embedded_payload,
         .payload_size = ribon_embedded_payload_size,
         .payload_name = "boot/payload.elf",
@@ -171,6 +192,15 @@ _Noreturn void ribon_raw_fdt_boot_main(
 
     registry = ribon_generated_plugin_registry();
     product = ribon_generated_product_descriptor();
+    protocol_plugin = ribon_plugin_registry_find_selected(
+        registry, product, RIBON_PLUGIN_KIND_BOOT_PROTOCOL);
+    image_plugin = ribon_plugin_registry_find_selected(
+        registry, product, RIBON_PLUGIN_KIND_IMAGE_FORMAT);
+    if (protocol_plugin == 0 || image_plugin == 0) {
+        bootmgr_fail("product-selection", RIBON_BOOT_STATUS_BAD_ARGUMENT);
+    }
+    protocol = protocol_plugin->operations;
+    image_format = image_plugin->operations;
     ribon_arena_init(&arena, arena_storage, sizeof(arena_storage));
     status = ribon_context_initialize(
         &core,
@@ -221,19 +251,15 @@ _Noreturn void ribon_raw_fdt_boot_main(
         .handoff_buffer_capacity = sizeof(handoff_buffer),
         .handoff_artifact = &handoff,
     });
-    if (status != RIBON_BOOT_STATUS_OK ||
-        ribon_parus_parse_rph1(
-            handoff.data,
-            handoff.size,
-            &(struct RibonParusRph1View){0}) != RIBON_PARUS_RPH1_PARSE_OK) {
+    if (status != RIBON_BOOT_STATUS_OK) {
         bootmgr_fail("protocol-handoff", status);
     }
     plan = ribon_boot_transaction_plan(&transaction);
     if (plan == 0) {
         bootmgr_fail("transaction-plan", RIBON_BOOT_STATUS_BAD_STATE);
     }
-    bootmgr_marker("RIBON-R4-PARUS-RPH1-OK");
-    status = bootmgr_place_payload(platform, &transaction.payload, &layout);
+    bootmgr_marker("RIBON-R4-PROTOCOL-HANDOFF-OK");
+    status = bootmgr_place_payload(placement, &transaction.payload, &layout);
     if (status != RIBON_BOOT_STATUS_OK) {
         bootmgr_fail("payload-place", status);
     }
@@ -243,9 +269,5 @@ _Noreturn void ribon_raw_fdt_boot_main(
         bootmgr_fail("quiesce", RIBON_BOOT_STATUS_BAD_STATE);
     }
     bootmgr_marker("RIBON-R4-RAW-FDT-TRANSFER");
-    ribon_boot_transaction_transfer(
-        &transaction,
-        (uint64_t)(uintptr_t)handoff.data,
-        RIBON_KERNEL_ENTRY_FLAG_RPH1,
-        architecture_bootstrap0);
+    ribon_boot_transaction_transfer(&transaction);
 }

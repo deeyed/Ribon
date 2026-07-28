@@ -198,11 +198,7 @@ int ribon_arch_prepare_direct_high_entry(
     }
 
     out->entry = payload->high_entry_virtual_address;
-    out->entry_flags =
-        RIBON_KERNEL_ENTRY_FLAG_RPH1 |
-        RIBON_KERNEL_ENTRY_FLAG_ENTERED_HIGH |
-        RIBON_KERNEL_ENTRY_FLAG_DIRECT_HIGH;
-    out->bootstrap0 = page_table_physical_address;
+    out->translation_root = page_table_physical_address;
     out->high_entry_load = high_entry_runtime;
     out->high_vaddr_start = high_start;
     out->high_vaddr_end = high_end;
@@ -211,39 +207,45 @@ int ribon_arch_prepare_direct_high_entry(
     return RIBON_ARCH_DIRECT_HIGH_OK;
 }
 
-_Noreturn void ribon_arch_enter_kernel(
-    uint64_t entry,
-    uint64_t handoff,
-    uint64_t entry_flags,
-    uint64_t bootstrap0) {
+_Noreturn void ribon_arch_transfer_prepared(
+    const struct RibonPreparedEntry *prepared) {
 #if defined(__x86_64__) || defined(_M_X64)
-    if (bootstrap0 != 0u &&
-        (entry_flags & RIBON_KERNEL_ENTRY_FLAG_DIRECT_HIGH) != 0u) {
+    const uint64_t entry = prepared->invocation.entry_address;
+    const uint64_t argument0 = prepared->invocation.arguments[0];
+    const uint64_t argument1 = prepared->invocation.arguments[1];
+    const uint64_t argument2 = prepared->invocation.arguments[2];
+    const uint64_t argument3 = prepared->invocation.arguments[3];
+    if (prepared->translation_root != 0u &&
+        prepared->invocation.translation ==
+            RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE) {
         __asm__ __volatile__(
             "cli\n"
             "cld\n"
-            "movq %3, %%cr3\n"
+            "movq %5, %%cr3\n"
             "movq %0, %%rdi\n"
             "movq %1, %%rsi\n"
-            "jmpq *%2\n"
+            "movq %2, %%rdx\n"
+            "movq %3, %%rcx\n"
+            "jmpq *%4\n"
             :
-            : "r"(handoff), "r"(entry_flags), "r"(entry), "r"(bootstrap0)
-            : "rdi", "rsi", "memory");
+            : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
+              "r"(entry), "r"(prepared->translation_root)
+            : "rdi", "rsi", "rdx", "rcx", "memory");
     }
     __asm__ __volatile__(
         "cli\n"
         "cld\n"
         "movq %0, %%rdi\n"
         "movq %1, %%rsi\n"
-        "jmpq *%2\n"
+        "movq %2, %%rdx\n"
+        "movq %3, %%rcx\n"
+        "jmpq *%4\n"
         :
-        : "r"(handoff), "r"(entry_flags), "r"(entry)
-        : "rdi", "rsi", "memory");
+        : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
+          "r"(entry)
+        : "rdi", "rsi", "rdx", "rcx", "memory");
 #else
-    (void)entry;
-    (void)handoff;
-    (void)entry_flags;
-    (void)bootstrap0;
+    (void)prepared;
 #endif
     for (;;) {
 #if defined(__x86_64__) || defined(_M_X64)
@@ -301,7 +303,8 @@ static const struct RibonArchOps x86_64_ops = {
     .normalize_privilege = 0,
     .direct_high_page_table_pages = ribon_arch_direct_high_page_table_pages,
     .prepare_direct_high_entry = ribon_arch_prepare_direct_high_entry,
-    .enter_kernel = ribon_arch_enter_kernel,
+    .prepare_entry = ribon_arch_prepare_entry,
+    .transfer_prepared = ribon_arch_transfer_prepared,
     .halt = x86_64_halt,
     .reset = 0,
     .monotonic_counter = x86_64_monotonic_counter,

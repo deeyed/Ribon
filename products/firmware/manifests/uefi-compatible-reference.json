@@ -5,7 +5,6 @@
   "target_id": "firmware-provider-uefi-compatible-reference",
   "architecture": "x86_64",
   "firmware_personality": "uefi-compatible",
-  "platform": "firmware-reference",
   "mode": "diagnostic",
   "boot_protocols": [],
   "policies": [
@@ -27,14 +26,12 @@
   "required_capabilities": [
     "ARCHITECTURE",
     "FIRMWARE_PERSONALITY",
-    "FIRMWARE_SERVICE_DIRECTORY",
-    "PLATFORM_FACTS"
+    "FIRMWARE_SERVICE_DIRECTORY"
   ],
   "allowed_capabilities": [
     "ARCHITECTURE",
     "FIRMWARE_PERSONALITY",
-    "FIRMWARE_SERVICE_DIRECTORY",
-    "PLATFORM_FACTS"
+    "FIRMWARE_SERVICE_DIRECTORY"
   ],
   "limits": {
     "max_memory_regions": 16,
@@ -56,11 +53,6 @@
       "id": "personality.uefi-compatible",
       "package": "ribon.firmware.uefi-compatible-reference",
       "symbol": "ribon_firmware_personality_plugin_descriptor"
-    },
-    {
-      "id": "platform.firmware-reference",
-      "package": "ribon.platform.firmware-reference",
-      "symbol": "ribon_firmware_reference_platform_plugin_descriptor"
     }
   ]
 }

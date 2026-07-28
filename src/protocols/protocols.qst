@@ -12,9 +12,45 @@ qstar.staticlib "ribon_protocol_synthetic" {
 
 qstar.staticlib "ribon_protocol_parus" {
   sources = {
-    "src/protocols/parus/protocol.c",
-    "src/protocols/parus/rph1_builder.c",
-    "src/protocols/parus/rph1_parser.c",
+    "src/protocols/os/parus/protocol.c",
+    "src/protocols/os/parus/rph1_builder.c",
+    "src/protocols/os/parus/rph1_parser.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.staticlib "ribon_protocol_linux" {
+  sources = {
+    "src/protocols/os/linux/protocol.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.staticlib "ribon_protocol_freebsd" {
+  sources = {
+    "src/protocols/os/freebsd/protocol.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
+qstar.staticlib "ribon_protocol_zircon" {
+  sources = {
+    "src/protocols/os/zircon/protocol.c",
   },
   deps = {
     "//src/common:libribon_boot",
@@ -28,5 +64,8 @@ qstar.group "ribon_protocol_plugins" {
   deps = {
     "//src/protocols:ribon_protocol_synthetic",
     "//src/protocols:ribon_protocol_parus",
+    "//src/protocols:ribon_protocol_linux",
+    "//src/protocols:ribon_protocol_freebsd",
+    "//src/protocols:ribon_protocol_zircon",
   },
 }

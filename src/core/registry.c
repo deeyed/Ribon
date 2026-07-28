@@ -12,9 +12,31 @@ static int registry_strcmp(const char *lhs, const char *rhs) {
 /** @brief Capability가 one-authority provider를 요구하는지 판별한다. */
 static int registry_capability_is_authority(uint64_t capability) {
     return capability == RIBON_CAP_ARCHITECTURE ||
-           capability == RIBON_CAP_PLATFORM_FACTS ||
            capability == RIBON_CAP_FIRMWARE_PERSONALITY ||
            capability == RIBON_CAP_FIRMWARE_SERVICE_DIRECTORY;
+}
+
+/** @brief Capability가 immutable service directory authority인지 판별한다. */
+static int registry_capability_is_service(uint64_t capability) {
+    switch (capability) {
+    case RIBON_CAP_BOOT_SOURCE_READ:
+    case RIBON_CAP_INACTIVE_SLOT_WRITE:
+    case RIBON_CAP_INACTIVE_SLOT_ERASE:
+    case RIBON_CAP_STORAGE_FLUSH:
+    case RIBON_CAP_MONOTONIC_TIMER:
+    case RIBON_CAP_WATCHDOG:
+    case RIBON_CAP_RESET:
+    case RIBON_CAP_PERSISTENT_METADATA:
+    case RIBON_CAP_NETWORK_TRANSPORT:
+    case RIBON_CAP_RANDOM_NONCE:
+    case RIBON_CAP_DIAGNOSTIC_SINK:
+    case RIBON_CAP_ENVIRONMENT_QUIESCE:
+    case RIBON_CAP_MACHINE_DESCRIPTION:
+    case RIBON_CAP_PAYLOAD_PLACEMENT:
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 /** @brief Product selection이 capability provider를 정확히 지정하는지 검사한다. */
@@ -69,6 +91,35 @@ const struct RibonPluginDescriptor *ribon_plugin_registry_find(
         }
     }
     return 0;
+}
+
+/** @brief Product selector 또는 유일 provider로 선택된 plugin을 반환한다. */
+const struct RibonPluginDescriptor *ribon_plugin_registry_find_selected(
+    const struct RibonPluginRegistry *registry,
+    const struct RibonProductDescriptor *product,
+    enum RibonPluginKind kind) {
+    const struct RibonPluginDescriptor *found = 0;
+    if (registry == 0 || product == 0) {
+        return 0;
+    }
+    for (uint32_t index = 0u; index < product->plugin_selection_count; ++index) {
+        const struct RibonPluginSelection *selection =
+            &product->plugin_selections[index];
+        if (selection->kind == kind) {
+            return ribon_plugin_registry_find(registry, kind, selection->id);
+        }
+    }
+    for (uint32_t index = 0u; index < registry->plugin_count; ++index) {
+        const struct RibonPluginDescriptor *candidate = registry->plugins[index];
+        if (candidate->kind != kind) {
+            continue;
+        }
+        if (found != 0) {
+            return 0;
+        }
+        found = candidate;
+    }
+    return found;
 }
 
 /** @brief Capability dependency의 authority 또는 selected collection provider를 찾는다. */
@@ -133,7 +184,6 @@ int ribon_plugin_registry_validate(
     uint32_t architecture_count = 0u;
     uint32_t environment_count = 0u;
     uint32_t personality_count = 0u;
-    uint32_t platform_count = 0u;
 
     if (registry == 0 ||
         registry->size != sizeof(*registry) ||
@@ -184,8 +234,6 @@ int ribon_plugin_registry_validate(
             plugin->kind == RIBON_PLUGIN_KIND_ENVIRONMENT ? 1u : 0u;
         personality_count +=
             plugin->kind == RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY ? 1u : 0u;
-        platform_count +=
-            plugin->kind == RIBON_PLUGIN_KIND_PLATFORM ? 1u : 0u;
     }
 
     if (!registry_plugin_selections_are_valid(registry, product)) {
@@ -208,17 +256,21 @@ int ribon_plugin_registry_validate(
     if (arena_budget > product->limits.arena_bytes ||
         (product->kind == RIBON_PRODUCT_KIND_BOOTLOADER &&
          (architecture_count != 1u ||
-          platform_count != 1u ||
           environment_count != 1u ||
           personality_count != 0u)) ||
         (product->kind == RIBON_PRODUCT_KIND_FIRMWARE &&
          (architecture_count != 1u ||
-          platform_count != 1u ||
           personality_count != 1u ||
-          environment_count != 0u)) ||
-        (aggregate & product->required_capabilities) !=
-            product->required_capabilities) {
+          environment_count != 0u))) {
         return RIBON_CORE_STATUS_MISSING_CAPABILITY;
+    }
+    for (uint32_t bit = 0u; bit < 64u; ++bit) {
+        const uint64_t capability = 1ull << bit;
+        if ((product->required_capabilities & capability) != 0u &&
+            !registry_capability_is_service(capability) &&
+            (aggregate & capability) == 0u) {
+            return RIBON_CORE_STATUS_MISSING_CAPABILITY;
+        }
     }
 
     for (uint32_t consumer = 0u; consumer < registry->plugin_count; ++consumer) {

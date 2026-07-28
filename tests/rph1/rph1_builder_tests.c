@@ -1,7 +1,7 @@
 #include <Ribon/arch/entry.h>
 #include <Ribon/boot/plan.h>
 #include <Ribon/core/memory.h>
-#include <Ribon/protocols/parus/rph1.h>
+#include <Ribon/protocols/os/parus/rph1.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -156,10 +156,10 @@ int main(void) {
     uint32_t table_offset;
     uint64_t first_payload;
 
-    expect(RIBON_KERNEL_ENTRY_FLAG_RPH1 == 0x1u, "RPH1 entry flag is bit 0");
-    expect(RIBON_KERNEL_ENTRY_FLAG_DIRECT_DTB == 0x2u, "direct DTB entry flag is bit 1");
-    expect(RIBON_KERNEL_ENTRY_FLAG_ENTERED_HIGH == 0x4u, "entered-high entry flag is bit 2");
-    expect(RIBON_KERNEL_ENTRY_FLAG_DIRECT_HIGH == 0x8u, "direct-high entry flag is bit 3");
+    expect(RIBON_PARUS_ENTRY_FLAG_RPH1 == 0x1u, "RPH1 entry flag is bit 0");
+    expect(RIBON_PARUS_ENTRY_FLAG_DIRECT_DTB == 0x2u, "direct DTB entry flag is bit 1");
+    expect(RIBON_PARUS_ENTRY_FLAG_ENTERED_HIGH == 0x4u, "entered-high entry flag is bit 2");
+    expect(RIBON_PARUS_ENTRY_FLAG_DIRECT_HIGH == 0x8u, "direct-high entry flag is bit 3");
     expect(build_fixture(valid, &artifact) == RIBON_PROTOCOL_HANDOFF_STATUS_OK, "builder accepts fixture");
     total_size = read_u32(valid, RIBON_PARUS_RPH1_HEADER_TOTAL_SIZE_OFFSET);
     table_offset = read_u32(valid, RIBON_PARUS_RPH1_HEADER_SECTION_TABLE_OFFSET);

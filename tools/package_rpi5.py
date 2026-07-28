@@ -47,7 +47,7 @@ def main() -> int:
             }
             for relative in sorted(files)
         },
-        "platform": "raspberrypi-rpi5",
+        "port": "raspberrypi-rpi5",
         "schema": "ribon-rpi5-package-v1",
     }
     (args.output / "manifest.json").write_text(

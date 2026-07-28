@@ -36,7 +36,6 @@ for _, architecture in ipairs(architectures) do
       "src/environments/host/main.c",
       "src/environments/host/services.c",
       "src/modes/normal.c",
-      qstar.join("platforms/host", architecture .. ".c"),
       qstar.output(generated_registry),
     },
     deps = {

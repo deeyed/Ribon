@@ -232,6 +232,7 @@ def build_fixture(
         segment_alignment,
     )
     image[segment_offset + entry_offset : segment_offset + entry_offset + len(entry_code)] = entry_code
+    image += b"RIBON-FIXTURE-PAYLOAD-V1"
     return bytes(image)
 
 

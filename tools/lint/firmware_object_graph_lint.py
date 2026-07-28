@@ -63,7 +63,6 @@ def main() -> int:
             or not isinstance(plugins, list)
             or sum(item.startswith("arch.") for item in plugins) != 1
             or sum(item.startswith("personality.") for item in plugins) != 1
-            or sum(item.startswith("platform.") for item in plugins) != 1
             or any(item.startswith("environment.") for item in plugins)
         ):
             fail(f"{directory_name}: provider tuple is not exact")

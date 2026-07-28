@@ -128,9 +128,7 @@ const struct RibonPluginDescriptor ribon_firmware_personality_plugin_descriptor 
     .provides =
         RIBON_CAP_FIRMWARE_PERSONALITY |
         RIBON_CAP_FIRMWARE_SERVICE_DIRECTORY,
-    .requires =
-        RIBON_CAP_ARCHITECTURE |
-        RIBON_CAP_PLATFORM_FACTS,
+    .requires = RIBON_CAP_ARCHITECTURE,
     .architecture_mask = RIBON_ARCH_MASK_X86_64,
     .personality_mask = RIBON_PERSONALITY_MASK_UEFI_COMPATIBLE,
     .mode_mask = RIBON_MODE_MASK_ALL,

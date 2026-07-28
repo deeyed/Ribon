@@ -28,7 +28,7 @@ enum RibonBootStatus {
 enum RibonBootLifecycleStage {
     RIBON_BOOT_STAGE_CAPTURE = 0,
     RIBON_BOOT_STAGE_VALIDATE_PRODUCT = 1,
-    RIBON_BOOT_STAGE_FREEZE_PLATFORM_FACTS = 2,
+    RIBON_BOOT_STAGE_NORMALIZE_ENVIRONMENT = 2,
     RIBON_BOOT_STAGE_SELECT_SOURCE = 3,
     RIBON_BOOT_STAGE_VERIFY_MANIFEST = 4,
     RIBON_BOOT_STAGE_LOAD_IMAGE = 5,
@@ -122,7 +122,6 @@ struct RibonBootPlan {
     uint64_t kernel_high_entry_load_address;
     const struct RibonLoadSegment *kernel_load_segments;
     uint32_t expectations;
-    struct RibonEntryContract entry_contract;
 };
 
 /** @brief Validated Core와 selected service를 묶는 caller-owned boot transaction이다. */
@@ -144,6 +143,8 @@ struct RibonBootTransaction {
     struct RibonBootTransactionInput input; /**< Borrowed caller-owned transaction buffers다. */
     struct RibonPayloadImage payload; /**< Source read 뒤 immutable payload view다. */
     struct RibonBootPlan plan; /**< Prepared immutable boot plan이다. */
+    struct RibonEntryInvocation entry_invocation; /**< Protocol-owned sealed entry다. */
+    struct RibonPreparedEntry prepared_entry; /**< Architecture-owned sealed entry다. */
     struct RibonBootFailureReceipt receipt; /**< Terminal failure receipt다. */
     uint64_t consumed_input_bytes; /**< Runtime source byte 소비량이다. */
     uint64_t consumed_output_bytes; /**< Runtime handoff byte 소비량이다. */

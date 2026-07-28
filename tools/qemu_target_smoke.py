@@ -18,7 +18,7 @@ TARGET_MARKERS = {
         b"RIBON-R4-RAW-FDT-ENTRY",
         b"RIBON-R4-FDT-ACCEPTED",
         b"RIBON-R4-PRODUCT-GRAPH-OK",
-        b"RIBON-R4-PARUS-RPH1-OK",
+        b"RIBON-R4-PROTOCOL-HANDOFF-OK",
         b"RIBON-R4-PAYLOAD-LOADED",
         b"RIBON-R4-RAW-FDT-TRANSFER",
     ),
@@ -26,18 +26,19 @@ TARGET_MARKERS = {
         b"RIBON-R4-RAW-FDT-ENTRY",
         b"RIBON-R4-FDT-ACCEPTED",
         b"RIBON-R4-PRODUCT-GRAPH-OK",
-        b"RIBON-R4-PARUS-RPH1-OK",
+        b"RIBON-R4-PROTOCOL-HANDOFF-OK",
         b"RIBON-R4-PAYLOAD-LOADED",
         b"RIBON-R4-RAW-FDT-TRANSFER",
     ),
     "x86_64-uefi": (
         b"RIBON-R4-UEFI-ENTRY",
         b"RIBON-R8-UEFI-CONFIG-OK",
-        b"RIBON-R8-UEFI-ESP-PAYLOAD-OK",
-        b"RIBON-R4-UEFI-PAYLOAD-LOADED",
         b"RIBON-R4-UEFI-MEMORY-MAP",
         b"RIBON-R4-UEFI-PRODUCT-GRAPH-OK",
-        b"RIBON-R4-UEFI-FINAL-MAP-RPH1-OK",
+        b"RIBON-R4-PROTOCOL-HANDOFF-OK",
+        b"RIBON-R4-UEFI-PAYLOAD-LOADED",
+        b"RIBON-R8-UEFI-ESP-PAYLOAD-OK",
+        b"RIBON-R4-UEFI-FINAL-HANDOFF-OK",
         b"RIBON-R4-UEFI-EXIT-BOOT-SERVICES-OK",
         b"RIBON-R4-UEFI-TRANSFER",
     ),
@@ -46,6 +47,7 @@ FIXTURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-OK",
     b"PARUS-FIXTURE-ENTRY-ABI-FAIL",
 )
+FIXTURE_PROVENANCE = b"RIBON-FIXTURE-PAYLOAD-V1"
 
 
 def sha256_file(path: Path) -> str:
@@ -77,7 +79,7 @@ def observed_payload_class(path: Path) -> str:
     prefix = path.read_bytes()
     if not prefix.startswith(b"\x7fELF"):
         return "invalid"
-    if any(marker in prefix for marker in FIXTURE_MARKERS):
+    if FIXTURE_PROVENANCE in prefix or any(marker in prefix for marker in FIXTURE_MARKERS):
         return "fixture"
     return "kernel"
 
@@ -160,11 +162,19 @@ def process_group_alive(process_group: int) -> bool:
 
 def required_markers(args: argparse.Namespace) -> tuple[bytes, ...]:
     """Select fixture or actual-payload evidence without kernel policy."""
-    markers = TARGET_MARKERS[args.target]
+    candidates = TARGET_MARKERS[args.target]
     if args.expected_payload_class == "fixture":
-        markers += (FIXTURE_MARKERS[0],)
-    markers += tuple(marker.encode("utf-8") for marker in args.required_marker)
-    return markers
+        candidates += (FIXTURE_MARKERS[0],)
+    candidates += tuple(
+        marker.encode("utf-8") for marker in args.required_marker
+    )
+    markers: list[bytes] = []
+    seen: set[bytes] = set()
+    for marker in candidates:
+        if marker not in seen:
+            markers.append(marker)
+            seen.add(marker)
+    return tuple(markers)
 
 
 def marker_observations(
@@ -272,6 +282,18 @@ def main() -> int:
                         outcome = "target-failure"
                         terminal = "target-failure"
                         break
+                    payload_failed = any(
+                        (
+                            line.startswith(b"PARUS:BM:")
+                            and b":FAIL:" in line
+                        )
+                        or line.startswith(b"PARUS:EXC:")
+                        for line in output.splitlines()
+                    )
+                    if payload_failed:
+                        outcome = "payload-failure"
+                        terminal = "payload-failure"
+                        break
                     if b"PARUS-FIXTURE-ENTRY-ABI-FAIL" in output:
                         outcome = "payload-abi-failure"
                         terminal = "payload-abi-failure"
@@ -296,12 +318,18 @@ def main() -> int:
                 terminal = "timeout"
         finally:
             if process.poll() is None:
-                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
                 try:
                     process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     forced_kill = True
-                    os.killpg(process.pid, signal.SIGKILL)
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
                     process.wait(timeout=2)
             assert process.stdout is not None
             tail = process.stdout.read()

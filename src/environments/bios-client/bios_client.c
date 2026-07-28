@@ -283,9 +283,7 @@ const struct RibonPluginDescriptor ribon_bios_client_environment_plugin_descript
     .provides =
         RIBON_CAP_BOOT_SOURCE_READ |
         RIBON_CAP_MONOTONIC_TIMER,
-    .requires =
-        RIBON_CAP_ARCHITECTURE |
-        RIBON_CAP_PLATFORM_FACTS,
+    .requires = RIBON_CAP_ARCHITECTURE,
     .architecture_mask = RIBON_ARCH_MASK_X86_64,
     .environment_mask = RIBON_ENV_MASK_BIOS,
     .mode_mask = RIBON_MODE_MASK_ALL,

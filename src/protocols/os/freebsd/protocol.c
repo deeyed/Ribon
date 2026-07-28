@@ -1,0 +1,135 @@
+#include <Ribon/boot/plan.h>
+#include <Ribon/plugin/descriptor.h>
+#include <Ribon/protocols/os/freebsd/boot.h>
+
+/** @brief FreeBSD protocol stable ID를 allocation 없이 비교한다. */
+static int freebsd_streq(const char *lhs, const char *rhs) {
+    if (lhs == 0 || rhs == 0) {
+        return 0;
+    }
+    while (*lhs != '\0' && *rhs != '\0' && *lhs == *rhs) {
+        ++lhs;
+        ++rhs;
+    }
+    return *lhs == *rhs;
+}
+
+/** @brief Manifest가 FreeBSD protocol ABI v1을 선택했는지 검사한다. */
+static int freebsd_match(const struct RibonManifestView *manifest) {
+    return manifest != 0 &&
+           freebsd_streq(manifest->protocol_id, "freebsd") &&
+           manifest->protocol_abi_min <= 1u &&
+           manifest->protocol_abi_max >= 1u ?
+        RIBON_PROTOCOL_STATUS_OK :
+        RIBON_PROTOCOL_STATUS_BAD_MANIFEST;
+}
+
+/** @brief FreeBSD loader EFI image component tuple을 검사한다. */
+static int freebsd_validate_components(const struct RibonManifestView *manifest) {
+    return freebsd_match(manifest) == RIBON_PROTOCOL_STATUS_OK &&
+           manifest->components != 0 &&
+           manifest->component_count == 1u &&
+           manifest->components[0].role == RIBON_COMPONENT_ROLE_KERNEL &&
+           manifest->components[0].name != 0 &&
+           manifest->components[0].size != 0u ?
+        RIBON_PROTOCOL_STATUS_OK :
+        RIBON_PROTOCOL_STATUS_BAD_COMPONENTS;
+}
+
+/** @brief FreeBSD UEFI chainload가 요구하는 PE/COFF format을 반환한다. */
+static uint64_t freebsd_select_image_formats(void) {
+    return RIBON_IMAGE_FORMAT_MASK(RIBON_EXECUTABLE_FORMAT_PE_COFF);
+}
+
+/** @brief StartImage transport가 없으면 FreeBSD handoff를 fail-closed한다. */
+static int freebsd_prepare_handoff(
+    const struct RibonBootPlan *plan,
+    const struct RibonBootEnvironment *environment,
+    const struct RibonMutableMemoryMap *normalized_memory_map,
+    void *buffer,
+    uint64_t capacity,
+    struct RibonHandoffArtifact *out) {
+    (void)plan;
+    (void)environment;
+    (void)normalized_memory_map;
+    (void)buffer;
+    (void)capacity;
+    (void)out;
+    return RIBON_PROTOCOL_HANDOFF_STATUS_UNSUPPORTED;
+}
+
+/** @brief Direct transfer로 대체할 수 없는 EFI StartImage invocation을 거부한다. */
+static int freebsd_prepare_entry_invocation(
+    const struct RibonArchDescriptor *arch,
+    const struct RibonBootPlan *plan,
+    const struct RibonBootEnvironment *environment,
+    const struct RibonHandoffArtifact *handoff,
+    struct RibonEntryInvocation *out) {
+    (void)arch;
+    (void)plan;
+    (void)environment;
+    (void)handoff;
+    if (out != 0) {
+        *out = (struct RibonEntryInvocation){0};
+    }
+    return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
+}
+
+/** @brief 미지원 FreeBSD runtime confirmation을 명시적으로 거부한다. */
+static int freebsd_validate_confirmation(
+    const struct RibonBootConfirmation *confirmation,
+    const struct RibonBootConfirmationExpectation *expected) {
+    (void)confirmation;
+    (void)expected;
+    return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
+}
+
+static const struct RibonBootProtocolOps freebsd_ops = {
+    .size = sizeof(freebsd_ops),
+    .abi_version = RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION,
+    .match = freebsd_match,
+    .validate_components = freebsd_validate_components,
+    .select_image_formats = freebsd_select_image_formats,
+    .prepare_handoff = freebsd_prepare_handoff,
+    .prepare_entry_invocation = freebsd_prepare_entry_invocation,
+    .validate_confirmation = freebsd_validate_confirmation,
+};
+
+static const struct RibonBootProtocol freebsd_protocol = {
+    .size = sizeof(freebsd_protocol),
+    .abi_version = 1u,
+    .id = "freebsd",
+    .kernel_path = "freebsd/loader.efi",
+    .expectations = 0u,
+    .supported_modes = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
+    .handoff_format = "efi-start-image-required",
+    .handoff_major = 1u,
+    .ops = &freebsd_ops,
+};
+
+const struct RibonPluginDescriptor ribon_freebsd_protocol_plugin_descriptor = {
+    .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_freebsd_protocol_plugin_descriptor),
+    .abi_major = RIBON_PLUGIN_ABI_MAJOR,
+    .abi_minor = RIBON_PLUGIN_ABI_MINOR,
+    .kind = RIBON_PLUGIN_KIND_BOOT_PROTOCOL,
+    .phase = RIBON_PLUGIN_PHASE_BOOT,
+    .id = "protocol.freebsd",
+    .provides =
+        RIBON_CAP_BOOT_PROTOCOL |
+        RIBON_CAP_HANDOFF |
+        RIBON_CAP_ENTRY_CONTRACT |
+        RIBON_CAP_BOOT_CONFIRMATION,
+    .requires = RIBON_CAP_IMAGE_PE_COFF,
+    .architecture_mask = RIBON_ARCH_MASK_X86_64 | RIBON_ARCH_MASK_AARCH64,
+    .environment_mask = RIBON_ENV_MASK_UEFI,
+    .mode_mask = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
+    .arena_budget = 4096u,
+    .input_budget = 64ull * 1024ull * 1024ull,
+    .output_budget = 4096u,
+    .deadline_ms = 30000u,
+    .operations = &freebsd_protocol,
+    .operations_size = sizeof(freebsd_protocol),
+    .operations_abi = 1u,
+    .validate_operations = ribon_protocol_plugin_operations_are_valid,
+};

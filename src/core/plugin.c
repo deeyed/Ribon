@@ -38,8 +38,6 @@ const char *ribon_plugin_kind_name(enum RibonPluginKind kind) {
         return "policy";
     case RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY:
         return "firmware-personality";
-    case RIBON_PLUGIN_KIND_PLATFORM:
-        return "platform";
     case RIBON_PLUGIN_KIND_SERVICE:
         return "service";
     default:

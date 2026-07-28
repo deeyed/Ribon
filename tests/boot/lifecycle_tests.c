@@ -78,24 +78,24 @@ static void build_fixture_elf(
 /** @brief Generated host graph로 caller-owned transaction을 초기화한다. */
 static int initialize_transaction(
     struct RibonBootTransaction *transaction,
-    struct RibonCoreContext *core) {
+    struct RibonCoreContext *core,
+    struct RibonArena *arena) {
     const struct RibonPluginRegistry *registry = ribon_generated_plugin_registry();
     const struct RibonPluginDescriptor *protocol_plugin = ribon_plugin_registry_find(
         registry, RIBON_PLUGIN_KIND_BOOT_PROTOCOL, "protocol.synthetic");
     const struct RibonPluginDescriptor *image_plugin = ribon_plugin_registry_find(
         registry, RIBON_PLUGIN_KIND_IMAGE_FORMAT, "image.elf64");
-    struct RibonArena arena;
-    if (protocol_plugin == 0 || image_plugin == 0) {
+    if (protocol_plugin == 0 || image_plugin == 0 || arena == 0) {
         return RIBON_BOOT_STATUS_BAD_ARGUMENT;
     }
-    ribon_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    ribon_arena_init(arena, arena_storage, sizeof(arena_storage));
     if (ribon_context_initialize(
             core,
             ribon_generated_product_descriptor(),
             registry,
             ribon_generated_service_directory(),
             ribon_mode_selected(),
-            &arena) != RIBON_CORE_STATUS_OK) {
+            arena) != RIBON_CORE_STATUS_OK) {
         return RIBON_BOOT_STATUS_BAD_ARGUMENT;
     }
     return ribon_boot_transaction_initialize(
@@ -145,6 +145,22 @@ static int prepare_transaction(
     });
 }
 
+/** @brief Unexpected prepare failure의 typed receipt를 test output에 보존한다. */
+static void report_prepare_failure(
+    int status,
+    const struct RibonBootTransaction *transaction) {
+    const struct RibonBootFailureReceipt *receipt;
+    if (status == RIBON_BOOT_STATUS_OK) {
+        return;
+    }
+    receipt = ribon_boot_transaction_failure_receipt(transaction);
+    fprintf(stderr, "prepare failed: status=%d stage=%d reason=%d provider=%s\n",
+            status,
+            receipt != 0 ? (int)receipt->stage : -1,
+            receipt != 0 ? (int)receipt->reason : -1,
+            receipt != 0 && receipt->provider_id != 0 ? receipt->provider_id : "(none)");
+}
+
 /** @brief Success path가 durable commit, flush, closure까지 단방향으로 전진하는지 검사한다. */
 static void test_success_path(void) {
     unsigned char source[LIFECYCLE_IMAGE_CAPACITY];
@@ -157,11 +173,15 @@ static void test_success_path(void) {
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
     struct RibonCoreContext core;
+    struct RibonArena arena;
+    int prepare_status;
     build_fixture_elf(source, ribon_arch_selected_ops()->descriptor);
     ribon_host_lifecycle_fixture_reset();
-    CHECK(initialize_transaction(&transaction, &core) == RIBON_BOOT_STATUS_OK);
-    CHECK(prepare_transaction(&transaction, source, payload, &layout, &normalized,
-                              handoff_bytes, &handoff) == RIBON_BOOT_STATUS_OK);
+    CHECK(initialize_transaction(&transaction, &core, &arena) == RIBON_BOOT_STATUS_OK);
+    prepare_status = prepare_transaction(
+        &transaction, source, payload, &layout, &normalized, handoff_bytes, &handoff);
+    report_prepare_failure(prepare_status, &transaction);
+    CHECK(prepare_status == RIBON_BOOT_STATUS_OK);
     CHECK(transaction.stage == RIBON_BOOT_STAGE_PREPARE_PROTOCOL);
     CHECK(transaction.consumed_input_bytes == LIFECYCLE_IMAGE_CAPACITY);
     CHECK(transaction.consumed_components == 1u);
@@ -186,19 +206,20 @@ static void test_source_retry_and_exhaustion(void) {
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
     struct RibonCoreContext core;
+    struct RibonArena arena;
     const struct RibonBootFailureReceipt *receipt;
     build_fixture_elf(source, ribon_arch_selected_ops()->descriptor);
 
     ribon_host_lifecycle_fixture_reset();
     ribon_host_lifecycle_fixture_set_failures(1u, 0u, 0u, 0u);
-    CHECK(initialize_transaction(&transaction, &core) == RIBON_BOOT_STATUS_OK);
+    CHECK(initialize_transaction(&transaction, &core, &arena) == RIBON_BOOT_STATUS_OK);
     CHECK(prepare_transaction(&transaction, source, payload, &layout, &normalized,
                               handoff_bytes, &handoff) == RIBON_BOOT_STATUS_OK);
     CHECK(transaction.consumed_retries == 1u);
 
     ribon_host_lifecycle_fixture_reset();
     ribon_host_lifecycle_fixture_set_failures(3u, 0u, 0u, 0u);
-    CHECK(initialize_transaction(&transaction, &core) == RIBON_BOOT_STATUS_OK);
+    CHECK(initialize_transaction(&transaction, &core, &arena) == RIBON_BOOT_STATUS_OK);
     CHECK(prepare_transaction(&transaction, source, payload, &layout, &normalized,
                               handoff_bytes, &handoff) == RIBON_BOOT_STATUS_PROVIDER_FAILURE);
     receipt = ribon_boot_transaction_failure_receipt(&transaction);
@@ -221,19 +242,20 @@ static void test_timeout_and_partial_commit_failure(void) {
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
     struct RibonCoreContext core;
+    struct RibonArena arena;
     const struct RibonBootFailureReceipt *receipt;
     build_fixture_elf(source, ribon_arch_selected_ops()->descriptor);
 
     ribon_host_lifecycle_fixture_reset();
     ribon_host_lifecycle_fixture_set_timer_step(30000001u);
-    CHECK(initialize_transaction(&transaction, &core) == RIBON_BOOT_STATUS_OK);
+    CHECK(initialize_transaction(&transaction, &core, &arena) == RIBON_BOOT_STATUS_OK);
     CHECK(prepare_transaction(&transaction, source, payload, &layout, &normalized,
                               handoff_bytes, &handoff) == RIBON_BOOT_STATUS_TIMEOUT);
     receipt = ribon_boot_transaction_failure_receipt(&transaction);
     CHECK(receipt != 0 && receipt->reason == RIBON_BOOT_FAILURE_TIMEOUT);
 
     ribon_host_lifecycle_fixture_reset();
-    CHECK(initialize_transaction(&transaction, &core) == RIBON_BOOT_STATUS_OK);
+    CHECK(initialize_transaction(&transaction, &core, &arena) == RIBON_BOOT_STATUS_OK);
     CHECK(prepare_transaction(&transaction, source, payload, &layout, &normalized,
                               handoff_bytes, &handoff) == RIBON_BOOT_STATUS_OK);
     ribon_host_lifecycle_fixture_set_failures(0u, 1u, 0u, 0u);
@@ -259,10 +281,11 @@ static void test_quiesce_failure(void) {
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
     struct RibonCoreContext core;
+    struct RibonArena arena;
     const struct RibonBootFailureReceipt *receipt;
     build_fixture_elf(source, ribon_arch_selected_ops()->descriptor);
     ribon_host_lifecycle_fixture_reset();
-    CHECK(initialize_transaction(&transaction, &core) == RIBON_BOOT_STATUS_OK);
+    CHECK(initialize_transaction(&transaction, &core, &arena) == RIBON_BOOT_STATUS_OK);
     CHECK(prepare_transaction(&transaction, source, payload, &layout, &normalized,
                               handoff_bytes, &handoff) == RIBON_BOOT_STATUS_OK);
     CHECK(ribon_boot_transaction_commit_attempt(&transaction) == RIBON_BOOT_STATUS_OK);

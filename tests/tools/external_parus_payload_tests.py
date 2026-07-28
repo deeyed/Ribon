@@ -17,6 +17,10 @@ ARM64_MANIFEST = (
     ROOT
     / "products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json"
 )
+RPI5_ARM64_MANIFEST = (
+    ROOT
+    / "products/bootmgr/manifests/rpi5-aarch64-parus-external.json"
+)
 RISCV64_MANIFEST = (
     ROOT
     / "products/bootmgr/manifests/qemu-riscv64-virt-parus-external.json"
@@ -96,6 +100,28 @@ class ExternalParusPayloadTests(unittest.TestCase):
             self.assertEqual(report["architecture"], "riscv64")
             self.assertEqual(report["entry_abi"], "riscv-rph1-v1")
             self.assertTrue(report["payload"]["immutable"])
+
+    def test_accepts_rpi5_aarch64_payload_in_product_window(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            payload = Path(raw) / "parus.elf"
+            write_elf(payload, base=0x04000000)
+            report = self.validator.validate(RPI5_ARM64_MANIFEST, payload)
+            self.assertTrue(report["success"])
+            self.assertEqual(
+                report["product_id"],
+                "bootmgr.rpi5-aarch64-parus-external",
+            )
+            self.assertEqual(
+                report["load_window"]["base"],
+                "0x0000000004000000",
+            )
+
+    def test_rejects_qemu_window_payload_for_rpi5_product(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            payload = Path(raw) / "wrong-window.elf"
+            write_elf(payload)
+            with self.assertRaisesRegex(ValueError, "product window"):
+                self.validator.validate(RPI5_ARM64_MANIFEST, payload)
 
     def test_rejects_wrong_architecture(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

@@ -8,7 +8,7 @@ qstar.staticlib "libribon_boot" {
     "src/common/protocol.c",
     "src/common/boot.c",
     "src/common/image.c",
-    "src/common/platform.c",
+    "src/common/port.c",
     "src/storage/block.c",
     "src/storage/gpt.c",
   },

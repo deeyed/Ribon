@@ -3,11 +3,13 @@
 
 #include <stdint.h>
 
+#include <Ribon/protocol/entry_contract.h>
+
 struct RibonLoadedPayload;
 struct RibonPluginDescriptor;
 
 /** @brief Architecture operation table ABI다. */
-#define RIBON_ARCH_OPS_ABI_VERSION 1u
+#define RIBON_ARCH_OPS_ABI_VERSION 2u
 
 /** @brief Ribon architecture의 stable ID다. */
 enum RibonArchitectureId {
@@ -81,8 +83,7 @@ enum RibonArchOperationStatus {
 /** @brief Direct-high transfer에 필요한 caller-owned 결과다. */
 struct RibonArchDirectHighHandoff {
     uint64_t entry; /**< 실제 branch target이다. */
-    uint64_t entry_flags; /**< Protocol entry flag다. */
-    uint64_t bootstrap0; /**< Architecture bootstrap register 값이다. */
+    uint64_t translation_root; /**< Architecture transition table root다. */
     uint64_t high_entry_load; /**< High entry의 physical alias다. */
     uint64_t high_vaddr_start; /**< High virtual range 시작이다. */
     uint64_t high_vaddr_end; /**< High virtual range 끝이다. */
@@ -112,12 +113,15 @@ typedef int (*RibonArchPrepareDirectHighFn)(
     uint64_t page_table_size,
     struct RibonArchDirectHighHandoff *out);
 
-/** @brief Register ABI를 적용하고 OS entry로 제어를 넘긴다. */
-typedef void (*RibonArchEnterKernelFn)(
-    uint64_t entry,
-    uint64_t handoff,
-    uint64_t entry_flags,
-    uint64_t bootstrap0);
+/** @brief Protocol invocation을 ISA-owned prepared entry로 검증한다. */
+typedef int (*RibonArchPrepareEntryFn)(
+    const struct RibonArchDescriptor *,
+    const struct RibonEntryInvocation *,
+    struct RibonPreparedEntry *);
+
+/** @brief Prepared register ABI를 적용하고 OS entry로 제어를 넘긴다. */
+typedef void (*RibonArchTransferPreparedFn)(
+    const struct RibonPreparedEntry *);
 
 /** @brief CPU를 terminal halt 상태로 전환한다. */
 typedef void (*RibonArchHaltFn)(void);
@@ -139,7 +143,8 @@ struct RibonArchOps {
     RibonArchNormalizePrivilegeFn normalize_privilege; /**< Privilege callback이다. */
     RibonArchDirectHighPagesFn direct_high_page_table_pages; /**< Page budget callback이다. */
     RibonArchPrepareDirectHighFn prepare_direct_high_entry; /**< Direct-high callback이다. */
-    RibonArchEnterKernelFn enter_kernel; /**< Terminal transfer callback이다. */
+    RibonArchPrepareEntryFn prepare_entry; /**< Invocation validator다. */
+    RibonArchTransferPreparedFn transfer_prepared; /**< Terminal transfer callback이다. */
     RibonArchHaltFn halt; /**< Terminal halt callback이다. */
     RibonArchResetFn reset; /**< Optional reset callback이다. */
     RibonArchMonotonicCounterFn monotonic_counter; /**< Allocation-free counter read다. */

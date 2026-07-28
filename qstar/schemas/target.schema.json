@@ -7,14 +7,14 @@
   "required": [
     "target_id",
     "architecture",
-    "platform",
+    "port",
     "image",
     "evidence"
   ],
   "properties": {
     "target_id": {"type": "string", "minLength": 1},
     "architecture": {"enum": ["selected", "x86_64", "aarch64", "riscv64"]},
-    "platform": {"type": "string", "minLength": 1},
+    "port": {"type": "string", "minLength": 1},
     "environment": {"type": "string", "minLength": 1},
     "firmware_personality": {"type": "string", "minLength": 1},
     "image": {"$ref": "image-v1.json"},

@@ -21,7 +21,7 @@ int ribon_boot_protocol_is_valid(const struct RibonBootProtocol *protocol) {
         protocol->ops->validate_components == 0 ||
         protocol->ops->select_image_formats == 0 ||
         protocol->ops->prepare_handoff == 0 ||
-        protocol->ops->select_entry_contract == 0 ||
+        protocol->ops->prepare_entry_invocation == 0 ||
         protocol->ops->validate_confirmation == 0) {
         return 0;
     }

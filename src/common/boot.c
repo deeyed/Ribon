@@ -162,16 +162,6 @@ static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) 
         return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
                          RIBON_BOOT_FAILURE_TIMEOUT, transaction->timer->id, status);
     }
-    if (transaction->protocol->ops->select_entry_contract(
-            transaction->arch->descriptor,
-            &candidate.entry_contract) != RIBON_PROTOCOL_STATUS_OK ||
-        candidate.entry_contract.required_entry_flags == 0u ||
-        (candidate.entry_contract.required_entry_flags &
-         ~candidate.entry_contract.supported_entry_flags) != 0u) {
-        return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
-                         RIBON_BOOT_FAILURE_PROTOCOL, transaction->protocol->id,
-                         RIBON_BOOT_STATUS_UNSUPPORTED);
-    }
     candidate.environment = transaction->environment.kind;
     candidate.arch = transaction->arch->descriptor;
     candidate.environment_flags = transaction->environment.flags;
@@ -222,6 +212,23 @@ static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) 
     candidate.handoff_artifact_format = transaction->input.handoff_artifact->format;
     candidate.handoff_artifact_size = transaction->input.handoff_artifact->size;
     candidate.handoff_artifact_sections = transaction->input.handoff_artifact->section_count;
+    status = transaction->protocol->ops->prepare_entry_invocation(
+        transaction->arch->descriptor,
+        &candidate,
+        &transaction->environment,
+        transaction->input.handoff_artifact,
+        &transaction->entry_invocation);
+    if (status != RIBON_PROTOCOL_STATUS_OK ||
+        transaction->arch->prepare_entry(
+            transaction->arch->descriptor,
+            &transaction->entry_invocation,
+            &transaction->prepared_entry) != RIBON_ARCH_OPERATION_OK) {
+        transaction->entry_invocation = (struct RibonEntryInvocation){0};
+        transaction->prepared_entry = (struct RibonPreparedEntry){0};
+        return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
+                         RIBON_BOOT_FAILURE_PROTOCOL, transaction->protocol->id,
+                         RIBON_BOOT_STATUS_UNSUPPORTED);
+    }
     transaction->plan = candidate;
     transaction->consumed_output_bytes += candidate.handoff_artifact_size;
     transaction->stage = RIBON_BOOT_STAGE_PREPARE_PROTOCOL;
@@ -299,13 +306,13 @@ int ribon_boot_transaction_prepare(
         return boot_fail(transaction, RIBON_BOOT_STAGE_VALIDATE_PRODUCT,
                          RIBON_BOOT_FAILURE_PRODUCT, 0, RIBON_BOOT_STATUS_UNSUPPORTED);
     }
-    transaction->stage = RIBON_BOOT_STAGE_FREEZE_PLATFORM_FACTS;
+    transaction->stage = RIBON_BOOT_STAGE_NORMALIZE_ENVIRONMENT;
     if (!ribon_boot_environment_is_valid(input->environment) ||
         input->environment->architecture != transaction->arch->descriptor->id ||
         (ribon_boot_protocol_has_expectation(
              transaction->protocol, RIBON_PROTOCOL_EXPECT_MEMORY_MAP) &&
          (input->environment->flags & RIBON_BOOT_ENV_HAS_MEMORY_MAP) == 0u)) {
-        return boot_fail(transaction, RIBON_BOOT_STAGE_FREEZE_PLATFORM_FACTS,
+        return boot_fail(transaction, RIBON_BOOT_STAGE_NORMALIZE_ENVIRONMENT,
                          RIBON_BOOT_FAILURE_BAD_INPUT, 0,
                          RIBON_BOOT_STATUS_INCOMPLETE_ENVIRONMENT);
     }
@@ -313,7 +320,7 @@ int ribon_boot_transaction_prepare(
     if (ribon_memory_map_normalize(
             &transaction->environment.memory_map, input->normalized_memory_map) !=
         RIBON_MEMORY_STATUS_OK) {
-        return boot_fail(transaction, RIBON_BOOT_STAGE_FREEZE_PLATFORM_FACTS,
+        return boot_fail(transaction, RIBON_BOOT_STAGE_NORMALIZE_ENVIRONMENT,
                          RIBON_BOOT_FAILURE_BAD_INPUT, 0,
                          RIBON_BOOT_STATUS_INCOMPLETE_ENVIRONMENT);
     }
@@ -513,16 +520,13 @@ const struct RibonBootFailureReceipt *ribon_boot_transaction_failure_receipt(
         &transaction->receipt : 0;
 }
 
-/** @brief Entry contract를 적용해 OS로 제어를 넘기고 성공 시 반환하지 않는다. */
+/** @brief Sealed protocol invocation을 적용해 OS로 제어를 넘기고 반환하지 않는다. */
 _Noreturn void ribon_boot_transaction_transfer(
-    struct RibonBootTransaction *transaction,
-    uint64_t handoff_address,
-    uint64_t entry_flags,
-    uint64_t bootstrap0) {
-    if (transaction == 0 || transaction->stage != RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT ||
-        (entry_flags & transaction->plan.entry_contract.required_entry_flags) !=
-            transaction->plan.entry_contract.required_entry_flags ||
-        (entry_flags & ~transaction->plan.entry_contract.supported_entry_flags) != 0u) {
+    struct RibonBootTransaction *transaction) {
+    if (transaction == 0 ||
+        transaction->stage != RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT ||
+        transaction->prepared_entry.invocation.size !=
+            sizeof(transaction->prepared_entry.invocation)) {
         if (transaction != 0 && transaction->arch != 0 && transaction->arch->halt != 0) {
             transaction->arch->halt();
         }
@@ -530,9 +534,8 @@ _Noreturn void ribon_boot_transaction_transfer(
         }
     }
     transaction->stage = RIBON_BOOT_STAGE_TRANSFER;
-    ribon_arch_enter_kernel(
-        transaction->plan.kernel_runtime_entry_address,
-        handoff_address,
-        entry_flags,
-        bootstrap0);
+    transaction->arch->transfer_prepared(&transaction->prepared_entry);
+    transaction->arch->halt();
+    for (;;) {
+    }
 }

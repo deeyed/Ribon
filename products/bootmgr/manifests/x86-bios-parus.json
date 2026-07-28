@@ -5,7 +5,6 @@
   "target_id": "x86-bios-client",
   "architecture": "x86_64",
   "environment": "bios",
-  "platform": "pc-bios-x86",
   "mode": "normal",
   "boot_protocols": [
     "parus"
@@ -36,7 +35,16 @@
     }
   ],
   "service_selections": [],
-  "plugin_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.elf64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.parus",
+      "kind": "boot-protocol"
+    }
+  ],
   "required_capabilities": [
     "ARCHITECTURE",
     "BOOT_CONFIRMATION",
@@ -45,8 +53,7 @@
     "ENTRY_CONTRACT",
     "HANDOFF",
     "IMAGE_ELF64",
-    "MONOTONIC_TIMER",
-    "PLATFORM_FACTS"
+    "MONOTONIC_TIMER"
   ],
   "allowed_capabilities": [
     "ARCHITECTURE",
@@ -56,8 +63,7 @@
     "ENTRY_CONTRACT",
     "HANDOFF",
     "IMAGE_ELF64",
-    "MONOTONIC_TIMER",
-    "PLATFORM_FACTS"
+    "MONOTONIC_TIMER"
   ],
   "limits": {
     "max_memory_regions": 256,
@@ -84,11 +90,6 @@
       "id": "image.elf64",
       "package": "ribon.image.elf64",
       "symbol": "ribon_elf64_image_plugin_descriptor"
-    },
-    {
-      "id": "platform.pc-bios-x86",
-      "package": "ribon.platform.pc-bios-x86",
-      "symbol": "ribon_platform_plugin_descriptor"
     },
     {
       "id": "protocol.parus",

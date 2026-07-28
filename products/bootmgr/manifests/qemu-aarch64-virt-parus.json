@@ -5,7 +5,7 @@
   "target_id": "qemu-aarch64-virt-raw-fdt",
   "architecture": "aarch64",
   "environment": "raw-fdt",
-  "platform": "virt-aarch64",
+  "port": "qemu-virt-aarch64",
   "mode": "normal",
   "boot_protocols": [
     "parus"
@@ -24,6 +24,21 @@
   },
   "max_plugins": 16,
   "services": [
+    {
+      "id": "service.port.diagnostic-sink",
+      "kind": "diagnostic-sink",
+      "symbol": "ribon_port_diagnostic_sink_service_descriptor"
+    },
+    {
+      "id": "service.port.machine-description",
+      "kind": "machine-description",
+      "symbol": "ribon_port_machine_description_service_descriptor"
+    },
+    {
+      "id": "service.port.payload-placement",
+      "kind": "payload-placement",
+      "symbol": "ribon_port_payload_placement_service_descriptor"
+    },
     {
       "id": "service.raw-fdt.boot-source",
       "kind": "boot-source",
@@ -51,19 +66,30 @@
     }
   ],
   "service_selections": [],
-  "plugin_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.elf64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.parus",
+      "kind": "boot-protocol"
+    }
+  ],
   "required_capabilities": [
     "ARCHITECTURE",
     "BOOT_CONFIRMATION",
     "BOOT_PROTOCOL",
     "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
     "ENTRY_CONTRACT",
     "ENVIRONMENT_QUIESCE",
     "HANDOFF",
     "IMAGE_ELF64",
+    "MACHINE_DESCRIPTION",
     "MONOTONIC_TIMER",
+    "PAYLOAD_PLACEMENT",
     "PERSISTENT_METADATA",
-    "PLATFORM_FACTS",
     "STORAGE_FLUSH"
   ],
   "allowed_capabilities": [
@@ -71,13 +97,15 @@
     "BOOT_CONFIRMATION",
     "BOOT_PROTOCOL",
     "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
     "ENTRY_CONTRACT",
     "ENVIRONMENT_QUIESCE",
     "HANDOFF",
     "IMAGE_ELF64",
+    "MACHINE_DESCRIPTION",
     "MONOTONIC_TIMER",
+    "PAYLOAD_PLACEMENT",
     "PERSISTENT_METADATA",
-    "PLATFORM_FACTS",
     "STORAGE_FLUSH"
   ],
   "limits": {
@@ -105,11 +133,6 @@
       "id": "image.elf64",
       "package": "ribon.image.elf64",
       "symbol": "ribon_elf64_image_plugin_descriptor"
-    },
-    {
-      "id": "platform.virt-aarch64",
-      "package": "ribon.platform.virt-aarch64",
-      "symbol": "ribon_platform_plugin_descriptor"
     },
     {
       "id": "protocol.parus",

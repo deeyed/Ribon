@@ -120,8 +120,8 @@ int main(void) {
     second.provides = RIBON_CAP_RANDOM_NONCE;
     product = policy_product(
         RIBON_CAP_DIAGNOSTIC_SINK | RIBON_CAP_RANDOM_NONCE);
-    product.required_capabilities |= RIBON_CAP_NETWORK_TRANSPORT;
-    product.allowed_capabilities |= RIBON_CAP_NETWORK_TRANSPORT;
+    product.required_capabilities |= RIBON_CAP_IMAGE_PE_COFF;
+    product.allowed_capabilities |= RIBON_CAP_IMAGE_PE_COFF;
     if (ribon_plugin_registry_validate(
             &registry,
             &product,

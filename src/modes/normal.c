@@ -12,8 +12,7 @@ static const struct RibonModeDescriptor normal_mode = {
         RIBON_CAP_IMAGE_ELF64 |
         RIBON_CAP_BOOT_PROTOCOL |
         RIBON_CAP_HANDOFF |
-        RIBON_CAP_ENTRY_CONTRACT |
-        RIBON_CAP_PLATFORM_FACTS,
+        RIBON_CAP_ENTRY_CONTRACT,
     .forbidden_capabilities =
         RIBON_CAP_INACTIVE_SLOT_WRITE |
         RIBON_CAP_INACTIVE_SLOT_ERASE |

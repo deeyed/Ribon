@@ -151,7 +151,8 @@ static const struct RibonArchOps aarch64_ops = {
     .normalize_privilege = 0,
     .direct_high_page_table_pages = ribon_arch_direct_high_page_table_pages,
     .prepare_direct_high_entry = ribon_arch_prepare_direct_high_entry,
-    .enter_kernel = ribon_arch_enter_kernel,
+    .prepare_entry = ribon_arch_prepare_entry,
+    .transfer_prepared = ribon_arch_transfer_prepared,
     .halt = aarch64_halt,
     .reset = 0,
     .monotonic_counter = aarch64_monotonic_counter,
@@ -297,11 +298,7 @@ int ribon_arch_prepare_direct_high_entry(
     }
 
     out->entry = payload->high_entry_virtual_address;
-    out->entry_flags =
-        RIBON_KERNEL_ENTRY_FLAG_RPH1 |
-        RIBON_KERNEL_ENTRY_FLAG_ENTERED_HIGH |
-        RIBON_KERNEL_ENTRY_FLAG_DIRECT_HIGH;
-    out->bootstrap0 = page_table_physical_address;
+    out->translation_root = page_table_physical_address;
     out->high_entry_load = high_entry_runtime;
     out->high_vaddr_start = high_start;
     out->high_vaddr_end = high_end;
@@ -357,15 +354,19 @@ static uint32_t current_pa_bits(void) {
 }
 #endif
 
-_Noreturn void ribon_arch_enter_kernel(
-    uint64_t entry,
-    uint64_t handoff,
-    uint64_t entry_flags,
-    uint64_t bootstrap0) {
+_Noreturn void ribon_arch_transfer_prepared(
+    const struct RibonPreparedEntry *prepared) {
 #if defined(__aarch64__)
-    if (bootstrap0 != 0u &&
-        (entry_flags & RIBON_KERNEL_ENTRY_FLAG_DIRECT_HIGH) != 0u) {
-        const uint64_t ttbr1 = bootstrap0 + RIBON_AARCH64_PAGE_SIZE * 2u;
+    const uint64_t entry = prepared->invocation.entry_address;
+    const uint64_t argument0 = prepared->invocation.arguments[0];
+    const uint64_t argument1 = prepared->invocation.arguments[1];
+    const uint64_t argument2 = prepared->invocation.arguments[2];
+    const uint64_t argument3 = prepared->invocation.arguments[3];
+    if (prepared->translation_root != 0u &&
+        prepared->invocation.translation ==
+            RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE) {
+        const uint64_t ttbr1 =
+            prepared->translation_root + RIBON_AARCH64_PAGE_SIZE * 2u;
         const uint64_t tcr =
             RIBON_AARCH64_TCR_BASE |
             (pa_bits_to_tcr_ips(current_pa_bits()) << RIBON_AARCH64_TCR_IPS_SHIFT);
@@ -374,11 +375,13 @@ _Noreturn void ribon_arch_enter_kernel(
             "dsb sy\n"
             "mov x0, %0\n"
             "mov x1, %1\n"
-            "mov x16, %2\n"
-            "msr mair_el1, %6\n"
-            "msr tcr_el1, %5\n"
-            "msr ttbr0_el1, %3\n"
-            "msr ttbr1_el1, %4\n"
+            "mov x2, %2\n"
+            "mov x3, %3\n"
+            "mov x16, %4\n"
+            "msr mair_el1, %8\n"
+            "msr tcr_el1, %7\n"
+            "msr ttbr0_el1, %5\n"
+            "msr ttbr1_el1, %6\n"
             "isb\n"
             "tlbi vmalle1\n"
             "dsb sy\n"
@@ -391,28 +394,29 @@ _Noreturn void ribon_arch_enter_kernel(
             "isb\n"
             "br x16\n"
             :
-            : "r"(handoff), "r"(entry_flags), "r"(entry), "r"(bootstrap0),
-              "r"(ttbr1), "r"(tcr), "r"(RIBON_AARCH64_MAIR_VALUE)
-            : "x0", "x1", "x9", "x16", "memory");
+            : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
+              "r"(entry), "r"(prepared->translation_root), "r"(ttbr1),
+              "r"(tcr), "r"(RIBON_AARCH64_MAIR_VALUE)
+            : "x0", "x1", "x2", "x3", "x9", "x16", "memory");
     }
     __asm__ __volatile__(
         "msr daifset, #0xf\n"
-        "mov x16, %2\n"
+        "mov x16, %4\n"
         "mov x0, %0\n"
         "mov x1, %1\n"
+        "mov x2, %2\n"
+        "mov x3, %3\n"
         "dsb sy\n"
         "ic ialluis\n"
         "dsb sy\n"
         "isb\n"
         "br x16\n"
         :
-        : "r"(handoff), "r"(entry_flags), "r"(entry)
-        : "x0", "x1", "x16", "memory");
+        : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
+          "r"(entry)
+        : "x0", "x1", "x2", "x3", "x16", "memory");
 #else
-    (void)entry;
-    (void)handoff;
-    (void)entry_flags;
-    (void)bootstrap0;
+    (void)prepared;
 #endif
     for (;;) {
 #if defined(__aarch64__)

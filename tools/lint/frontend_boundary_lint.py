@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce the R4 architecture/environment/platform/protocol hard boundary."""
+"""Enforce the architecture/environment/port/protocol hard boundary."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def main() -> int:
         "architecture contains OS, board, or emulator policy",
     )
     scan(
-        ROOT / "src" / "protocols" / "parus",
+        ROOT / "src" / "protocols" / "os" / "parus",
         re.compile(r"\b(?:uefi|bios|mmio|pl011|e820|fdt_parse)\b", re.IGNORECASE),
         "Parus protocol contains environment or device dependencies",
     )
@@ -67,7 +67,7 @@ def main() -> int:
         if not isinstance(plugins, list):
             fail(f"{path.relative_to(ROOT)} has no plugin list")
         ids = [item.get("id", "") for item in plugins if isinstance(item, dict)]
-        prefixes = ["arch.", "platform."]
+        prefixes = ["arch."]
         prefixes.append(
             "personality." if product_kind == "firmware" else "environment."
         )

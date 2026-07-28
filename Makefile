@@ -35,6 +35,25 @@ UEFI_FLAGS := --target=x86_64-pc-win32-coff $(FREESTANDING_FLAGS) \
 	-I$(ROOT)/include/uefi/X64
 BIOS_FLAGS := --target=i386-none-elf $(FREESTANDING_FLAGS) -m32
 
+# Parus-specific product smokes require the complete kernel-owned boot chain.
+# Generic target smokes above/below retain protocol-neutral Ribon markers only.
+PARUS_SUCCESS_MARKER_ARGS := \
+	--required-marker PARUS:BM:v0:01000100:LOCORE:ENTER:NONE \
+	--required-marker PARUS:BM:v0:02000200:STAGE0:OK:NONE \
+	--required-marker PARUS:BM:v0:03000200:XIBALBA:OK:NONE \
+	--required-marker PARUS:BM:v0:04000200:EB0:OK:NONE \
+	--required-marker PARUS:BM:v0:04010200:EB1:OK:NONE \
+	--required-marker PARUS:BM:v0:04020200:EB2:OK:NONE \
+	--required-marker PARUS:BM:v0:04030200:EB3:OK:NONE \
+	--required-marker PARUS:BM:v0:04040200:EB4:OK:NONE \
+	--required-marker PARUS:BM:v0:04050200:EB5:OK:NONE \
+	--required-marker PARUS:BM:v0:04060200:EB6:OK:NONE \
+	--required-marker PARUS:BM:v0:04070200:EB7:OK:NONE \
+	--required-marker PARUS:BM:v0:04080200:EB8:OK:NONE \
+	--required-marker PARUS:BM:v0:04090200:EB9:OK:NONE \
+	--required-marker PARUS:BM:v0:05000100:KMAIN:ENTER:NONE \
+	--required-marker PARUS:BM:v0:06000200:IDLE:OK:NONE
+
 ifeq ($(filter $(RIBON_ARCH),$(RIBON_ARCHES)),)
 $(error unsupported RIBON_ARCH=$(RIBON_ARCH); supported: $(RIBON_ARCHES))
 endif
@@ -83,7 +102,7 @@ BOOT_LIB_SRCS := \
 	src/common/protocol.c \
 	src/common/boot.c \
 	src/common/image.c \
-	src/common/platform.c \
+	src/common/port.c \
 	src/storage/block.c \
 	src/storage/gpt.c
 SDK_LIB_SRCS := \
@@ -96,8 +115,7 @@ HOST_PRODUCT_SRCS := \
 	src/environments/host/services.c \
 	src/protocols/synthetic/protocol.c \
 	src/image-formats/elf64.c \
-	src/modes/normal.c \
-	platforms/host/platform.c
+	src/modes/normal.c
 HOST_MAIN_SRC := src/environments/host/main.c
 
 CORE_OBJS := $(CORE_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
@@ -115,10 +133,12 @@ ARCH_X86_64_TEST := $(TEST_BUILD_DIR)/x86_64_direct_high_tests
 ARCH_AARCH64_TEST := $(TEST_BUILD_DIR)/aarch64_direct_high_tests
 ARCH_OPS_TESTS := $(RIBON_ARCHES:%=$(TEST_BUILD_DIR)/arch_ops_%_tests)
 CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
+PORT_SERVICE_TEST := $(TEST_BUILD_DIR)/port_service_tests
 BOOT_LIFECYCLE_TEST := $(TEST_BUILD_DIR)/boot_lifecycle_tests
 MEDIA_PIPELINE_TEST := $(TEST_BUILD_DIR)/media_pipeline_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
+OS_PACKAGE_TEST := $(TEST_BUILD_DIR)/os_package_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
 SDK_INSTALL_ROOT := $(BUILD_ROOT)/sdk/install
 SDK_REPRO_FIRST := $(BUILD_ROOT)/sdk/reproducible-a
@@ -146,15 +166,15 @@ RAW_COMMON_SRCS := \
 	src/common/protocol.c \
 	src/common/boot.c \
 	src/common/image.c \
-	src/common/platform.c \
+	src/common/port.c \
 	src/common/freestanding/string.c \
 	src/common/sys/fdt/fdt.c \
 	src/arch/common.c \
 	src/modes/normal.c \
 	src/image-formats/elf64.c \
-	src/protocols/parus/protocol.c \
-	src/protocols/parus/rph1_builder.c \
-	src/protocols/parus/rph1_parser.c \
+	src/protocols/os/parus/protocol.c \
+	src/protocols/os/parus/rph1_builder.c \
+	src/protocols/os/parus/rph1_parser.c \
 	src/environments/raw-fdt/raw_fdt.c \
 	products/bootmgr/raw_fdt_main.c
 
@@ -170,7 +190,7 @@ QEMU_RAW_IMAGE := $(QEMU_RAW_DIR)/ribon.bin
 QEMU_RAW_SRCS := $(RAW_COMMON_SRCS) \
 	src/common/drivers/serial/pl011.c \
 	src/arch/aarch64/arch.c \
-	platforms/qemu/virt-aarch64/platform.c
+	ports/qemu/virt-aarch64/port.c
 QEMU_RAW_OBJS := $(QEMU_RAW_SRCS:%.c=$(QEMU_RAW_DIR)/obj/%.o)
 QEMU_RAW_OBJS += \
 	$(QEMU_RAW_DIR)/obj/generated/plugin_registry.o \
@@ -194,7 +214,7 @@ QEMU_RISCV64_IMAGE := $(QEMU_RISCV64_DIR)/ribon.bin
 QEMU_RISCV64_VALIDATION := $(QEMU_RISCV64_DIR)/results/external-payload.json
 QEMU_RISCV64_SRCS := $(RAW_COMMON_SRCS) \
 	src/arch/riscv64/arch.c \
-	platforms/qemu/virt-riscv64/platform.c
+	ports/qemu/virt-riscv64/port.c
 QEMU_RISCV64_OBJS := $(QEMU_RISCV64_SRCS:%.c=$(QEMU_RISCV64_DIR)/obj/%.o)
 QEMU_RISCV64_OBJS += \
 	$(QEMU_RISCV64_DIR)/obj/generated/plugin_registry.o \
@@ -203,9 +223,21 @@ QEMU_RISCV64_OBJS += \
 
 RPI5_DIR := $(TARGET_BUILD_ROOT)/rpi5-aarch64-raw-fdt
 RPI5_MANIFEST := products/bootmgr/manifests/rpi5-aarch64-parus.json
+RPI5_EXTERNAL_MANIFEST := products/bootmgr/manifests/rpi5-aarch64-parus-external.json
+RPI5_PARUS_PAYLOAD ?=
+RPI5_PARUS_VALIDATION := $(RPI5_DIR)/results/external-payload.json
 RPI5_REGISTRY_C := $(RPI5_DIR)/generated/plugin_registry.c
 RPI5_GRAPH := $(RPI5_DIR)/results/object-graph.json
 RPI5_FIXTURE := $(RPI5_DIR)/payload.elf
+ifneq ($(strip $(RPI5_PARUS_PAYLOAD)),)
+RPI5_SELECTED_MANIFEST := $(RPI5_EXTERNAL_MANIFEST)
+RPI5_SELECTED_PAYLOAD := $(abspath $(RPI5_PARUS_PAYLOAD))
+RPI5_SELECTED_VALIDATION := $(RPI5_PARUS_VALIDATION)
+else
+RPI5_SELECTED_MANIFEST := $(RPI5_MANIFEST)
+RPI5_SELECTED_PAYLOAD := $(RPI5_FIXTURE)
+RPI5_SELECTED_VALIDATION :=
+endif
 RPI5_EMBED_C := $(RPI5_DIR)/generated/embedded_payload.c
 RPI5_ELF := $(RPI5_DIR)/ribon.elf
 RPI5_IMAGE := $(RPI5_DIR)/ribon-rpi5.img
@@ -213,7 +245,7 @@ RPI5_PACKAGE := $(RPI5_DIR)/package
 RPI5_SRCS := $(RAW_COMMON_SRCS) \
 	src/common/drivers/serial/pl011.c \
 	src/arch/aarch64/arch.c \
-	platforms/raspberrypi/rpi5/platform.c
+	ports/raspberrypi/rpi5/port.c
 RPI5_OBJS := $(RPI5_SRCS:%.c=$(RPI5_DIR)/obj/%.o)
 RPI5_OBJS += \
 	$(RPI5_DIR)/obj/generated/plugin_registry.o \
@@ -222,6 +254,18 @@ RPI5_OBJS += \
 
 UEFI_DIR := $(TARGET_BUILD_ROOT)/x86_64-uefi-app
 UEFI_MANIFEST := products/bootmgr/manifests/x86_64-uefi-parus.json
+UEFI_EXTERNAL_MANIFEST := products/bootmgr/manifests/x86_64-uefi-parus-external.json
+UEFI_PARUS_PAYLOAD ?=
+UEFI_PARUS_VALIDATION := $(UEFI_DIR)/results/external-payload.json
+ifneq ($(strip $(UEFI_PARUS_PAYLOAD)),)
+UEFI_SELECTED_MANIFEST = $(UEFI_EXTERNAL_MANIFEST)
+UEFI_SELECTED_PAYLOAD = $(abspath $(UEFI_PARUS_PAYLOAD))
+UEFI_SELECTED_VALIDATION = $(UEFI_PARUS_VALIDATION)
+else
+UEFI_SELECTED_MANIFEST = $(UEFI_MANIFEST)
+UEFI_SELECTED_PAYLOAD = $(UEFI_FIXTURE)
+UEFI_SELECTED_VALIDATION =
+endif
 UEFI_REGISTRY_C := $(UEFI_DIR)/generated/plugin_registry.c
 UEFI_GRAPH := $(UEFI_DIR)/results/object-graph.json
 UEFI_FIXTURE := $(UEFI_DIR)/payload.elf
@@ -241,17 +285,18 @@ UEFI_SRCS := \
 	src/common/protocol.c \
 	src/common/boot.c \
 	src/common/image.c \
-	src/common/platform.c \
+	src/common/port.c \
 	src/common/freestanding/string.c \
 	src/arch/common.c \
 	src/arch/x86_64/arch.c \
+	src/arch/x86_64/io.c \
 	src/modes/normal.c \
 	src/image-formats/elf64.c \
-	src/protocols/parus/protocol.c \
-	src/protocols/parus/rph1_builder.c \
-	src/protocols/parus/rph1_parser.c \
+	src/protocols/os/parus/protocol.c \
+	src/protocols/os/parus/rph1_builder.c \
+	src/protocols/os/parus/rph1_parser.c \
 	src/environments/uefi-app/uefi_app.c \
-	platforms/pc/uefi-x86_64/platform.c \
+	ports/qemu/pc-x86_64/port.c \
 	targets/x86_64-uefi-app/entry.c
 UEFI_OBJS := $(UEFI_SRCS:%.c=$(UEFI_DIR)/obj/%.o)
 UEFI_OBJS += \
@@ -274,7 +319,6 @@ UEFI_PROVIDER_BIN := $(UEFI_PROVIDER_DIR)/ribon-firmware-provider-uefi-reference
 UEFI_PROVIDER_SRCS := \
 	src/arch/common.c \
 	src/arch/x86_64/arch.c \
-	products/firmware/reference/platform.c \
 	src/firmware/uefi-compatible/personality.c \
 	products/firmware/uefi-compatible-reference/main.c
 UEFI_PROVIDER_OBJS := $(UEFI_PROVIDER_SRCS:%.c=$(UEFI_PROVIDER_DIR)/obj/%.o)
@@ -288,7 +332,6 @@ BIOS_PROVIDER_BIN := $(BIOS_PROVIDER_DIR)/ribon-firmware-provider-bios-reference
 BIOS_PROVIDER_SRCS := \
 	src/arch/common.c \
 	src/arch/x86_64/arch.c \
-	products/firmware/reference/platform.c \
 	src/firmware/bios-compatible/personality.c \
 	products/firmware/bios-compatible-reference/main.c
 BIOS_PROVIDER_OBJS := $(BIOS_PROVIDER_SRCS:%.c=$(BIOS_PROVIDER_DIR)/obj/%.o)
@@ -296,8 +339,9 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 
 .PHONY: all lib sdk-install host-reference check check-one check-loader check-pe-coff \
 	check-fdt check-rph1 check-arch-x86_64 check-arch-aarch64 \
-	check-arch-ops check-core-service check-boot-lifecycle check-media-pipeline \
+	check-arch-ops check-core-service check-port-services check-boot-lifecycle check-media-pipeline \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
+	check-os-packages \
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
 	check-qemu-evidence \
@@ -307,7 +351,9 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
-	x86_64-uefi-app-smoke bios-compile rpi5-aarch64-raw-fdt-package \
+	x86_64-uefi-app-smoke x86_64-uefi-parus-smoke \
+	bios-compile rpi5-aarch64-raw-fdt-package \
+	rpi5-aarch64-parus-package \
 	legacy-hard-cut qstar-check docs docs-lint docs-clean clean
 
 all: lib host-reference
@@ -319,8 +365,6 @@ host-reference: $(HOST_REFERENCE)
 $(BUILD_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/obj/platforms/host/platform.o: CPPFLAGS += $(HOST_PLATFORM_DEFINES)
 
 $(TEST_BUILD_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
@@ -380,8 +424,8 @@ $(FDT_TEST): \
 
 $(RPH1_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/rph1/rph1_builder_tests.o \
-	$(TEST_BUILD_DIR)/obj/src/protocols/parus/rph1_builder.o \
-	$(TEST_BUILD_DIR)/obj/src/protocols/parus/rph1_parser.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_builder.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_parser.o \
 	$(TEST_BUILD_DIR)/obj/src/core/memory.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
@@ -409,6 +453,13 @@ $(CORE_SERVICE_TEST): \
 	$(BOOT_LIB) $(CORE_LIB)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
+$(PORT_SERVICE_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/core/port_service_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/common/drivers/serial/pl011.o \
+	$(TEST_BUILD_DIR)/obj/ports/qemu/virt-aarch64/port.o \
+	$(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
 $(BOOT_LIFECYCLE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/boot/lifecycle_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
@@ -431,6 +482,14 @@ $(PROTOCOL_CONTRACT_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/protocol/contract_tests.o \
 	$(ARCH_OBJS) $(BUILD_DIR)/obj/src/protocols/synthetic/protocol.o \
 	$(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(OS_PACKAGE_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/protocol/os_package_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/freebsd/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/zircon/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/common/protocol.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(PROTOCOL_FREE_EMBED_TEST): \
@@ -507,6 +566,7 @@ qemu-aarch64-virt-parus-smoke: qemu-aarch64-virt-parus-product
 		--image $(QEMU_PARUS_IMAGE) \
 		--payload $(QEMU_PARUS_PAYLOAD) --expected-payload-class kernel \
 		--product-manifest $(QEMU_PARUS_MANIFEST) \
+		$(PARUS_SUCCESS_MARKER_ARGS) \
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-aarch64-virt-parus.log \
 		--result $(RESULTS_DIR)/qemu-aarch64-virt-parus.json
@@ -564,19 +624,29 @@ qemu-riscv64-virt-parus-smoke: qemu-riscv64-virt-parus-product
 		--firmware $(RISCV64_OPENSBI_FIRMWARE) \
 		--payload $(QEMU_RISCV64_PAYLOAD) --expected-payload-class kernel \
 		--product-manifest $(QEMU_RISCV64_MANIFEST) \
+		$(PARUS_SUCCESS_MARKER_ARGS) \
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-riscv64-virt-parus.log \
 		--result $(RESULTS_DIR)/qemu-riscv64-virt-parus.json
 
-$(RPI5_REGISTRY_C): $(RPI5_MANIFEST) tools/generate_plugin_registry.py
+$(RPI5_PARUS_VALIDATION): \
+	$(RPI5_EXTERNAL_MANIFEST) $(RPI5_SELECTED_PAYLOAD) \
+	tools/validate_external_parus_payload.py
+	$(PYTHON) tools/validate_external_parus_payload.py \
+		--manifest $(RPI5_EXTERNAL_MANIFEST) \
+		--payload $(RPI5_SELECTED_PAYLOAD) \
+		--result $@
+
+$(RPI5_REGISTRY_C): $(RPI5_SELECTED_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
 		--output $@ --report $(RPI5_GRAPH)
 
 $(RPI5_FIXTURE): tools/make_elf64_fixture.py
 	@mkdir -p $(@D)
-	$(PYTHON) $< --arch aarch64 --base 0x200000 --entry-at-base --output $@
+	$(PYTHON) $< --arch aarch64 --base 0x4000000 --entry-at-base --output $@
 
-$(RPI5_EMBED_C): $(RPI5_FIXTURE) tools/embed_binary.py
+$(RPI5_EMBED_C): \
+	$(RPI5_SELECTED_PAYLOAD) $(RPI5_SELECTED_VALIDATION) tools/embed_binary.py
 	$(PYTHON) tools/embed_binary.py --input $< --output $@
 
 $(RPI5_DIR)/obj/%.o: %.c
@@ -603,15 +673,30 @@ $(RPI5_ELF): $(RPI5_OBJS) targets/rpi5-aarch64-raw-fdt/linker.ld
 $(RPI5_IMAGE): $(RPI5_ELF)
 	$(OBJCOPY) -O binary $< $@
 
-rpi5-aarch64-raw-fdt-package: $(RPI5_IMAGE) $(RPI5_FIXTURE)
+rpi5-aarch64-raw-fdt-package: $(RPI5_IMAGE) $(RPI5_SELECTED_PAYLOAD)
 	$(PYTHON) tools/package_rpi5.py \
-		--image $(RPI5_IMAGE) --payload $(RPI5_FIXTURE) \
+		--image $(RPI5_IMAGE) --payload $(RPI5_SELECTED_PAYLOAD) \
 		--config targets/rpi5-aarch64-raw-fdt/package/config.txt \
 		--cmdline targets/rpi5-aarch64-raw-fdt/package/cmdline.txt \
 		--output $(RPI5_PACKAGE)
 	$(PYTHON) tools/check_rpi_package.py $(RPI5_PACKAGE)
 
-$(UEFI_REGISTRY_C): $(UEFI_MANIFEST) tools/generate_plugin_registry.py
+rpi5-aarch64-parus-package:
+	@test -n "$(RPI5_PARUS_PAYLOAD)" || \
+		{ echo "RPI5_PARUS_PAYLOAD is required" >&2; exit 2; }
+	$(MAKE) --no-print-directory \
+		RPI5_PARUS_PAYLOAD=$(abspath $(RPI5_PARUS_PAYLOAD)) \
+		rpi5-aarch64-raw-fdt-package
+
+$(UEFI_PARUS_VALIDATION): \
+	$(UEFI_EXTERNAL_MANIFEST) $(UEFI_SELECTED_PAYLOAD) \
+	tools/validate_external_parus_payload.py
+	$(PYTHON) tools/validate_external_parus_payload.py \
+		--manifest $(UEFI_EXTERNAL_MANIFEST) \
+		--payload $(UEFI_SELECTED_PAYLOAD) \
+		--result $@
+
+$(UEFI_REGISTRY_C): $(UEFI_SELECTED_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
 		--output $@ --report $(UEFI_GRAPH)
 
@@ -635,12 +720,12 @@ $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_APP)
 	@mkdir -p $(@D)
 	cp $< $@
 
-$(UEFI_CONFIG): tools/make_boot_config.py
+$(UEFI_CONFIG): tools/make_boot_config.py Makefile
 	@mkdir -p $(@D)
 	$(PYTHON) $< --output $@ --entry primary --priority 100 \
-		--protocol parus --image elf64 --kernel /RIBON/PAYLOAD.ELF
+		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF
 
-$(UEFI_PAYLOAD): $(UEFI_FIXTURE)
+$(UEFI_PAYLOAD): $(UEFI_SELECTED_PAYLOAD) $(UEFI_SELECTED_VALIDATION)
 	@mkdir -p $(@D)
 	cp $< $@
 
@@ -654,6 +739,22 @@ x86_64-uefi-app-smoke: x86_64-uefi-app
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-x86_64-uefi.log \
 		--result $(RESULTS_DIR)/qemu-x86_64-uefi.json
+
+x86_64-uefi-parus-smoke:
+	@test -n "$(UEFI_PARUS_PAYLOAD)" || \
+		{ echo "UEFI_PARUS_PAYLOAD is required" >&2; exit 2; }
+	$(MAKE) --no-print-directory \
+		UEFI_PARUS_PAYLOAD=$(abspath $(UEFI_PARUS_PAYLOAD)) \
+		x86_64-uefi-app
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target x86_64-uefi --qemu $(QEMU_X86_64) \
+		--esp $(UEFI_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--payload $(UEFI_PARUS_PAYLOAD) --expected-payload-class kernel \
+		--product-manifest $(UEFI_EXTERNAL_MANIFEST) \
+		$(PARUS_SUCCESS_MARKER_ARGS) \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(RESULTS_DIR)/qemu-x86_64-uefi-parus.log \
+		--result $(RESULTS_DIR)/qemu-x86_64-uefi-parus.json
 
 $(BIOS_REGISTRY_C): $(BIOS_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
@@ -703,6 +804,9 @@ check-arch-ops: $(ARCH_OPS_TESTS)
 check-core-service: $(CORE_SERVICE_TEST)
 	$(CORE_SERVICE_TEST)
 
+check-port-services: $(PORT_SERVICE_TEST)
+	$(PORT_SERVICE_TEST)
+
 check-boot-lifecycle: $(BOOT_LIFECYCLE_TEST)
 	$(BOOT_LIFECYCLE_TEST)
 
@@ -722,6 +826,9 @@ check-plugin-descriptors: $(PLUGIN_DESCRIPTOR_TEST)
 
 check-protocol-contract: $(PROTOCOL_CONTRACT_TEST)
 	$(PROTOCOL_CONTRACT_TEST)
+
+check-os-packages: $(OS_PACKAGE_TEST)
+	$(OS_PACKAGE_TEST)
 
 check-library-embed: $(PROTOCOL_FREE_EMBED_TEST)
 	$(PROTOCOL_FREE_EMBED_TEST)
@@ -853,11 +960,10 @@ qstar-check:
 check-one: $(HOST_REFERENCE) $(KERNEL_FIXTURE)
 	$(HOST_REFERENCE) --kernel $(KERNEL_FIXTURE) > $(BUILD_DIR)/host-reference.txt
 	grep -q "product=host-reference" $(BUILD_DIR)/host-reference.txt
-	grep -q "registry-plugins=5" $(BUILD_DIR)/host-reference.txt
+	grep -q "registry-plugins=4" $(BUILD_DIR)/host-reference.txt
 	grep -q "core-library=libribon-core" $(BUILD_DIR)/host-reference.txt
 	grep -q "boot-library=libribon-boot" $(BUILD_DIR)/host-reference.txt
 	grep -q "environment=host" $(BUILD_DIR)/host-reference.txt
-	grep -q "platform=host" $(BUILD_DIR)/host-reference.txt
 	grep -q "arch=$(RIBON_ARCH)" $(BUILD_DIR)/host-reference.txt
 	grep -q "protocol=synthetic" $(BUILD_DIR)/host-reference.txt
 	grep -q "image-format=elf64" $(BUILD_DIR)/host-reference.txt
@@ -873,8 +979,8 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
-	check-core-service check-boot-lifecycle check-media-pipeline check-mode-descriptors check-plugin-descriptors \
-	check-protocol-contract check-library-embed check-composition-schemas \
+	check-core-service check-port-services check-boot-lifecycle check-media-pipeline check-mode-descriptors check-plugin-descriptors \
+	check-protocol-contract check-os-packages check-library-embed check-composition-schemas \
 	check-qemu-evidence \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
 	check-external-plugin check-firmware-personalities \

@@ -1,4 +1,3 @@
-#include <Ribon/arch/entry.h>
 #include <Ribon/boot/plan.h>
 #include <Ribon/plugin/descriptor.h>
 
@@ -63,31 +62,46 @@ static uint64_t synthetic_select_image_formats(void) {
     return RIBON_IMAGE_FORMAT_MASK(RIBON_EXECUTABLE_FORMAT_ELF64);
 }
 
-/** @brief Architecture별 host fixture entry register 계약을 선택한다. */
-static int synthetic_select_entry_contract(
+/** @brief Synthetic handoff를 architecture-neutral register invocation으로 봉인한다. */
+static int synthetic_prepare_entry_invocation(
     const struct RibonArchDescriptor *arch,
-    struct RibonEntryContract *out) {
-    if (arch == 0 || out == 0) {
+    const struct RibonBootPlan *plan,
+    const struct RibonBootEnvironment *environment,
+    const struct RibonHandoffArtifact *handoff,
+    struct RibonEntryInvocation *out) {
+    enum RibonRegisterAbi register_abi;
+    (void)environment;
+    if (arch == 0 || plan == 0 || handoff == 0 || handoff->data == 0 ||
+        handoff->size == 0u || out == 0 ||
+        plan->kernel_runtime_entry_address == 0u) {
         return RIBON_PROTOCOL_STATUS_BAD_ARGUMENT;
     }
-    *out = (struct RibonEntryContract){
-        .required_entry_flags = RIBON_KERNEL_ENTRY_FLAG_RPH1,
-        .supported_entry_flags = RIBON_KERNEL_ENTRY_FLAG_RPH1,
-    };
     switch (arch->id) {
     case RIBON_ARCHITECTURE_X86_64:
-        out->register_abi = RIBON_REGISTER_ABI_X86_64_RDI_RSI;
-        return RIBON_PROTOCOL_STATUS_OK;
+        register_abi = RIBON_REGISTER_ABI_X86_64_RDI_RSI_RDX_RCX;
+        break;
     case RIBON_ARCHITECTURE_AARCH64:
-        out->register_abi = RIBON_REGISTER_ABI_AARCH64_X0_X1;
-        return RIBON_PROTOCOL_STATUS_OK;
+        register_abi = RIBON_REGISTER_ABI_AARCH64_X0_X1_X2_X3;
+        break;
     case RIBON_ARCHITECTURE_RISCV64:
-        out->register_abi = RIBON_REGISTER_ABI_RISCV64_A0_A1;
-        return RIBON_PROTOCOL_STATUS_OK;
+        register_abi = RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3;
+        break;
     default:
-        *out = (struct RibonEntryContract){0};
+        *out = (struct RibonEntryInvocation){0};
         return RIBON_PROTOCOL_STATUS_BAD_ENTRY_CONTRACT;
     }
+    *out = (struct RibonEntryInvocation){
+        .size = sizeof(*out),
+        .abi_version = RIBON_ENTRY_INVOCATION_ABI_VERSION,
+        .entry_address = plan->kernel_runtime_entry_address,
+        .register_abi = register_abi,
+        .argument_count = 1u,
+        .arguments = {(uint64_t)(uintptr_t)handoff->data},
+        .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
+        .privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR,
+        .translation = RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE,
+    };
+    return RIBON_PROTOCOL_STATUS_OK;
 }
 
 /** @brief Little-endian 64-bit fixture field를 기록한다. */
@@ -164,7 +178,7 @@ static const struct RibonBootProtocolOps synthetic_ops = {
     .validate_components = synthetic_validate_components,
     .select_image_formats = synthetic_select_image_formats,
     .prepare_handoff = synthetic_prepare_handoff,
-    .select_entry_contract = synthetic_select_entry_contract,
+    .prepare_entry_invocation = synthetic_prepare_entry_invocation,
     .validate_confirmation = synthetic_validate_confirmation,
 };
 

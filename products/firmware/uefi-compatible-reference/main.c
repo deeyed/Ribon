@@ -31,7 +31,6 @@ int main(void) {
         .name = "diagnostic",
         .required_capabilities =
             RIBON_CAP_ARCHITECTURE |
-            RIBON_CAP_PLATFORM_FACTS |
             RIBON_CAP_FIRMWARE_PERSONALITY |
             RIBON_CAP_FIRMWARE_SERVICE_DIRECTORY,
         .limits = product->limits,

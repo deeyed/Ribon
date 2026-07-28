@@ -30,7 +30,8 @@ ribon_native_reset:
     adrp x1, __stack_top
     add x1, x1, :lo12:__stack_top
     mov sp, x1
-    mov x0, x20
+    mov x1, x20
+    mov x0, xzr
     bl ribon_raw_fdt_boot_main
 3:
     wfe

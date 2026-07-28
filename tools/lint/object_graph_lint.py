@@ -18,7 +18,7 @@ BOOT_MEMBERS = {
     "gpt.o",
     "image.o",
     "memory.o",
-    "platform.o",
+    "port.o",
     "protocol.o",
 }
 SDK_MEMBERS = {

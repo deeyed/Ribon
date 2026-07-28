@@ -10,7 +10,7 @@
 #define RIBON_PLUGIN_DESCRIPTOR_MAGIC 0x5242504cu
 
 /** @brief Plugin ABI major와 minor다. */
-#define RIBON_PLUGIN_ABI_MAJOR 3u
+#define RIBON_PLUGIN_ABI_MAJOR 4u
 #define RIBON_PLUGIN_ABI_MINOR 0u
 
 /** @brief Architecture compatibility mask다. */
@@ -52,8 +52,7 @@ enum RibonPluginKind {
     RIBON_PLUGIN_KIND_BOOT_PROTOCOL = 3,
     RIBON_PLUGIN_KIND_POLICY = 4,
     RIBON_PLUGIN_KIND_FIRMWARE_PERSONALITY = 5,
-    RIBON_PLUGIN_KIND_PLATFORM = 6,
-    RIBON_PLUGIN_KIND_SERVICE = 7,
+    RIBON_PLUGIN_KIND_SERVICE = 6,
 };
 
 struct RibonPluginDescriptor;

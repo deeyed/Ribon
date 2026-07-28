@@ -1,7 +1,5 @@
 #include "../../src/environments/bios-client/bios_client.h"
 
-#include <Ribon/platform/facts.h>
-
 /**
  * @brief BIOS client product가 소비하는 E820, EDD, long-mode ABI를 compile-time에 고정한다.
  *
@@ -16,8 +14,7 @@ int ribon_bios_client_compile_probe(void) {
         .page_table_base = 0x1000u,
         .entry_point = 0x200000u,
     };
-    return ribon_bios_long_mode_contract_is_valid(&contract) &&
-           ribon_platform_facts_are_valid(ribon_platform_selected()) ?
+    return ribon_bios_long_mode_contract_is_valid(&contract) ?
         0 :
         -1;
 }

@@ -27,6 +27,7 @@ enum RibonBootEnvironmentFlags {
     RIBON_BOOT_ENV_HAS_BOOT_MODULES = 1u << 5,
     RIBON_BOOT_ENV_HAS_RAW_MEMORY_MAP = 1u << 6,
     RIBON_BOOT_ENV_HAS_ACPI = 1u << 7,
+    RIBON_BOOT_ENV_HAS_BOOT_CPU_ID = 1u << 8,
 };
 
 /** @brief Borrowed device-tree descriptor다. */
@@ -120,6 +121,7 @@ struct RibonBootEnvironment {
     uint32_t abi_version;
     enum RibonEnvironmentKind kind;
     enum RibonArchitectureId architecture;
+    uint64_t boot_cpu_id; /**< Firmware가 선택한 bootstrap CPU의 stable numeric ID다. */
     struct RibonMemoryMap memory_map;
     struct RibonRawMemoryMap raw_memory_map;
     struct RibonDeviceTree device_tree;

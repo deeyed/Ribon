@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import struct
 import sys
 
 
@@ -29,6 +30,51 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def payload_load_ranges(path: Path) -> list[tuple[int, int]]:
+    """Return the physical PT_LOAD ranges from one little-endian ELF64."""
+
+    data = path.read_bytes()
+    if len(data) < 64 or data[:4] != b"\x7fELF":
+        raise ValueError("payload is not ELF")
+    if data[4] != 2 or data[5] != 1:
+        raise ValueError("payload is not little-endian ELF64")
+    header = struct.unpack_from("<16sHHIQQQIHHHHHH", data, 0)
+    phoff = header[5]
+    phentsize = header[9]
+    phnum = header[10]
+    if phentsize < 56:
+        raise ValueError("payload program header size is invalid")
+    ranges: list[tuple[int, int]] = []
+    for index in range(phnum):
+        offset = phoff + index * phentsize
+        if offset + 56 > len(data):
+            raise ValueError("payload program header extends past EOF")
+        fields = struct.unpack_from("<IIQQQQQQ", data, offset)
+        if fields[0] != 1:
+            continue
+        start = fields[4]
+        size = fields[6]
+        if size == 0 or start > (1 << 64) - 1 - size:
+            raise ValueError("payload PT_LOAD range is invalid")
+        ranges.append((start, start + size))
+    if not ranges:
+        raise ValueError("payload has no PT_LOAD range")
+    return ranges
+
+
+def loader_memory_range(path: Path) -> tuple[int, int]:
+    """Read the RPi AArch64 image header's physical in-memory extent."""
+
+    data = path.read_bytes()
+    if len(data) < 64 or data[56:60] != b"ARM\x64":
+        raise ValueError("kernel8.img has no AArch64 image header")
+    start = struct.unpack_from("<Q", data, 8)[0]
+    size = struct.unpack_from("<Q", data, 16)[0]
+    if start == 0 or size == 0 or start > (1 << 64) - 1 - size:
+        raise ValueError("kernel8.img memory range is invalid")
+    return start, start + size
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path)
@@ -41,7 +87,7 @@ def main() -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if (
         manifest.get("schema") != "ribon-rpi5-package-v1"
-        or manifest.get("platform") != "raspberrypi-rpi5"
+        or manifest.get("port") != "raspberrypi-rpi5"
         or manifest.get("environment") != "raw-fdt"
         or manifest.get("claim") != "package-only; no live RPi5 execution"
     ):
@@ -67,7 +113,20 @@ def main() -> int:
     cmdline = (args.package / "cmdline.txt").read_text(encoding="utf-8").strip()
     if not cmdline or "\n" in cmdline or "\r" in cmdline:
         return fail("cmdline.txt must contain one non-empty line")
-    print("RIBON-R4-RPI5-PACKAGE-OK package-only")
+    try:
+        loader_range = loader_memory_range(args.package / "kernel8.img")
+        payload_ranges = payload_load_ranges(
+            args.package / "boot" / "payload.elf"
+        )
+    except (OSError, ValueError, struct.error) as error:
+        return fail(str(error))
+    if any(
+        loader_range[0] < payload_end
+        and payload_start < loader_range[1]
+        for payload_start, payload_end in payload_ranges
+    ):
+        return fail("Ribon in-memory image overlaps a payload PT_LOAD range")
+    print("RIBON-R4-RPI5-PACKAGE-OK package-only disjoint-load-ranges")
     return 0
 
 

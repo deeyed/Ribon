@@ -13,7 +13,7 @@ struct RibonProductDescriptor;
 #define RIBON_SERVICE_DESCRIPTOR_MAGIC 0x52425356u
 
 /** @brief Service descriptor와 operation table ABI다. */
-#define RIBON_SERVICE_ABI_VERSION 2u
+#define RIBON_SERVICE_ABI_VERSION 3u
 
 /** @brief Caller-owned immutable service directory ABI다. */
 #define RIBON_SERVICE_DIRECTORY_ABI_VERSION 1u
@@ -47,6 +47,8 @@ enum RibonServiceKind {
     RIBON_SERVICE_KIND_RANDOM_NONCE = 8,
     RIBON_SERVICE_KIND_DIAGNOSTIC_SINK = 9,
     RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE = 10,
+    RIBON_SERVICE_KIND_MACHINE_DESCRIPTION = 11,
+    RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT = 12,
 };
 
 /** @brief Service directory 안에서 같은 role이 갖는 provider cardinality다. */
@@ -85,6 +87,7 @@ typedef int (*RibonServiceNetworkFetchFn)(
     void *, const struct RibonBootSource *, uint64_t, void *, uint64_t, uint64_t *, uint64_t);
 typedef int (*RibonServiceRandomFillFn)(void *, void *, uint64_t);
 typedef int (*RibonServiceDiagnosticWriteFn)(void *, const void *, uint64_t);
+typedef int (*RibonServiceDiagnosticInitializeFn)(void *);
 typedef int (*RibonServiceEnvironmentQuiesceFn)(void *);
 
 /** @brief Boot-source role의 typed operation table이다. */
@@ -127,6 +130,31 @@ struct RibonEnvironmentQuiesceServiceOperations {
     uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
     void *context; /**< Environment-owned borrowed context다. */
     RibonServiceEnvironmentQuiesceFn quiesce; /**< Native service closure callback이다. */
+};
+
+/** @brief Early diagnostic sink role의 typed operation table이다. */
+struct RibonDiagnosticSinkServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    void *context; /**< Port-owned borrowed context다. */
+    RibonServiceDiagnosticInitializeFn initialize; /**< Bounded sink 초기화다. */
+    RibonServiceDiagnosticWriteFn write; /**< Bounded byte write다. */
+};
+
+/** @brief Native machine-description input의 bounded authority다. */
+struct RibonMachineDescriptionServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    const char *machine_id; /**< Diagnostic-only stable machine ID다. */
+    uint64_t native_input_capacity; /**< FDT/ACPI parser가 읽을 최대 byte다. */
+};
+
+/** @brief Kernel payload를 배치할 수 있는 physical window authority다. */
+struct RibonPayloadPlacementServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    uint64_t physical_base; /**< 허용 physical window 시작이다. */
+    uint64_t physical_size; /**< 허용 window byte 수다. */
 };
 
 struct RibonServiceDescriptor;
@@ -201,6 +229,18 @@ const struct RibonServiceDescriptor *ribon_service_directory_find_selected(
 /** @brief Environment plugin operation이 local typed directory인지 검사한다. */
 int ribon_environment_plugin_operations_are_valid(
     const struct RibonPluginDescriptor *descriptor);
+
+/** @brief Diagnostic sink service operation table을 검사한다. */
+int ribon_diagnostic_sink_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor);
+
+/** @brief Machine-description service operation table을 검사한다. */
+int ribon_machine_description_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor);
+
+/** @brief Payload-placement service operation table을 검사한다. */
+int ribon_payload_placement_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor);
 
 /** @brief QStar가 생성한 product service directory를 반환한다. */
 const struct RibonServiceDirectory *ribon_generated_service_directory(void);

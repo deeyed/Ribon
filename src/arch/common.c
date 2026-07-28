@@ -1,4 +1,5 @@
 #include <Ribon/arch/ops.h>
+#include <Ribon/arch/entry.h>
 #include <Ribon/boot/image.h>
 #include <Ribon/plugin/descriptor.h>
 
@@ -122,7 +123,7 @@ int ribon_arch_ops_are_valid(const struct RibonArchOps *ops) {
         return 0;
     }
     if (((ops->capabilities & RIBON_ARCH_CAP_ENTRY_BRIDGE) != 0u) !=
-        (ops->enter_kernel != 0)) {
+        (ops->prepare_entry != 0 && ops->transfer_prepared != 0)) {
         return 0;
     }
     if (((ops->capabilities & RIBON_ARCH_CAP_RESET) != 0u) !=
@@ -198,4 +199,47 @@ int ribon_arch_validate_loaded_payload(
     return entry_covered ?
         RIBON_ARCH_OPERATION_OK :
         RIBON_ARCH_OPERATION_INVALID_PAYLOAD;
+}
+
+/** @brief Register ABI가 selected architecture와 일치하는지 검사한다. */
+static int entry_abi_matches_architecture(
+    enum RibonArchitectureId architecture,
+    enum RibonRegisterAbi abi) {
+    switch (architecture) {
+    case RIBON_ARCHITECTURE_X86_64:
+        return abi == RIBON_REGISTER_ABI_X86_64_RDI_RSI_RDX_RCX;
+    case RIBON_ARCHITECTURE_AARCH64:
+        return abi == RIBON_REGISTER_ABI_AARCH64_X0_X1_X2_X3;
+    case RIBON_ARCHITECTURE_RISCV64:
+        return abi == RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3;
+    default:
+        return 0;
+    }
+}
+
+/** @brief Protocol invocation을 selected architecture의 prepared entry로 검증한다. */
+int ribon_arch_prepare_entry(
+    const struct RibonArchDescriptor *arch,
+    const struct RibonEntryInvocation *invocation,
+    struct RibonPreparedEntry *out) {
+    if (arch == 0 || invocation == 0 || out == 0 ||
+        invocation->size != sizeof(*invocation) ||
+        invocation->abi_version != RIBON_ENTRY_INVOCATION_ABI_VERSION ||
+        invocation->entry_address == 0u ||
+        invocation->argument_count > RIBON_ENTRY_ARGUMENT_LIMIT ||
+        !entry_abi_matches_architecture(arch->id, invocation->register_abi) ||
+        invocation->interrupts != RIBON_ENTRY_INTERRUPTS_MASKED ||
+        invocation->privilege != RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR ||
+        (invocation->translation != RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE &&
+         invocation->translation != RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE)) {
+        if (out != 0) {
+            *out = (struct RibonPreparedEntry){0};
+        }
+        return RIBON_ARCH_OPERATION_BAD_ARGUMENT;
+    }
+    *out = (struct RibonPreparedEntry){
+        .invocation = *invocation,
+        .translation_root = 0u,
+    };
+    return RIBON_ARCH_OPERATION_OK;
 }

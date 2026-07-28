@@ -1,5 +1,6 @@
-#include <Ribon/arch/entry.h>
 #include <Ribon/arch/ops.h>
+#include <Ribon/boot/plan.h>
+#include <Ribon/firmware/environment.h>
 #include <Ribon/plugin/descriptor.h>
 #include <Ribon/protocol/protocol.h>
 
@@ -23,7 +24,19 @@ int main(void) {
         .components = components,
         .component_count = 1u,
     };
-    struct RibonEntryContract entry;
+    const unsigned char handoff_bytes[4] = {'S', 'Y', 'N', '1'};
+    const struct RibonBootPlan plan = {
+        .kernel_runtime_entry_address = 0x200000u,
+    };
+    const struct RibonBootEnvironment environment = {0};
+    const struct RibonHandoffArtifact handoff = {
+        .data = handoff_bytes,
+        .size = sizeof(handoff_bytes),
+        .format = "synthetic-v1",
+        .version_major = 1u,
+        .section_count = 1u,
+    };
+    struct RibonEntryInvocation invocation;
     struct RibonBootProtocol invalid;
     struct RibonBootProtocolOps invalid_ops;
     struct RibonPluginDescriptor invalid_plugin;
@@ -32,10 +45,15 @@ int main(void) {
         protocol->ops->match(&manifest) != RIBON_PROTOCOL_STATUS_OK ||
         protocol->ops->validate_components(&manifest) !=
             RIBON_PROTOCOL_STATUS_OK ||
-        protocol->ops->select_entry_contract(
+        protocol->ops->prepare_entry_invocation(
             ribon_arch_selected(),
-            &entry) != RIBON_PROTOCOL_STATUS_OK ||
-        entry.required_entry_flags != RIBON_KERNEL_ENTRY_FLAG_RPH1) {
+            &plan,
+            &environment,
+            &handoff,
+            &invocation) != RIBON_PROTOCOL_STATUS_OK ||
+        invocation.entry_address != plan.kernel_runtime_entry_address ||
+        invocation.argument_count != 1u ||
+        invocation.arguments[0] != (uint64_t)(uintptr_t)handoff.data) {
         fputs("contract_tests: valid synthetic protocol failed\n", stderr);
         return 1;
     }

@@ -21,6 +21,7 @@ struct RibonRawFdtReservation {
 struct RibonRawFdtEntry {
     const void *fdt; /**< Firmware가 전달한 borrowed FDT pointer다. */
     uint64_t fdt_capacity; /**< Parser가 읽을 수 있는 byte 상한이다. */
+    uint64_t boot_cpu_id; /**< Firmware가 선택한 bootstrap CPU ID다. */
     enum RibonArchitectureId architecture; /**< 선택된 architecture ID다. */
     const struct RibonArchOps *arch_ops; /**< Monotonic counter provider다. */
     uint64_t timer_frequency_hz; /**< Counter frequency다. */

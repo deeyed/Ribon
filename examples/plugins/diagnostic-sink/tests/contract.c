@@ -6,7 +6,6 @@
 
 extern const struct RibonPluginDescriptor ribon_example_fixture_arch_plugin;
 extern const struct RibonPluginDescriptor ribon_example_fixture_environment_plugin;
-extern const struct RibonPluginDescriptor ribon_example_fixture_platform_plugin;
 
 /** @brief Generated external graph, package ABI와 negative descriptor를 검증한다. */
 int main(void) {
@@ -22,7 +21,6 @@ int main(void) {
         .required_capabilities =
             RIBON_CAP_ARCHITECTURE |
             RIBON_CAP_DIAGNOSTIC_SINK |
-            RIBON_CAP_PLATFORM_FACTS |
             RIBON_CAP_SDK_CONTRACT,
         .limits = product->limits,
     };
@@ -73,14 +71,13 @@ int main(void) {
         const struct RibonPluginDescriptor *plugins[] = {
             &ribon_example_fixture_arch_plugin,
             &ribon_example_fixture_environment_plugin,
-            &ribon_example_fixture_platform_plugin,
             &invalid_plugin,
         };
         const struct RibonPluginRegistry invalid_registry = {
             .size = sizeof(invalid_registry),
             .abi_version = RIBON_CORE_ABI_VERSION,
             .plugins = plugins,
-            .plugin_count = 4u,
+            .plugin_count = 3u,
         };
         if (ribon_plugin_registry_validate(
                 &invalid_registry,

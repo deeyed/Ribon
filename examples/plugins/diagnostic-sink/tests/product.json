@@ -5,7 +5,6 @@
   "target_id": "external-diagnostic-sink-contract",
   "architecture": "x86_64",
   "environment": "host",
-  "platform": "fixture",
   "mode": "diagnostic",
   "boot_protocols": [],
   "policies": [
@@ -39,14 +38,12 @@
     "ARCHITECTURE",
     "DIAGNOSTIC_SINK",
     "MONOTONIC_TIMER",
-    "PLATFORM_FACTS",
     "SDK_CONTRACT"
   ],
   "allowed_capabilities": [
     "ARCHITECTURE",
     "DIAGNOSTIC_SINK",
     "MONOTONIC_TIMER",
-    "PLATFORM_FACTS",
     "SDK_CONTRACT"
   ],
   "limits": {
@@ -69,11 +66,6 @@
       "id": "environment.fixture",
       "package": "example.fixture-providers",
       "symbol": "ribon_example_fixture_environment_plugin"
-    },
-    {
-      "id": "platform.fixture",
-      "package": "example.fixture-providers",
-      "symbol": "ribon_example_fixture_platform_plugin"
     },
     {
       "id": "service.diagnostic-sink",
