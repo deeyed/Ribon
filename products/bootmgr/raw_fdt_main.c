@@ -1,9 +1,9 @@
-#include "../../src/common/drivers/serial/pl011.h"
 #include "../../src/environments/raw-fdt/raw_fdt.h"
 
 #include <Ribon/arch/entry.h>
 #include <Ribon/boot/transfer.h>
 #include <Ribon/platform/facts.h>
+#include <Ribon/platform/diagnostic.h>
 #include <Ribon/protocols/parus/rph1.h>
 
 #include <string.h>
@@ -18,7 +18,6 @@ extern const uint64_t ribon_embedded_payload_size;
 extern unsigned char __image_start[];
 extern unsigned char __image_end[];
 
-static struct RibonPl011 diagnostic_uart;
 static struct RibonMemoryRegion environment_regions[RIBON_BOOTMGR_MAX_MEMORY_REGIONS];
 static struct RibonMemoryRegion normalized_regions[RIBON_BOOTMGR_MAX_MEMORY_REGIONS];
 static struct RibonLoadSegment load_segments[RIBON_BOOTMGR_MAX_LOAD_SEGMENTS];
@@ -27,8 +26,8 @@ static _Alignas(16) unsigned char arena_storage[RIBON_BOOTMGR_ARENA_CAPACITY];
 
 /** @brief Early serial에 stable marker를 기록한다. */
 static void bootmgr_marker(const char *marker) {
-    (void)ribon_pl011_write(&diagnostic_uart, marker);
-    (void)ribon_pl011_write(&diagnostic_uart, "\r\n");
+    (void)ribon_platform_diagnostic_write(marker);
+    (void)ribon_platform_diagnostic_write("\r\n");
 }
 
 /** @brief 64-bit 값을 fixed-width hexadecimal marker로 기록한다. */
@@ -43,7 +42,7 @@ static void bootmgr_hex(const char *prefix, uint64_t value) {
             (char)(digit < 10u ? ('0' + digit) : ('a' + digit - 10u));
     }
     digits[18] = '\0';
-    (void)ribon_pl011_write(&diagnostic_uart, prefix);
+    (void)ribon_platform_diagnostic_write(prefix);
     bootmgr_marker(digits);
 }
 
@@ -100,7 +99,9 @@ static int bootmgr_place_payload(
  *
  * 이 함수는 allocation과 interrupt를 사용하지 않으며 성공 시 payload로 terminal transfer한다.
  */
-_Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
+_Noreturn void ribon_raw_fdt_boot_main(
+    uint64_t architecture_bootstrap0,
+    uint64_t fdt_address) {
     const struct RibonPlatformFacts *platform = ribon_platform_selected();
     const struct RibonArchOps *arch = ribon_arch_selected_ops();
     const struct RibonPluginRegistry *registry;
@@ -125,14 +126,14 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
     int status;
 
     if (!ribon_platform_facts_are_valid(platform) ||
-        platform->architecture != RIBON_ARCHITECTURE_AARCH64 ||
+        arch == 0 || arch->descriptor == 0 ||
+        platform->architecture != arch->descriptor->id ||
         platform->environment != RIBON_ENVIRONMENT_RAW_FDT ||
-        ribon_pl011_initialize(
-            &diagnostic_uart,
-            platform->diagnostic_uart_base,
-            platform->diagnostic_poll_limit) != 0) {
+        ribon_platform_diagnostic_initialize(platform) != 0) {
+        if (arch != 0 && arch->halt != 0) {
+            arch->halt();
+        }
         for (;;) {
-            __asm__ __volatile__("wfe");
         }
     }
     bootmgr_marker("RIBON-R4-RAW-FDT-ENTRY");
@@ -151,7 +152,7 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
     native_entry = (struct RibonRawFdtEntry){
         .fdt = (const void *)(uintptr_t)fdt_address,
         .fdt_capacity = platform->native_input_capacity,
-        .architecture = RIBON_ARCHITECTURE_AARCH64,
+        .architecture = platform->architecture,
         .arch_ops = arch,
         .timer_frequency_hz = platform->timer_frequency_hz,
         .payload = ribon_embedded_payload,
@@ -246,5 +247,5 @@ _Noreturn void ribon_raw_fdt_boot_main(uint64_t fdt_address) {
         &transaction,
         (uint64_t)(uintptr_t)handoff.data,
         RIBON_KERNEL_ENTRY_FLAG_RPH1,
-        0u);
+        architecture_bootstrap0);
 }

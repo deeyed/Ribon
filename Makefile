@@ -10,11 +10,14 @@ QSTAR ?= qstar
 DOXYGEN ?= doxygen
 SPHINX_BUILD ?= $(firstword $(wildcard $(BUILD_ROOT)/docs/venv/bin/sphinx-build) sphinx-build)
 AARCH64_CC ?= /usr/bin/clang
+RISCV64_CC ?= /opt/homebrew/opt/llvm@20/bin/clang
 LD_LLD ?= /opt/homebrew/bin/ld.lld
 LLD_LINK ?= /opt/homebrew/bin/lld-link
 OBJCOPY ?= /opt/homebrew/opt/llvm@20/bin/llvm-objcopy
 QEMU_AARCH64 ?= /opt/homebrew/bin/qemu-system-aarch64
 QEMU_X86_64 ?= /opt/homebrew/bin/qemu-system-x86_64
+QEMU_RISCV64 ?= /opt/homebrew/bin/qemu-system-riscv64
+RISCV64_OPENSBI_FIRMWARE ?= /opt/homebrew/Cellar/qemu/11.0.2/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
 X86_64_UEFI_FIRMWARE ?= /opt/homebrew/Cellar/qemu/11.0.2/share/qemu/edk2-x86_64-code.fd
 
 CFLAGS ?= -std=c11 -O2 -g
@@ -25,6 +28,8 @@ FREESTANDING_FLAGS := -std=c11 -O2 -ffreestanding -fno-builtin \
 	-fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-Wall -Wextra -Werror -I$(ROOT)/include/freestanding -I$(ROOT)/include
 AARCH64_FLAGS := --target=aarch64-none-elf $(FREESTANDING_FLAGS) -mgeneral-regs-only
+RISCV64_FLAGS := --target=riscv64-none-elf $(FREESTANDING_FLAGS) \
+	-march=rv64gc -mabi=lp64d -mcmodel=medany
 UEFI_FLAGS := --target=x86_64-pc-win32-coff $(FREESTANDING_FLAGS) \
 	-fshort-wchar -mno-red-zone -I$(ROOT)/include/uefi \
 	-I$(ROOT)/include/uefi/X64
@@ -144,9 +149,7 @@ RAW_COMMON_SRCS := \
 	src/common/platform.c \
 	src/common/freestanding/string.c \
 	src/common/sys/fdt/fdt.c \
-	src/common/drivers/serial/pl011.c \
 	src/arch/common.c \
-	src/arch/aarch64/arch.c \
 	src/modes/normal.c \
 	src/image-formats/elf64.c \
 	src/protocols/parus/protocol.c \
@@ -164,7 +167,10 @@ QEMU_RAW_PAYLOAD ?= $(QEMU_RAW_FIXTURE)
 QEMU_RAW_EMBED_C := $(QEMU_RAW_DIR)/generated/embedded_payload.c
 QEMU_RAW_ELF := $(QEMU_RAW_DIR)/ribon.elf
 QEMU_RAW_IMAGE := $(QEMU_RAW_DIR)/ribon.bin
-QEMU_RAW_SRCS := $(RAW_COMMON_SRCS) platforms/qemu/virt-aarch64/platform.c
+QEMU_RAW_SRCS := $(RAW_COMMON_SRCS) \
+	src/common/drivers/serial/pl011.c \
+	src/arch/aarch64/arch.c \
+	platforms/qemu/virt-aarch64/platform.c
 QEMU_RAW_OBJS := $(QEMU_RAW_SRCS:%.c=$(QEMU_RAW_DIR)/obj/%.o)
 QEMU_RAW_OBJS += \
 	$(QEMU_RAW_DIR)/obj/generated/plugin_registry.o \
@@ -177,6 +183,24 @@ QEMU_PARUS_PAYLOAD ?=
 QEMU_PARUS_IMAGE := $(QEMU_PARUS_DIR)/ribon.bin
 QEMU_PARUS_VALIDATION := $(QEMU_PARUS_DIR)/results/external-payload.json
 
+QEMU_RISCV64_DIR := $(TARGET_BUILD_ROOT)/qemu-riscv64-virt-opensbi
+QEMU_RISCV64_MANIFEST := products/bootmgr/manifests/qemu-riscv64-virt-parus-external.json
+QEMU_RISCV64_REGISTRY_C := $(QEMU_RISCV64_DIR)/generated/plugin_registry.c
+QEMU_RISCV64_GRAPH := $(QEMU_RISCV64_DIR)/results/object-graph.json
+QEMU_RISCV64_PAYLOAD ?=
+QEMU_RISCV64_EMBED_C := $(QEMU_RISCV64_DIR)/generated/embedded_payload.c
+QEMU_RISCV64_ELF := $(QEMU_RISCV64_DIR)/ribon.elf
+QEMU_RISCV64_IMAGE := $(QEMU_RISCV64_DIR)/ribon.bin
+QEMU_RISCV64_VALIDATION := $(QEMU_RISCV64_DIR)/results/external-payload.json
+QEMU_RISCV64_SRCS := $(RAW_COMMON_SRCS) \
+	src/arch/riscv64/arch.c \
+	platforms/qemu/virt-riscv64/platform.c
+QEMU_RISCV64_OBJS := $(QEMU_RISCV64_SRCS:%.c=$(QEMU_RISCV64_DIR)/obj/%.o)
+QEMU_RISCV64_OBJS += \
+	$(QEMU_RISCV64_DIR)/obj/generated/plugin_registry.o \
+	$(QEMU_RISCV64_DIR)/obj/generated/embedded_payload.o \
+	$(QEMU_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o
+
 RPI5_DIR := $(TARGET_BUILD_ROOT)/rpi5-aarch64-raw-fdt
 RPI5_MANIFEST := products/bootmgr/manifests/rpi5-aarch64-parus.json
 RPI5_REGISTRY_C := $(RPI5_DIR)/generated/plugin_registry.c
@@ -186,7 +210,10 @@ RPI5_EMBED_C := $(RPI5_DIR)/generated/embedded_payload.c
 RPI5_ELF := $(RPI5_DIR)/ribon.elf
 RPI5_IMAGE := $(RPI5_DIR)/ribon-rpi5.img
 RPI5_PACKAGE := $(RPI5_DIR)/package
-RPI5_SRCS := $(RAW_COMMON_SRCS) platforms/raspberrypi/rpi5/platform.c
+RPI5_SRCS := $(RAW_COMMON_SRCS) \
+	src/common/drivers/serial/pl011.c \
+	src/arch/aarch64/arch.c \
+	platforms/raspberrypi/rpi5/platform.c
 RPI5_OBJS := $(RPI5_SRCS:%.c=$(RPI5_DIR)/obj/%.o)
 RPI5_OBJS += \
 	$(RPI5_DIR)/obj/generated/plugin_registry.o \
@@ -279,6 +306,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
+	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
 	x86_64-uefi-app-smoke bios-compile rpi5-aarch64-raw-fdt-package \
 	legacy-hard-cut qstar-check docs docs-lint docs-clean clean
 
@@ -482,6 +510,63 @@ qemu-aarch64-virt-parus-smoke: qemu-aarch64-virt-parus-product
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-aarch64-virt-parus.log \
 		--result $(RESULTS_DIR)/qemu-aarch64-virt-parus.json
+
+$(QEMU_RISCV64_REGISTRY_C): $(QEMU_RISCV64_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
+		--output $@ --report $(QEMU_RISCV64_GRAPH)
+
+$(QEMU_RISCV64_EMBED_C): $(QEMU_RISCV64_PAYLOAD) tools/embed_binary.py
+	$(PYTHON) tools/embed_binary.py --input $< --output $@
+
+$(QEMU_RISCV64_DIR)/obj/%.o: %.c
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(QEMU_RISCV64_DIR)/obj/generated/plugin_registry.o: $(QEMU_RISCV64_REGISTRY_C)
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(QEMU_RISCV64_DIR)/obj/generated/embedded_payload.o: $(QEMU_RISCV64_EMBED_C)
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(QEMU_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o: \
+	targets/qemu-riscv64-virt-opensbi/entry.S
+	@mkdir -p $(@D)
+	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
+		-mabi=lp64d -mcmodel=medany -c $< -o $@
+
+$(QEMU_RISCV64_ELF): $(QEMU_RISCV64_OBJS) \
+	targets/qemu-riscv64-virt-opensbi/linker.ld
+	$(LD_LLD) -m elf64lriscv \
+		-T targets/qemu-riscv64-virt-opensbi/linker.ld \
+		-Map=$(QEMU_RISCV64_DIR)/ribon.map \
+		-o $@ $(QEMU_RISCV64_OBJS)
+
+$(QEMU_RISCV64_IMAGE): $(QEMU_RISCV64_ELF)
+	$(OBJCOPY) -O binary $< $@
+
+qemu-riscv64-virt-parus-product:
+	@test -n "$(QEMU_RISCV64_PAYLOAD)" || \
+		{ echo "QEMU_RISCV64_PAYLOAD is required" >&2; exit 2; }
+	$(PYTHON) tools/validate_external_parus_payload.py \
+		--manifest $(QEMU_RISCV64_MANIFEST) \
+		--payload $(QEMU_RISCV64_PAYLOAD) \
+		--result $(QEMU_RISCV64_VALIDATION)
+	$(MAKE) --no-print-directory \
+		QEMU_RISCV64_PAYLOAD=$(abspath $(QEMU_RISCV64_PAYLOAD)) \
+		$(QEMU_RISCV64_IMAGE)
+
+qemu-riscv64-virt-parus-smoke: qemu-riscv64-virt-parus-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target riscv64-virt-opensbi --qemu $(QEMU_RISCV64) \
+		--image $(QEMU_RISCV64_IMAGE) \
+		--firmware $(RISCV64_OPENSBI_FIRMWARE) \
+		--payload $(QEMU_RISCV64_PAYLOAD) --expected-payload-class kernel \
+		--product-manifest $(QEMU_RISCV64_MANIFEST) \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(RESULTS_DIR)/qemu-riscv64-virt-parus.log \
+		--result $(RESULTS_DIR)/qemu-riscv64-virt-parus.json
 
 $(RPI5_REGISTRY_C): $(RPI5_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \

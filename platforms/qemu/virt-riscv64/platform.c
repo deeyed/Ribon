@@ -1,46 +1,66 @@
-#include <Ribon/platform/facts.h>
 #include <Ribon/platform/diagnostic.h>
+#include <Ribon/platform/facts.h>
 #include <Ribon/plugin/descriptor.h>
 
-#include "../../../src/common/drivers/serial/pl011.h"
-
-static struct RibonPl011 selected_diagnostic_uart;
+#define RIBON_QEMU_VIRT_RISCV64_UART_BASE 0x10000000ull
+#define RIBON_QEMU_VIRT_RISCV64_UART_THR 0u
+#define RIBON_QEMU_VIRT_RISCV64_UART_LSR 5u
+#define RIBON_QEMU_VIRT_RISCV64_UART_THR_EMPTY 0x20u
 
 static const struct RibonPlatformFacts selected_platform = {
     .size = sizeof(selected_platform),
     .abi_version = RIBON_PLATFORM_FACTS_ABI_VERSION,
-    .id = "virt-aarch64",
-    .architecture = RIBON_ARCHITECTURE_AARCH64,
+    .id = "virt-riscv64",
+    .architecture = RIBON_ARCHITECTURE_RISCV64,
     .environment = RIBON_ENVIRONMENT_RAW_FDT,
-    .diagnostic_uart_base = 0x09000000ull,
+    .diagnostic_uart_base = RIBON_QEMU_VIRT_RISCV64_UART_BASE,
     .diagnostic_poll_limit = 1000000u,
-    .timer_frequency_hz = 62500000u,
+    .timer_frequency_hz = 10000000u,
     .native_input_capacity = 2ull * 1024ull * 1024ull,
-    .payload_load_base = 0x41000000ull,
-    .payload_load_size = 16ull * 1024ull * 1024ull,
+    .payload_load_base = 0x80400000ull,
+    .payload_load_size = 32ull * 1024ull * 1024ull,
 };
+
+static volatile uint8_t *selected_uart;
+static uint32_t selected_poll_limit;
 
 int ribon_platform_diagnostic_initialize(
     const struct RibonPlatformFacts *facts) {
-    if (facts != &selected_platform) {
+    if (facts != &selected_platform ||
+        facts->diagnostic_uart_base == 0u ||
+        facts->diagnostic_poll_limit == 0u) {
         return -1;
     }
-    return ribon_pl011_initialize(
-        &selected_diagnostic_uart,
-        facts->diagnostic_uart_base,
-        facts->diagnostic_poll_limit);
+    selected_uart =
+        (volatile uint8_t *)(uintptr_t)facts->diagnostic_uart_base;
+    selected_poll_limit = facts->diagnostic_poll_limit;
+    return 0;
 }
 
 int ribon_platform_diagnostic_write(const char *text) {
-    return ribon_pl011_write(&selected_diagnostic_uart, text);
+    if (selected_uart == 0 || text == 0 || selected_poll_limit == 0u) {
+        return -1;
+    }
+    while (*text != '\0') {
+        uint32_t poll = 0u;
+        while ((selected_uart[RIBON_QEMU_VIRT_RISCV64_UART_LSR] &
+                RIBON_QEMU_VIRT_RISCV64_UART_THR_EMPTY) == 0u &&
+               poll < selected_poll_limit) {
+            ++poll;
+        }
+        if (poll == selected_poll_limit) {
+            return -2;
+        }
+        selected_uart[RIBON_QEMU_VIRT_RISCV64_UART_THR] = (uint8_t)*text;
+        ++text;
+    }
+    return 0;
 }
 
-/** @brief 선택된 virtual-machine platform fact를 반환한다. */
 const struct RibonPlatformFacts *ribon_platform_selected(void) {
     return &selected_platform;
 }
 
-/** @brief 선택된 virtual-machine platform plugin descriptor다. */
 const struct RibonPluginDescriptor ribon_platform_plugin_descriptor = {
     .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
     .size = sizeof(ribon_platform_plugin_descriptor),
@@ -48,10 +68,10 @@ const struct RibonPluginDescriptor ribon_platform_plugin_descriptor = {
     .abi_minor = RIBON_PLUGIN_ABI_MINOR,
     .kind = RIBON_PLUGIN_KIND_PLATFORM,
     .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
-    .id = "platform.virt-aarch64",
+    .id = "platform.virt-riscv64",
     .provides = RIBON_CAP_PLATFORM_FACTS,
     .requires = RIBON_CAP_ARCHITECTURE,
-    .architecture_mask = RIBON_ARCH_MASK_AARCH64,
+    .architecture_mask = RIBON_ARCH_MASK_RISCV64,
     .environment_mask = RIBON_ENV_MASK_RAW_FDT,
     .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 4096u,

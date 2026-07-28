@@ -22,6 +22,14 @@ TARGET_MARKERS = {
         b"RIBON-R4-PAYLOAD-LOADED",
         b"RIBON-R4-RAW-FDT-TRANSFER",
     ),
+    "riscv64-virt-opensbi": (
+        b"RIBON-R4-RAW-FDT-ENTRY",
+        b"RIBON-R4-FDT-ACCEPTED",
+        b"RIBON-R4-PRODUCT-GRAPH-OK",
+        b"RIBON-R4-PARUS-RPH1-OK",
+        b"RIBON-R4-PAYLOAD-LOADED",
+        b"RIBON-R4-RAW-FDT-TRANSFER",
+    ),
     "x86_64-uefi": (
         b"RIBON-R4-UEFI-ENTRY",
         b"RIBON-R8-UEFI-CONFIG-OK",
@@ -89,6 +97,21 @@ def command_for(args: argparse.Namespace) -> list[str]:
             "-net", "none",
             "-no-reboot",
             "-no-shutdown",
+            "-kernel", str(args.image),
+        ]
+    if args.target == "riscv64-virt-opensbi":
+        if args.image is None or args.firmware is None:
+            raise ValueError("--image and --firmware are required")
+        return [
+            args.qemu,
+            "-machine", "virt",
+            "-m", "256M",
+            "-nographic",
+            "-monitor", "none",
+            "-net", "none",
+            "-no-reboot",
+            "-no-shutdown",
+            "-bios", str(args.firmware),
             "-kernel", str(args.image),
         ]
     if args.esp is None or args.firmware is None:

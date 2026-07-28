@@ -29,6 +29,7 @@ static int expected_arch(
     }
     if (strcmp(name, "riscv64") == 0) {
         *machine_out = 243u;
+        *capabilities_out |= RIBON_ARCH_CAP_ENTRY_BRIDGE;
         return 1;
     }
     return 0;

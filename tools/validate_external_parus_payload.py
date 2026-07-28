@@ -13,6 +13,20 @@ from pathlib import Path
 PT_LOAD = 1
 PF_X = 1
 PF_W = 2
+ARCHITECTURE_CONTRACTS = {
+    "aarch64": {
+        "machine": 183,
+        "entry_abi": "arm64-rph1-v1",
+        "load_base": 0x41000000,
+        "load_size": 16 * 1024 * 1024,
+    },
+    "riscv64": {
+        "machine": 243,
+        "entry_abi": "riscv-rph1-v1",
+        "load_base": 0x80400000,
+        "load_size": 32 * 1024 * 1024,
+    },
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -74,21 +88,25 @@ def validate(
     contract = manifest.get("payload")
     if not isinstance(contract, dict):
         raise ValueError("product manifest has no payload contract")
+    architecture = contract.get("architecture")
+    architecture_contract = ARCHITECTURE_CONTRACTS.get(architecture)
+    if architecture_contract is None:
+        raise ValueError("product payload architecture is unsupported")
     expected = {
-        "architecture": "aarch64",
+        "architecture": architecture,
         "class": "external-kernel",
-        "entry_abi": "arm64-rph1-v1",
+        "entry_abi": architecture_contract["entry_abi"],
         "format": "elf64",
-        "load_base": 0x41000000,
-        "load_size": 16 * 1024 * 1024,
+        "load_base": architecture_contract["load_base"],
+        "load_size": architecture_contract["load_size"],
     }
     if contract != expected:
-        raise ValueError("product payload contract is not the AArch64 RPH1 tuple")
+        raise ValueError("product payload contract is not the selected RPH1 tuple")
 
     before = sha256_file(payload_path)
     header, segments = inspect_elf(payload_path)
-    if header["machine"] != 183:
-        raise ValueError("payload machine is not AArch64")
+    if header["machine"] != architecture_contract["machine"]:
+        raise ValueError("payload machine does not match the product architecture")
     if not segments:
         raise ValueError("payload has no PT_LOAD segments")
     load_base = int(contract["load_base"])

@@ -31,6 +31,7 @@ class QemuTargetSmokeTests(unittest.TestCase):
         directory: Path,
         payload: Path,
         payload_class: str,
+        target: str = "aarch64-virt-raw-fdt",
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
         """Run the harness against a deterministic fake QEMU process."""
         fake_qemu = directory / "fake-qemu.py"
@@ -46,31 +47,36 @@ class QemuTargetSmokeTests(unittest.TestCase):
         fake_qemu.chmod(0o755)
         image = directory / "ribon.bin"
         image.write_bytes(b"RIBON")
+        firmware = directory / "opensbi.bin"
+        firmware.write_bytes(b"OpenSBI")
         log = directory / "serial.log"
         result = directory / "result.json"
+        command = [
+            sys.executable,
+            str(HARNESS),
+            "--target",
+            target,
+            "--qemu",
+            str(fake_qemu),
+            "--image",
+            str(image),
+            "--payload",
+            str(payload),
+            "--expected-payload-class",
+            payload_class,
+            "--source-revision",
+            "test-revision",
+            "--timeout",
+            "1",
+            "--log",
+            str(log),
+            "--result",
+            str(result),
+        ]
+        if target == "riscv64-virt-opensbi":
+            command.extend(("--firmware", str(firmware)))
         completed = subprocess.run(
-            [
-                sys.executable,
-                str(HARNESS),
-                "--target",
-                "aarch64-virt-raw-fdt",
-                "--qemu",
-                str(fake_qemu),
-                "--image",
-                str(image),
-                "--payload",
-                str(payload),
-                "--expected-payload-class",
-                payload_class,
-                "--source-revision",
-                "test-revision",
-                "--timeout",
-                "1",
-                "--log",
-                str(log),
-                "--result",
-                str(result),
-            ],
+            command,
             check=False,
             text=True,
             stdout=subprocess.PIPE,
@@ -95,6 +101,27 @@ class QemuTargetSmokeTests(unittest.TestCase):
             self.assertTrue(result["payload"]["immutable"])
             self.assertTrue(result["cleanup"]["complete"])
             self.assertFalse(result["cleanup"]["forced_kill"])
+
+    def test_riscv64_records_opensbi_firmware_provenance(self) -> None:
+        """The RISC-V lane requires and hashes its firmware authority."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            payload = directory / "parus.elf"
+            payload.write_bytes(b"\x7fELF" + b"\0" * 128)
+            completed, result = self.run_harness(
+                directory,
+                payload,
+                "kernel",
+                target="riscv64-virt-opensbi",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout)
+            self.assertEqual(result["outcome"], "passed")
+            self.assertEqual(result["target"], "riscv64-virt-opensbi")
+            self.assertEqual(
+                result["firmware"]["path"],
+                str(directory / "opensbi.bin"),
+            )
+            self.assertEqual(len(result["firmware"]["sha256"]), 64)
 
     def test_fixture_cannot_masquerade_as_external_kernel(self) -> None:
         """A fixture marker rejects an external-kernel product claim."""

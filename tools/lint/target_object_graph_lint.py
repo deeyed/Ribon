@@ -10,6 +10,25 @@ import sys
 
 
 EXPECTED = {
+    "qemu-riscv64-virt-opensbi": {
+        "architecture": "riscv64",
+        "environment": "raw-fdt",
+        "platform": "platform.virt-riscv64",
+        "map": "ribon.map",
+        "optional": True,
+        "product_id": "bootmgr.qemu-riscv64-virt-parus-external",
+        "payload_entry_abi": "riscv-rph1-v1",
+        "needles": (
+            "src/arch/riscv64/arch",
+            "src/environments/raw-fdt/raw_fdt",
+            "platforms/qemu/virt-riscv64/platform",
+            "generated/embedded_payload",
+        ),
+        "forbidden": (
+            "src/arch/aarch64/arch",
+            "platforms/qemu/virt-aarch64/platform",
+        ),
+    },
     "qemu-aarch64-virt-parus": {
         "architecture": "aarch64",
         "environment": "raw-fdt",
@@ -112,6 +131,9 @@ def main() -> int:
         for needle in expected["needles"]:
             if needle not in link_map:
                 fail(f"{target}: selected object is absent from link map: {needle}")
+        for needle in expected.get("forbidden", ()):
+            if needle in link_map:
+                fail(f"{target}: forbidden object leaked into link map: {needle}")
         forbidden = (
             "raspberrypi/rpi5" if target.startswith("qemu-") else
             "qemu/virt-aarch64" if target.startswith("rpi5-") else

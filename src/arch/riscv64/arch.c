@@ -53,11 +53,30 @@ _Noreturn void ribon_arch_enter_kernel(
     uint64_t handoff,
     uint64_t entry_flags,
     uint64_t bootstrap0) {
+#if defined(__riscv) && __riscv_xlen == 64
+    __asm__ __volatile__(
+        "mv t0, %3\n"
+        "mv a0, %0\n"
+        "mv a1, %1\n"
+        "mv a2, %2\n"
+        "csrci sstatus, 2\n"
+        "csrw sie, zero\n"
+        "fence rw, rw\n"
+        "fence.i\n"
+        "jr t0\n"
+        :
+        : "r"(handoff), "r"(entry_flags), "r"(bootstrap0), "r"(entry)
+        : "t0", "a0", "a1", "a2", "memory");
+#else
     (void)entry;
     (void)handoff;
     (void)entry_flags;
     (void)bootstrap0;
+#endif
     for (;;) {
+#if defined(__riscv)
+        __asm__ __volatile__("wfi");
+#endif
     }
 }
 
@@ -99,6 +118,7 @@ static const struct RibonArchOps riscv64_ops = {
     .capabilities =
         RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
         RIBON_ARCH_CAP_CACHE_SYNC |
+        RIBON_ARCH_CAP_ENTRY_BRIDGE |
         RIBON_ARCH_CAP_HALT |
         RIBON_ARCH_CAP_MONOTONIC_COUNTER,
     .descriptor = &riscv64_arch,
@@ -107,7 +127,7 @@ static const struct RibonArchOps riscv64_ops = {
     .normalize_privilege = 0,
     .direct_high_page_table_pages = 0,
     .prepare_direct_high_entry = 0,
-    .enter_kernel = 0,
+    .enter_kernel = ribon_arch_enter_kernel,
     .halt = riscv64_halt,
     .reset = 0,
     .monotonic_counter = riscv64_monotonic_counter,

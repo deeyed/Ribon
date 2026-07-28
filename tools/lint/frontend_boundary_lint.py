@@ -51,6 +51,11 @@ def main() -> int:
         re.compile(r"\b(?:rpi5|raspberry|kernel8|config\.txt|bcm2712)\b", re.IGNORECASE),
         "QEMU target contains board artifacts",
     )
+    scan(
+        ROOT / "targets" / "qemu-riscv64-virt-opensbi",
+        re.compile(r"\b(?:aarch64|uefi|bios|rpi5|raspberry|pl011)\b", re.IGNORECASE),
+        "RISC-V OpenSBI target contains another frontend or board",
+    )
 
     manifests = sorted((ROOT / "products").rglob("*.json"))
     if not manifests:

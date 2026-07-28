@@ -13,9 +13,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR_PATH = ROOT / "tools" / "validate_external_parus_payload.py"
-MANIFEST = (
+ARM64_MANIFEST = (
     ROOT
     / "products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json"
+)
+RISCV64_MANIFEST = (
+    ROOT
+    / "products/bootmgr/manifests/qemu-riscv64-virt-parus-external.json"
 )
 
 
@@ -78,24 +82,34 @@ class ExternalParusPayloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             payload = Path(raw) / "parus.elf"
             write_elf(payload)
-            report = self.validator.validate(MANIFEST, payload)
+            report = self.validator.validate(ARM64_MANIFEST, payload)
             self.assertTrue(report["success"])
             self.assertEqual(report["entry_abi"], "arm64-rph1-v1")
+            self.assertTrue(report["payload"]["immutable"])
+
+    def test_accepts_riscv64_rph1_payload_in_product_window(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            payload = Path(raw) / "parus.elf"
+            write_elf(payload, machine=243, base=0x80400000)
+            report = self.validator.validate(RISCV64_MANIFEST, payload)
+            self.assertTrue(report["success"])
+            self.assertEqual(report["architecture"], "riscv64")
+            self.assertEqual(report["entry_abi"], "riscv-rph1-v1")
             self.assertTrue(report["payload"]["immutable"])
 
     def test_rejects_wrong_architecture(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             payload = Path(raw) / "wrong-arch.elf"
             write_elf(payload, machine=62)
-            with self.assertRaisesRegex(ValueError, "not AArch64"):
-                self.validator.validate(MANIFEST, payload)
+            with self.assertRaisesRegex(ValueError, "machine does not match"):
+                self.validator.validate(ARM64_MANIFEST, payload)
 
     def test_rejects_segment_outside_product_window(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             payload = Path(raw) / "outside.elf"
             write_elf(payload, base=0x42000000)
             with self.assertRaisesRegex(ValueError, "product window"):
-                self.validator.validate(MANIFEST, payload)
+                self.validator.validate(ARM64_MANIFEST, payload)
 
     def test_rejects_manifest_contract_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -103,7 +117,7 @@ class ExternalParusPayloadTests(unittest.TestCase):
             payload = directory / "parus.elf"
             manifest = directory / "manifest.json"
             write_elf(payload)
-            document = json.loads(MANIFEST.read_text(encoding="utf-8"))
+            document = json.loads(ARM64_MANIFEST.read_text(encoding="utf-8"))
             document["payload"]["entry_abi"] = "arm64-fdt-v1"
             manifest.write_text(json.dumps(document), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "RPH1 tuple"):
