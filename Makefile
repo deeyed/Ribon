@@ -266,6 +266,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
+	check-qemu-evidence \
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
@@ -446,6 +447,8 @@ qemu-aarch64-virt-raw-fdt-smoke: $(QEMU_RAW_IMAGE)
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target aarch64-virt-raw-fdt --qemu $(QEMU_AARCH64) \
 		--image $(QEMU_RAW_IMAGE) \
+		--payload $(QEMU_RAW_FIXTURE) --expected-payload-class fixture \
+		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.log \
 		--result $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.json
 
@@ -531,6 +534,8 @@ x86_64-uefi-app-smoke: x86_64-uefi-app
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
 		--esp $(UEFI_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--payload $(UEFI_PAYLOAD) --expected-payload-class fixture \
+		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-x86_64-uefi.log \
 		--result $(RESULTS_DIR)/qemu-x86_64-uefi.json
 
@@ -607,6 +612,9 @@ check-library-embed: $(PROTOCOL_FREE_EMBED_TEST)
 
 check-composition-schemas:
 	$(PYTHON) tools/lint/composition_schema_lint.py
+
+check-qemu-evidence:
+	$(PYTHON) tests/tools/qemu_target_smoke_tests.py
 
 sdk-install: lib
 	$(PYTHON) tools/install_sdk.py \
@@ -750,6 +758,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-boot-lifecycle check-media-pipeline check-mode-descriptors check-plugin-descriptors \
 	check-protocol-contract check-library-embed check-composition-schemas \
+	check-qemu-evidence \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
 	check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs check-object-graphs check-normal-media-surface qstar-check

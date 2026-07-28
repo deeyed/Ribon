@@ -66,6 +66,7 @@ contracts/update/update-authority
 contracts/recovery/overseer-plugin-boundary
 contracts/network/recovery-network-surface
 contracts/platform/platform-support-tiers
+contracts/evidence/qemu-payload-evidence
 contracts/documentation/documentation-quality-gate
 ```
 
