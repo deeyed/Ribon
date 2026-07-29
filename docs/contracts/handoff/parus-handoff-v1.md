@@ -91,6 +91,7 @@ length`의 overflow, `total_size` 초과, 선언 alignment 위반은 artifact �
 | `0x0009` | `BOOT_MEDIA` | 0 또는 1 | 선택 |
 | `0x000a` | `BOOT_PROVENANCE` | 1 | 필수 |
 | `0x000b` | `OVERSEER_STATE` | 0 또는 1 | 선택 |
+| `0x000c` | `BOOT_CPU` | 0 또는 1 | RISC-V primary entry에서 필수 |
 
 복수 item은 하나의 section payload 안에서 `count`, `entry_size`, fixed-size entry table로
 직렬화한다. Entry 수와 크기에 각 section 계약의 상한을 둔다.
@@ -184,6 +185,28 @@ Architecture ID는 AMD64 1, AArch64 2, RISC-V 64 3이다.
 `OVERSEER_STATE` type과 singleton 규칙은 예약한다. 별도 계약이 payload schema를
 정의하기 전 producer는 이 section을 생성해서는 안 된다.
 
+### Bootstrap CPU
+
+`BOOT_CPU`는 32 byte singleton payload다.
+
+| Offset | 크기 | Field | 값 또는 의미 |
+| ---: | ---: | --- | --- |
+| 0 | 8 | `boot_cpu_id` | Firmware가 선택한 bootstrap CPU의 architecture-native ID |
+| 8 | 4 | `id_namespace` | RISC-V hart ID는 `1` |
+| 12 | 4 | `flags` | bit 0 `BOOTSTRAP`, 나머지는 0 |
+| 16 | 8 | `reserved0` | `0` |
+| 24 | 8 | `reserved1` | `0` |
+
+RISC-V raw-FDT/OpenSBI producer는 `BOOT_CPU`에
+`REQUIRED_TO_UNDERSTAND`를 설정하고 `BORROWED_RANGE_DESCRIPTOR`는 설정하지 않는다.
+`boot_cpu_id`의 0은 유효한 hart ID다. Section이 없거나 중복되고, namespace가 `1`이
+아니거나 `BOOTSTRAP` 외 flag 또는 reserved field가 0이 아니면 RISC-V RPH1 생성과
+소비는 실패한다.
+
+AMD64와 AArch64 producer는 해당 architecture 계약이 별도로 요구하기 전
+`BOOT_CPU`를 생성하지 않는다. 이 조건부 section 추가는 header의 v1.0 encoding,
+크기와 기존 architecture artifact를 변경하지 않는다.
+
 ## Parser 의무
 
 Producer는 artifact를 반환하기 전에 같은 bounded parser로 자체 검증한다. Consumer도
@@ -205,6 +228,13 @@ Entry flag bit 0은 `RPH1`, bit 1은 direct-DTB 예약, bit 2는 `ENTERED_HIGH`,
 
 Flag는 pointer와 CPU state 검증을 대체하지 않는다. Malformed RPH1을 DTB 또는 다른
 artifact로 재해석하지 않는다.
+
+RISC-V에서 이 표는 Ribon이 primary OS image로 terminal transfer할 때의 ABI다.
+OpenSBI가 Ribon target을 호출할 때의 native `a0=hartid`, `a1=FDT`와 SBI HSM이
+secondary hart를 시작할 때의 `a0=hartid`, `a1=opaque`는 별도 firmware ABI다.
+Ribon은 native hart ID를 `BOOT_CPU`에 보존한 뒤 `a0`를 RPH1 pointer로 교체한다.
+Primary transfer에서 `a2`나 별도 global을 boot CPU identity의 두 번째 권위로
+사용하지 않는다.
 
 ## 수명
 

@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-07-29
 code_paths:
   - docs/
   - include/Ribon/
@@ -81,6 +81,7 @@ adr/0010-typed-service-graph-hard-cut
 adr/0011-bounded-boot-transaction-hard-cut
 adr/0012-deterministic-boot-media-pipeline
 adr/0013-generic-entry-port-protocol-hard-cut
+adr/0014-riscv64-bootstrap-hart-authority
 ```
 
 ```{toctree}

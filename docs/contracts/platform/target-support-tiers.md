@@ -88,3 +88,15 @@ secure-boot production claim을 열지 않는다.
 SBI target에서는 OpenSBI 또는 선택된 SBI firmware가 M-mode를 소유한다. Ribon
 bootloader product는 S-mode 또는 UEFI application으로 동작한다. Ribon firmware
 personality가 M-mode를 소유하려면 별도 product와 threat model을 요구한다.
+
+RISC-V SBI target의 독립 acceptance는 다음 경계를 모두 확인해야 한다.
+
+- OpenSBI native `a0=hartid`, `a1=FDT` capture
+- raw-FDT environment의 `boot_cpu_id`와 machine-description seal
+- RPH1 `BOOT_CPU` required section의 bounded producer/parser 검증
+- primary OS entry의 `a0=RPH1`, `a1=flags`
+- S-mode, interrupt-masked, `satp=0` terminal transfer
+
+Ribon-owned contract fixture의 QEMU 결과는 이 register와 artifact 경계를 검증할 수
+있지만 실제 Parus RISC-V consumer, SBI HSM SMP, UEFI RISC-V, 물리 보드 또는
+production security evidence를 대신하지 않는다.
