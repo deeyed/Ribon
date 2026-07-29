@@ -42,6 +42,22 @@ def main() -> int:
         "architecture contains OS, board, or emulator policy",
     )
     scan(
+        ROOT / "src" / "image-formats",
+        re.compile(
+            r"(?:RibonArchDescriptor|RIBON_CAP_ARCHITECTURE|"
+            r"RIBON_ARCHITECTURE_|canonical_name|\"(?:x86_64|aarch64|riscv64)\")"
+        ),
+        "image parser contains ISA selection authority",
+    )
+    scan(
+        ROOT / "src" / "common",
+        re.compile(
+            r"(?:canonical_name.{0,80}machine|machine.{0,80}canonical_name)",
+            re.DOTALL,
+        ),
+        "generic common layer selects machine by canonical name",
+    )
+    scan(
         ROOT / "src" / "protocols" / "os" / "parus",
         re.compile(r"\b(?:uefi|bios|mmio|pl011|e820|fdt_parse)\b", re.IGNORECASE),
         "Parus protocol contains environment or device dependencies",

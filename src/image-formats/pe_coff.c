@@ -1,4 +1,3 @@
-#include <Ribon/arch/ops.h>
 #include <Ribon/boot/image.h>
 #include <Ribon/plugin/descriptor.h>
 
@@ -9,8 +8,6 @@
 #define RIBON_PE32_PLUS_MAGIC 0x20bu
 #define RIBON_PE32_PLUS_OPTIONAL_MINIMUM 112u
 #define RIBON_PE_SECTION_HEADER_SIZE 40u
-#define RIBON_PE_MACHINE_X86_64 0x8664u
-#define RIBON_PE_MACHINE_AARCH64 0xaa64u
 #define RIBON_PE_SCN_MEM_EXECUTE 0x20000000u
 #define RIBON_PE_SCN_MEM_READ 0x40000000u
 #define RIBON_PE_SCN_MEM_WRITE 0x80000000u
@@ -43,21 +40,6 @@ static int pe_add(uint64_t lhs, uint64_t rhs, uint64_t *out) {
     return 1;
 }
 
-/** @brief Architecture descriptor에 맞는 PE machine 값을 반환한다. */
-static uint16_t pe_machine(const struct RibonArchDescriptor *arch) {
-    if (arch == 0) {
-        return 0u;
-    }
-    switch (arch->id) {
-    case RIBON_ARCHITECTURE_X86_64:
-        return RIBON_PE_MACHINE_X86_64;
-    case RIBON_ARCHITECTURE_AARCH64:
-        return RIBON_PE_MACHINE_AARCH64;
-    default:
-        return 0u;
-    }
-}
-
 /** @brief PE section characteristic을 Ribon load permission으로 변환한다. */
 static uint32_t pe_segment_flags(uint32_t characteristics) {
     uint32_t flags = 0u;
@@ -80,7 +62,6 @@ static uint32_t pe_segment_flags(uint32_t characteristics) {
  */
 static int pe_coff_analyze(
     const struct RibonPayloadImage *image,
-    const struct RibonArchDescriptor *arch,
     struct RibonLoadedPayload *out) {
     const unsigned char *bytes;
     uint32_t pe_offset;
@@ -98,7 +79,7 @@ static int pe_coff_analyze(
     uint32_t segment_capacity;
     int entry_seen = 0;
 
-    if (image == 0 || image->data == 0 || arch == 0 || out == 0 ||
+    if (image == 0 || image->data == 0 || out == 0 ||
         out->segments == 0 || out->segment_capacity == 0u ||
         image->size < RIBON_PE_SIGNATURE_OFFSET_FIELD + 4u) {
         return RIBON_LOADER_STATUS_BAD_ARGUMENT;
@@ -118,7 +99,7 @@ static int pe_coff_analyze(
     machine = pe_read_u16(bytes + pe_offset + 4u);
     section_count = pe_read_u16(bytes + pe_offset + 6u);
     optional_size = pe_read_u16(bytes + pe_offset + 20u);
-    if (machine != pe_machine(arch) || machine == 0u) {
+    if (machine == 0u) {
         return RIBON_LOADER_STATUS_UNSUPPORTED;
     }
     if (section_count == 0u || section_count > out->segment_capacity ||
@@ -260,8 +241,8 @@ const struct RibonPluginDescriptor ribon_pe_coff_image_plugin_descriptor = {
     .phase = RIBON_PLUGIN_PHASE_BOOT,
     .id = "image.pe-coff",
     .provides = RIBON_CAP_IMAGE_PE_COFF,
-    .requires = RIBON_CAP_ARCHITECTURE,
-    .architecture_mask = RIBON_ARCH_MASK_X86_64 | RIBON_ARCH_MASK_AARCH64,
+    .requires = 0u,
+    .architecture_mask = RIBON_ARCH_MASK_ALL,
     .environment_mask = RIBON_ENV_MASK_ALL,
     .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 4096u,

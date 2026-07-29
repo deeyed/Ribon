@@ -37,7 +37,7 @@ SECTIONS
     . = ALIGN(4096);
     __image_end = .;
     ASSERT(__image_end <= 0x80400000,
-           "Ribon image overlaps the Parus payload window")
+           "Ribon image overlaps the selected payload window")
 
     /DISCARD/ : {
         *(.comment)

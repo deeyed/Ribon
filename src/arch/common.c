@@ -3,21 +3,6 @@
 #include <Ribon/boot/image.h>
 #include <Ribon/plugin/descriptor.h>
 
-/** @brief 두 C 문자열이 같은지 검사한다. */
-static int arch_streq(const char *lhs, const char *rhs) {
-    if (lhs == 0 || rhs == 0) {
-        return 0;
-    }
-    while (*lhs != '\0' && *rhs != '\0') {
-        if (*lhs != *rhs) {
-            return 0;
-        }
-        ++lhs;
-        ++rhs;
-    }
-    return *lhs == *rhs;
-}
-
 /** @brief 주소가 architecture virtual address 폭에 맞는 canonical 값인지 검사한다. */
 static int address_is_canonical(uint64_t address, uint32_t virtual_address_bits) {
     uint64_t high_mask;
@@ -37,19 +22,15 @@ static int address_is_canonical(uint64_t address, uint32_t virtual_address_bits)
     return (address & high_mask) == high_mask;
 }
 
-/** @brief Architecture 이름에 대응하는 ELF machine 값을 반환한다. */
+/** @brief Architecture descriptor에서 image format별 machine 값을 반환한다. */
 static uint16_t expected_machine(
     const struct RibonArchDescriptor *arch,
     enum RibonExecutableFormat format) {
-    if (arch_streq(arch->canonical_name, "x86_64")) {
-        return format == RIBON_EXECUTABLE_FORMAT_PE_COFF ? 0x8664u : 62u;
+    if (format == RIBON_EXECUTABLE_FORMAT_ELF64) {
+        return arch->elf_machine;
     }
-    if (arch_streq(arch->canonical_name, "aarch64")) {
-        return format == RIBON_EXECUTABLE_FORMAT_PE_COFF ? 0xaa64u : 183u;
-    }
-    if (arch_streq(arch->canonical_name, "riscv64") &&
-        format == RIBON_EXECUTABLE_FORMAT_ELF64) {
-        return 243u;
+    if (format == RIBON_EXECUTABLE_FORMAT_PE_COFF) {
+        return arch->pe_coff_machine;
     }
     return 0u;
 }
@@ -157,7 +138,7 @@ int ribon_arch_plugin_operations_are_valid(
 /** @brief Loaded payload의 공통 machine/canonical address 계약을 검사한다. */
 int ribon_arch_validate_loaded_payload(
     const struct RibonArchDescriptor *arch,
-    const struct RibonLoadedPayload *payload) {
+    struct RibonLoadedPayload *payload) {
     uint16_t machine;
     int entry_covered = 0;
 
@@ -194,6 +175,17 @@ int ribon_arch_validate_loaded_payload(
             payload->entry_point < virtual_end &&
             (segment->flags & RIBON_LOAD_SEGMENT_EXECUTE) != 0u) {
             entry_covered = 1;
+        }
+        if ((segment->virtual_address &
+             (1ull << (arch->virtual_address_bits - 1u))) != 0u) {
+            payload->load_plan_flags |=
+                RIBON_LOAD_PLAN_HAS_HIGHER_HALF |
+                RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE;
+            if (payload->high_entry_virtual_address == 0u ||
+                segment->virtual_address < payload->high_entry_virtual_address) {
+                payload->high_entry_virtual_address = segment->virtual_address;
+                payload->high_entry_load_address = segment->load_address;
+            }
         }
     }
     return entry_covered ?

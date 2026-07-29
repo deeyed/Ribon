@@ -3,11 +3,10 @@
 
 #include <stdint.h>
 
-struct RibonArchDescriptor;
 struct RibonPluginDescriptor;
 
 /** @brief Image-format operation table ABI다. */
-#define RIBON_IMAGE_FORMAT_OPS_ABI_VERSION 1u
+#define RIBON_IMAGE_FORMAT_OPS_ABI_VERSION 2u
 
 /** @brief Ribon image format의 stable ID다. */
 enum RibonExecutableFormat {
@@ -101,7 +100,6 @@ struct RibonLoadedPayload {
 /** @brief Image bytes를 architecture-neutral load plan으로 분석한다. */
 typedef int (*RibonImageAnalyzeFn)(
     const struct RibonPayloadImage *image,
-    const struct RibonArchDescriptor *arch,
     struct RibonLoadedPayload *out);
 
 /** @brief 한 image-format plugin의 typed operation table이다. */

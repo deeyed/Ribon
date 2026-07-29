@@ -1,9 +1,7 @@
-#include <Ribon/arch/ops.h>
 #include <Ribon/boot/image.h>
 #include <Ribon/plugin/descriptor.h>
 
 #include <stddef.h>
-#include <string.h>
 
 #define RIBON_ELF64_HEADER_SIZE 64u
 #define RIBON_ELF64_PHDR_SIZE 56u
@@ -16,9 +14,6 @@
 #define RIBON_ELF_PF_X 1u
 #define RIBON_ELF_PF_W 2u
 #define RIBON_ELF_PF_R 4u
-#define RIBON_ELF_MACHINE_X86_64 62u
-#define RIBON_ELF_MACHINE_AARCH64 183u
-#define RIBON_ELF_MACHINE_RISCV 243u
 
 /** @brief Unaligned little-endian 16-bit field를 byte-wise로 읽는다. */
 static uint16_t ribon_read_le16(const unsigned char *data) {
@@ -67,63 +62,6 @@ static int ribon_is_power_of_two(uint64_t value) {
     return value != 0u && (value & (value - 1u)) == 0u;
 }
 
-/** @brief Architecture descriptor를 ELF machine number로 변환한다. */
-static int ribon_machine_for_arch(const struct RibonArchDescriptor *arch, uint16_t *out) {
-    if (arch == 0 || arch->canonical_name == 0 || out == 0) {
-        return RIBON_LOADER_STATUS_BAD_ARGUMENT;
-    }
-    if (strcmp(arch->canonical_name, "x86_64") == 0) {
-        *out = RIBON_ELF_MACHINE_X86_64;
-        return RIBON_LOADER_STATUS_OK;
-    }
-    if (strcmp(arch->canonical_name, "aarch64") == 0) {
-        *out = RIBON_ELF_MACHINE_AARCH64;
-        return RIBON_LOADER_STATUS_OK;
-    }
-    if (strcmp(arch->canonical_name, "riscv64") == 0) {
-        *out = RIBON_ELF_MACHINE_RISCV;
-        return RIBON_LOADER_STATUS_OK;
-    }
-    return RIBON_LOADER_STATUS_UNSUPPORTED;
-}
-
-/** @brief Unsigned address가 선언된 physical bit 수에 들어가는지 검사한다. */
-static int ribon_address_fits(uint64_t address, uint32_t bits) {
-    if (bits >= 64u) {
-        return 1;
-    }
-    if (bits == 0u) {
-        return address == 0u;
-    }
-    return address < (1ull << bits);
-}
-
-/** @brief Virtual address가 architecture canonical sign extension을 만족하는지 검사한다. */
-static int ribon_address_is_canonical(uint64_t address, uint32_t bits) {
-    uint64_t sign_bit;
-    uint64_t upper_mask;
-    if (bits >= 64u) {
-        return 1;
-    }
-    if (bits == 0u) {
-        return address == 0u;
-    }
-    sign_bit = 1ull << (bits - 1u);
-    upper_mask = UINT64_MAX << bits;
-    if ((address & sign_bit) != 0u) {
-        return (address & upper_mask) == upper_mask;
-    }
-    return (address & upper_mask) == 0u;
-}
-
-/** @brief Canonical virtual address가 상위 canonical half인지 검사한다. */
-static int ribon_address_is_high_half(uint64_t address, uint32_t bits) {
-    if (bits == 0u || bits >= 64u || !ribon_address_is_canonical(address, bits)) {
-        return 0;
-    }
-    return (address & (1ull << (bits - 1u))) != 0u;
-}
-
 /** @brief ELF PF bit를 Ribon load-segment permission bit로 변환한다. */
 static uint32_t ribon_segment_flags_from_elf(uint32_t flags) {
     uint32_t mapped = 0;
@@ -168,10 +106,8 @@ static void ribon_loaded_payload_reset(struct RibonLoadedPayload *out) {
 
 static int elf64_analyze(
     const struct RibonPayloadImage *image,
-    const struct RibonArchDescriptor *arch,
     struct RibonLoadedPayload *out) {
     const unsigned char *data;
-    uint16_t expected_machine = 0;
     uint16_t e_type;
     uint16_t e_machine;
     uint16_t e_ehsize;
@@ -189,13 +125,11 @@ static int elf64_analyze(
     uint64_t linked_physical_base = UINT64_MAX;
     uint64_t linked_physical_end = 0;
     uint64_t entry_load_address = 0;
-    uint64_t high_entry_virtual_address = 0;
-    uint64_t high_entry_load_address = 0;
     uint32_t load_plan_flags = 0;
     int entry_is_loadable = 0;
     uint16_t index;
 
-    if (image == 0 || image->data == 0 || arch == 0 || out == 0 || out->segments == 0 ||
+    if (image == 0 || image->data == 0 || out == 0 || out->segments == 0 ||
         out->segment_capacity == 0u) {
         return RIBON_LOADER_STATUS_BAD_ARGUMENT;
     }
@@ -228,19 +162,12 @@ static int elf64_analyze(
         e_phentsize != RIBON_ELF64_PHDR_SIZE || e_phnum == 0u) {
         return RIBON_LOADER_STATUS_BAD_FORMAT;
     }
-    if (ribon_machine_for_arch(arch, &expected_machine) != RIBON_LOADER_STATUS_OK ||
-        e_machine != expected_machine) {
-        return RIBON_LOADER_STATUS_UNSUPPORTED;
-    }
     if (ribon_u64_mul(e_phentsize, e_phnum, &phdr_table_size) != RIBON_LOADER_STATUS_OK ||
         ribon_u64_add(e_phoff, phdr_table_size, &phdr_table_end) != RIBON_LOADER_STATUS_OK) {
         return RIBON_LOADER_STATUS_OVERFLOW;
     }
     if (phdr_table_end > image->size) {
         return RIBON_LOADER_STATUS_TRUNCATED;
-    }
-    if (!ribon_address_is_canonical(e_entry, arch->virtual_address_bits)) {
-        return RIBON_LOADER_STATUS_NON_CANONICAL;
     }
 
     for (index = 0; index < e_phnum; ++index) {
@@ -274,9 +201,6 @@ static int elf64_analyze(
         if (p_align > 1u && (p_offset % p_align) != (load_address % p_align)) {
             return RIBON_LOADER_STATUS_MISALIGNED;
         }
-        if (arch->page_size != 0u && (load_address % arch->page_size) != 0u) {
-            return RIBON_LOADER_STATUS_MISALIGNED;
-        }
         if (ribon_u64_add(p_offset, p_filesz, &file_end) != RIBON_LOADER_STATUS_OK ||
             ribon_u64_add(load_address, p_memsz, &physical_end) != RIBON_LOADER_STATUS_OK ||
             ribon_u64_add(p_vaddr, p_memsz, &virtual_end) != RIBON_LOADER_STATUS_OK) {
@@ -284,13 +208,6 @@ static int elf64_analyze(
         }
         if (file_end > image->size) {
             return RIBON_LOADER_STATUS_TRUNCATED;
-        }
-        if (!ribon_address_is_canonical(p_vaddr, arch->virtual_address_bits) ||
-            !ribon_address_is_canonical(virtual_end - 1u, arch->virtual_address_bits)) {
-            return RIBON_LOADER_STATUS_NON_CANONICAL;
-        }
-        if (!ribon_address_fits(physical_end - 1u, arch->physical_address_bits)) {
-            return RIBON_LOADER_STATUS_UNSUPPORTED;
         }
         for (uint32_t previous_index = 0; previous_index < out->segment_count; ++previous_index) {
             const struct RibonLoadSegment *previous = &out->segments[previous_index];
@@ -349,13 +266,6 @@ static int elf64_analyze(
                 linked_physical_end = raw_physical_end;
             }
         }
-        if (ribon_address_is_high_half(p_vaddr, arch->virtual_address_bits)) {
-            load_plan_flags |= RIBON_LOAD_PLAN_HAS_HIGHER_HALF | RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE;
-            if (high_entry_virtual_address == 0u || p_vaddr < high_entry_virtual_address) {
-                high_entry_virtual_address = p_vaddr;
-                high_entry_load_address = load_address;
-            }
-        }
         if (e_entry >= p_vaddr && e_entry < virtual_end &&
             (segment->flags & RIBON_LOAD_SEGMENT_EXECUTE) != 0u) {
             entry_is_loadable = 1;
@@ -391,8 +301,8 @@ static int elf64_analyze(
     out->linked_virtual_end = linked_virtual_end;
     out->linked_physical_base = linked_physical_base == UINT64_MAX ? 0u : linked_physical_base;
     out->linked_physical_end = linked_physical_end;
-    out->high_entry_virtual_address = high_entry_virtual_address;
-    out->high_entry_load_address = high_entry_load_address;
+    out->high_entry_virtual_address = 0u;
+    out->high_entry_load_address = 0u;
     return RIBON_LOADER_STATUS_OK;
 }
 
@@ -413,7 +323,7 @@ const struct RibonPluginDescriptor ribon_elf64_image_plugin_descriptor = {
     .phase = RIBON_PLUGIN_PHASE_BOOT,
     .id = "image.elf64",
     .provides = RIBON_CAP_IMAGE_ELF64,
-    .requires = RIBON_CAP_ARCHITECTURE,
+    .requires = 0u,
     .architecture_mask = RIBON_ARCH_MASK_ALL,
     .environment_mask = RIBON_ENV_MASK_ALL,
     .mode_mask = RIBON_MODE_MASK_ALL,

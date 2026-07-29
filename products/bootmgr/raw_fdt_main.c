@@ -106,7 +106,7 @@ static int bootmgr_place_payload(
 }
 
 /**
- * @brief raw-FDT target의 native entry를 generic product graph와 Parus protocol에 연결한다.
+ * @brief raw-FDT native entry를 selected product graph와 boot protocol에 연결한다.
  *
  * 이 함수는 allocation과 interrupt를 사용하지 않으며 성공 시 payload로 terminal transfer한다.
  */

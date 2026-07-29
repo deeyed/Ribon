@@ -383,7 +383,7 @@ int ribon_boot_transaction_prepare(
         .source_name = input->source_name,
     };
     if (transaction->image_format->analyze(
-            &transaction->payload, transaction->arch->descriptor, input->kernel_layout) !=
+            &transaction->payload, input->kernel_layout) !=
             RIBON_LOADER_STATUS_OK ||
         transaction->arch->validate_payload(
             transaction->arch->descriptor, input->kernel_layout) != RIBON_ARCH_OPERATION_OK) {

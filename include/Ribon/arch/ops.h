@@ -9,7 +9,7 @@ struct RibonLoadedPayload;
 struct RibonPluginDescriptor;
 
 /** @brief Architecture operation table ABI다. */
-#define RIBON_ARCH_OPS_ABI_VERSION 2u
+#define RIBON_ARCH_OPS_ABI_VERSION 3u
 
 /** @brief Ribon architecture의 stable ID다. */
 enum RibonArchitectureId {
@@ -39,6 +39,8 @@ struct RibonArchDescriptor {
     uint32_t word_bits; /**< Native register bit 수다. */
     uint32_t physical_address_bits; /**< 지원 physical address bit 수다. */
     uint32_t virtual_address_bits; /**< 지원 virtual address bit 수다. */
+    uint16_t elf_machine; /**< 이 ISA의 ELF64 `e_machine` 값이다. */
+    uint16_t pe_coff_machine; /**< 이 ISA의 PE/COFF machine 값이며 0은 미지원이다. */
     uint64_t page_size; /**< Base page byte 수다. */
     uint64_t large_page_size; /**< Preferred large page byte 수다. */
     uint64_t kernel_alignment; /**< Kernel image 최소 alignment다. */
@@ -94,7 +96,7 @@ struct RibonArchDirectHighHandoff {
 /** @brief Loaded payload의 machine과 canonical address를 검증한다. */
 typedef int (*RibonArchValidatePayloadFn)(
     const struct RibonArchDescriptor *arch,
-    const struct RibonLoadedPayload *payload);
+    struct RibonLoadedPayload *payload);
 
 /** @brief Data와 instruction view를 동기화한다. */
 typedef int (*RibonArchCacheSyncFn)(uint64_t address, uint64_t size);
@@ -178,7 +180,7 @@ int ribon_arch_plugin_operations_are_valid(
 /** @brief Loaded payload의 공통 machine/canonical address 계약을 검사한다. */
 int ribon_arch_validate_loaded_payload(
     const struct RibonArchDescriptor *arch,
-    const struct RibonLoadedPayload *payload);
+    struct RibonLoadedPayload *payload);
 
 /** @brief Direct-high page table에 필요한 page 수를 반환한다. */
 uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload *payload);

@@ -55,7 +55,16 @@ int main(void) {
         .segment_capacity = 2u,
     };
     const struct RibonArchDescriptor arch = {
+        .size = sizeof(arch),
+        .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
         .id = RIBON_ARCHITECTURE_X86_64,
+        .canonical_name = "x86_64",
+        .word_bits = 64u,
+        .physical_address_bits = 52u,
+        .virtual_address_bits = 48u,
+        .elf_machine = 62u,
+        .pe_coff_machine = 0x8664u,
+        .page_size = 4096u,
     };
     const struct RibonImageFormatOps *ops =
         (const struct RibonImageFormatOps *)
@@ -70,7 +79,9 @@ int main(void) {
     };
     if (!ribon_image_plugin_operations_are_valid(
             &ribon_pe_coff_image_plugin_descriptor) ||
-        ops->analyze(&image, &arch, &layout) != RIBON_LOADER_STATUS_OK ||
+        ops->analyze(&image, &layout) != RIBON_LOADER_STATUS_OK ||
+        ribon_arch_validate_loaded_payload(&arch, &layout) !=
+            RIBON_ARCH_OPERATION_OK ||
         layout.format != RIBON_EXECUTABLE_FORMAT_PE_COFF ||
         layout.machine != 0x8664u ||
         layout.segment_count != 1u ||
@@ -90,7 +101,7 @@ int main(void) {
         .segments = segments,
         .segment_capacity = 2u,
     };
-    if (ops->analyze(&image, &arch, &layout) != RIBON_LOADER_STATUS_BAD_FORMAT) {
+    if (ops->analyze(&image, &layout) != RIBON_LOADER_STATUS_BAD_FORMAT) {
         fputs("pe_coff_loader_tests: bad DOS header accepted\n", stderr);
         return 1;
     }
@@ -100,7 +111,7 @@ int main(void) {
         .segments = segments,
         .segment_capacity = 2u,
     };
-    if (ops->analyze(&image, &arch, &layout) !=
+    if (ops->analyze(&image, &layout) !=
         RIBON_LOADER_STATUS_NO_LOAD_SEGMENTS) {
         fputs("pe_coff_loader_tests: uncovered entry accepted\n", stderr);
         return 1;

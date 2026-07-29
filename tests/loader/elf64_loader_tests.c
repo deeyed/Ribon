@@ -33,6 +33,8 @@ static const struct RibonArchDescriptor kX86_64Arch = {
     .word_bits = 64,
     .physical_address_bits = 52,
     .virtual_address_bits = 48,
+    .elf_machine = ELF_TEST_MACHINE_X86_64,
+    .pe_coff_machine = 0x8664u,
     .page_size = 4096,
     .large_page_size = 2097152,
     .kernel_alignment = 2097152,
@@ -51,6 +53,8 @@ static const struct RibonArchDescriptor kAArch64Arch = {
     .word_bits = 64,
     .physical_address_bits = 48,
     .virtual_address_bits = 48,
+    .elf_machine = ELF_TEST_MACHINE_AARCH64,
+    .pe_coff_machine = 0xaa64u,
     .page_size = 4096,
     .large_page_size = 2097152,
     .kernel_alignment = 2097152,
@@ -132,7 +136,6 @@ static uint64_t build_elf64(
 static int analyze_image(
     const unsigned char *image,
     uint64_t image_size,
-    const struct RibonArchDescriptor *arch,
     struct RibonLoadedPayload *out,
     struct RibonLoadSegment *segments,
     uint32_t segment_capacity) {
@@ -148,7 +151,7 @@ static int analyze_image(
     const struct RibonImageFormatOps *ops =
         (const struct RibonImageFormatOps *)
             ribon_elf64_image_plugin_descriptor.operations;
-    return ops->analyze(&payload, arch, out);
+    return ops->analyze(&payload, out);
 }
 
 static int expect_status(const char *name, int actual, int expected) {
@@ -196,7 +199,12 @@ static int test_higher_half_load_plan(void) {
     };
     const uint64_t image_size =
         build_elf64(image, sizeof(image), ELF_TEST_MACHINE_X86_64, ELF_TEST_HIGH_BASE + 0x78, fixture, 1);
-    const int status = analyze_image(image, image_size, &kX86_64Arch, &payload, segments, 4);
+    int status = analyze_image(image, image_size, &payload, segments, 4);
+    if (status == RIBON_LOADER_STATUS_OK &&
+        ribon_arch_validate_loaded_payload(&kX86_64Arch, &payload) !=
+            RIBON_ARCH_OPERATION_OK) {
+        status = RIBON_LOADER_STATUS_UNSUPPORTED;
+    }
     const uint32_t expected_flags =
         RIBON_LOAD_PLAN_ENTRY_LOAD_VALID |
         RIBON_LOAD_PLAN_RUNTIME_ENTRY_VALID |
@@ -245,7 +253,12 @@ static int test_aarch64_machine_success(void) {
     };
     const uint64_t image_size =
         build_elf64(image, sizeof(image), ELF_TEST_MACHINE_AARCH64, 0x400078, fixture, 1);
-    const int status = analyze_image(image, image_size, &kAArch64Arch, &payload, segments, 2);
+    int status = analyze_image(image, image_size, &payload, segments, 2);
+    if (status == RIBON_LOADER_STATUS_OK &&
+        ribon_arch_validate_loaded_payload(&kAArch64Arch, &payload) !=
+            RIBON_ARCH_OPERATION_OK) {
+        status = RIBON_LOADER_STATUS_UNSUPPORTED;
+    }
     int failures = expect_status("aarch64 status", status, RIBON_LOADER_STATUS_OK);
     failures += expect_u32("aarch64 machine", payload.machine, ELF_TEST_MACHINE_AARCH64);
     failures += expect_u64("aarch64 entry load", payload.entry_load_address, 0x400078);
@@ -270,8 +283,13 @@ static int test_machine_mismatch(void) {
     };
     const uint64_t image_size =
         build_elf64(image, sizeof(image), ELF_TEST_MACHINE_AARCH64, 0x200078, fixture, 1);
-    const int status = analyze_image(image, image_size, &kX86_64Arch, &payload, segments, 2);
-    return expect_status("machine mismatch", status, RIBON_LOADER_STATUS_UNSUPPORTED);
+    const int status = analyze_image(image, image_size, &payload, segments, 2);
+    int failures = expect_status("foreign machine parses", status, RIBON_LOADER_STATUS_OK);
+    failures += expect_status(
+        "machine mismatch validator",
+        ribon_arch_validate_loaded_payload(&kX86_64Arch, &payload),
+        RIBON_ARCH_OPERATION_INVALID_PAYLOAD);
+    return failures;
 }
 
 static int test_non_canonical_entry(void) {
@@ -292,8 +310,13 @@ static int test_non_canonical_entry(void) {
     };
     const uint64_t image_size =
         build_elf64(image, sizeof(image), ELF_TEST_MACHINE_X86_64, 0x0000800000000078ull, fixture, 1);
-    const int status = analyze_image(image, image_size, &kX86_64Arch, &payload, segments, 2);
-    return expect_status("non-canonical entry", status, RIBON_LOADER_STATUS_NON_CANONICAL);
+    const int status = analyze_image(image, image_size, &payload, segments, 2);
+    int failures = expect_status("non-canonical parses", status, RIBON_LOADER_STATUS_OK);
+    failures += expect_status(
+        "non-canonical validator",
+        ribon_arch_validate_loaded_payload(&kX86_64Arch, &payload),
+        RIBON_ARCH_OPERATION_INVALID_PAYLOAD);
+    return failures;
 }
 
 static int test_overlapping_segments(void) {
@@ -323,7 +346,7 @@ static int test_overlapping_segments(void) {
         },
     };
     const uint64_t image_size = build_elf64(image, sizeof(image), ELF_TEST_MACHINE_X86_64, 0x400078, fixture, 2);
-    const int status = analyze_image(image, image_size, &kX86_64Arch, &payload, segments, 4);
+    const int status = analyze_image(image, image_size, &payload, segments, 4);
     return expect_status("overlapping segments", status, RIBON_LOADER_STATUS_OVERLAPPING_SEGMENTS);
 }
 
@@ -344,7 +367,7 @@ static int test_malformed_segment(void) {
         },
     };
     const uint64_t image_size = build_elf64(image, sizeof(image), ELF_TEST_MACHINE_X86_64, 0x200078, fixture, 1);
-    const int status = analyze_image(image, image_size, &kX86_64Arch, &payload, segments, 2);
+    const int status = analyze_image(image, image_size, &payload, segments, 2);
     return expect_status("malformed segment", status, RIBON_LOADER_STATUS_BAD_FORMAT);
 }
 
@@ -365,7 +388,7 @@ static int test_misaligned_segment(void) {
         },
     };
     const uint64_t image_size = build_elf64(image, sizeof(image), ELF_TEST_MACHINE_X86_64, 0x200078, fixture, 1);
-    const int status = analyze_image(image, image_size, &kX86_64Arch, &payload, segments, 2);
+    const int status = analyze_image(image, image_size, &payload, segments, 2);
     return expect_status("misaligned segment", status, RIBON_LOADER_STATUS_MISALIGNED);
 }
 
