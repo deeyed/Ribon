@@ -1,0 +1,6 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    @bounded(max_steps=8)
+    diagnostic.note(Diagnostic.INVALID)?
+    return boot.slot(slot.selected())
+}

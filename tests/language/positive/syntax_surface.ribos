@@ -1,0 +1,38 @@
+enum ProbeResult {
+    Present(Device)
+    Missing
+    Value(u32, bool)
+}
+
+@policy
+def exercise(ctx: BootContext) -> Unit {
+    # Integer and bitmask operators retain their explicit precedence.
+    let mask: u64 = ((0x10 | 0b0011) ^ 3) & 255
+    let shifted = (mask << 2) >> 1
+    let inverted = ~shifted
+    let arithmetic = +3 + -2 * 5 / 1 % 4
+    let absent = Device.CAMERA0 not in ctx.devices
+    let ready = network.ready() or power.safe() and not absent
+    let marker = "Ribos\\nUTF-8: 리보스\\x21"
+
+    if ready {
+        diagnostic.note(marker)?
+    } else if inverted != arithmetic {
+        diagnostic.note(Diagnostic.MISMATCH)?
+    } else {
+        diagnostic.note(Diagnostic.IDLE)?
+    }
+
+    match probe.device(Device.CAMERA0) {
+        ProbeResult.Present(device_id) => {
+            device.init(device_id, Profile.DEFAULT)
+        }
+        ProbeResult.Missing => {
+            diagnostic.note(Diagnostic.MISSING)?
+        }
+        _ => {
+            diagnostic.note(Diagnostic.UNEXPECTED)?
+        }
+    }
+    return
+}

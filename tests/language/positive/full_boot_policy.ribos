@@ -1,0 +1,62 @@
+struct UpdateCondition {
+    minimum_battery: u8
+    require_grounded: bool
+}
+
+enum BootMode {
+    Normal
+    Recovery(RecoveryReason)
+    Diagnostic
+}
+
+@policy
+@budget(instructions=8192, stack_bytes=512)
+def boot(ctx: BootContext) -> BootResult {
+    device.init(Device.UART0, Profile.DEBUG)
+    device.init(Device.STORAGE0, Profile.DEFAULT)
+
+    let eth_profile = if ctx.board.revision >= 3 {
+        Profile.ETH_PHY_B
+    } else {
+        Profile.ETH_PHY_A
+    }
+    device.init(Device.ETH0, eth_profile)
+
+    let delos = image.require("delos")
+    if verify(delos) {
+        core.start(Core.M7, delos)
+        handoff["delos.ready"] = True
+    } else {
+        handoff["delos.ready"] = False
+    }
+
+    let update_allowed =
+        ota.available(Channel.STABLE)
+        and ctx.power.battery_percent >= 60
+        and ctx.system.on_ground
+
+    if update_allowed {
+        let target = slot.inactive()
+        ota.install(Channel.STABLE, target)
+        slot.mark_trial(
+            target,
+            attempts=3,
+            commit=False,
+        )
+    }
+
+    let mut target = slot.selected()
+    if slot.failures(target) >= 3 {
+        slot.mark_bad(target)
+        target = slot.previous_good()
+    }
+
+    if not verify(slot.image(target)) {
+        return boot.recovery(
+            RecoveryReason.INVALID_IMAGE,
+        )
+    }
+
+    handoff["board.revision"] = ctx.board.revision
+    return boot.slot(target)
+}

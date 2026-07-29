@@ -1,0 +1,5 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    diagnostic.note("bad\qescape")?
+    return boot.slot(slot.selected())
+}

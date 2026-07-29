@@ -1,0 +1,4 @@
+@policy
+def boot(ctx) -> BootResult {
+    return boot.slot(slot.selected())
+}

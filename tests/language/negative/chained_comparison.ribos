@@ -1,0 +1,7 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    if 1 < ctx.board.revision < 4 {
+        return boot.slot(slot.selected())
+    }
+    return boot.recovery(RecoveryReason.INVALID_BOARD)
+}

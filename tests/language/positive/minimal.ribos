@@ -1,0 +1,4 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    return boot.recovery(RecoveryReason.REQUESTED)
+}

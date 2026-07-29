@@ -66,9 +66,18 @@ Host parser lane은 CPython Pegen의 grammar reader와 C generator를 사용한�
   -> generic CST 또는 typed AST builder
 ```
 
-Generated C source는 `build/generated/ribos/parser.c`에 둔다. Generated source를
-repository authority로 취급하지 않고 `.gram`, `Tokens`, generator revision과
-generation receipt에서 재생성한다.
+Generated C source와 token number header는 다음 tracked operational snapshot이다.
+
+```text
+language/generated/ribos_parser.c
+language/generated/ribos_parser.receipt.json
+language/generated/ribos_tokens.h
+```
+
+Generated source를 repository syntax authority로 취급하지 않는다. 일반 build는 이
+snapshot을 직접 컴파일하고 grammar/token digest만 검사한다. `.gram`, `Tokens` 또는
+generator integration을 바꿀 때 explicit generation target으로 snapshot을
+재생성한다.
 
 Generation receipt는 최소한 다음을 기록한다.
 
@@ -206,9 +215,9 @@ Sphinx warnings-as-errors pass
 
 ## 첫 구현 slice
 
-첫 parser 구현 slice는 G0, G1과 G2를 함께 수행할 수 있다. Accepted EBNF가 Pegen이
-처리할 수 있는 PEG construct로 구성되어 있고 동일한 surface의 축소 grammar가 C
-source를 생성한 실험 경로를 갖기 때문이다.
+첫 parser 구현 slice는 G0, G1과 G2를 함께 수행한다. Accepted EBNF를 Pegen grammar로
+내리고, tracked C snapshot을 standalone host runtime과 연결하며 같은 surface의
+positive/negative syntax corpus로 검사한다.
 
 첫 slice의 결과는 다음으로 제한한다.
 
@@ -217,12 +226,13 @@ tracked:
   language/grammar/ribos.gram
   language/grammar/Tokens
   language/grammar/README.md
-  tests/language/syntax/**
-  generator wrapper와 receipt schema
-
-generated:
-  build/generated/ribos/parser.c
-  build/results/ribos-parser-generation.json
+  language/generated/ribos_parser.c
+  language/generated/ribos_parser.receipt.json
+  language/generated/ribos_tokens.h
+  language/include/ribos/parser.h
+  language/src/
+  tests/language/
+  generator와 staleness-check wrapper
 ```
 
 Standalone fixed-allocation C parser는 G3의 별도 acceptance를 요구한다. Host C parser

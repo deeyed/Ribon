@@ -84,6 +84,18 @@ GENERATED_REGISTRY_O := $(BUILD_DIR)/obj/generated/plugin_registry.o
 TEST_BUILD_DIR := $(BUILD_ROOT)/tests
 TARGET_BUILD_ROOT := $(BUILD_ROOT)/targets
 RESULTS_DIR := $(BUILD_ROOT)/results
+RIBOS_PARSER_PILOT := $(BUILD_ROOT)/tools/ribos-parse
+RIBOS_PEGEN_ROOT ?=
+RIBOS_PARSER_SRCS := \
+	language/src/ribos_lexer.c \
+	language/src/ribos_runtime.c \
+	language/src/ribos_parser.c \
+	language/generated/ribos_parser.c \
+	language/tools/ribos_parse.c
+RIBOS_PARSER_HEADERS := \
+	language/include/ribos/parser.h \
+	language/src/ribos_parser_internal.h \
+	language/generated/ribos_tokens.h
 
 # Header ABI hard cuts must rebuild every previously emitted object on the next make run.
 -include $(shell find "$(BUILD_ROOT)" -type f -name '*.d' -print 2>/dev/null)
@@ -366,6 +378,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
+	ribos-parser-pilot check-ribos-parser-snapshot check-ribos-parser-pilot \
+	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
@@ -381,6 +395,36 @@ all: lib host-reference
 lib: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB)
 
 host-reference: $(HOST_REFERENCE)
+
+$(RIBOS_PARSER_PILOT): $(RIBOS_PARSER_SRCS) $(RIBOS_PARSER_HEADERS) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		-Ilanguage/include -Ilanguage/src -Ilanguage/generated \
+		$(RIBOS_PARSER_SRCS) -o $@
+
+ribos-parser-pilot: $(RIBOS_PARSER_PILOT)
+
+check-ribos-parser-snapshot:
+	$(PYTHON) tools/ribosc/check_parser_snapshot.py
+
+check-ribos-parser-pilot: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
+	$(PYTHON) tests/language/parser_pilot_tests.py \
+		--parser $(RIBOS_PARSER_PILOT)
+	$(RIBOS_PARSER_PILOT) tests/language/positive/full_boot_policy.ribos
+
+# Generation is intentionally explicit. Normal builds compile and validate the
+# tracked snapshot without importing or invoking Pegen.
+ribos-parser-generate:
+	@test -n "$(RIBOS_PEGEN_ROOT)" || \
+		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
+	$(PYTHON) tools/ribosc/generate_parser.py \
+		--pegen-root $(RIBOS_PEGEN_ROOT)
+
+ribos-parser-regenerate-check:
+	@test -n "$(RIBOS_PEGEN_ROOT)" || \
+		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
+	$(PYTHON) tools/ribosc/generate_parser.py \
+		--pegen-root $(RIBOS_PEGEN_ROOT) --check
 
 $(BUILD_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
@@ -1074,6 +1118,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
 check: legacy-hard-cut check-public-api check-frontends check-loader \
+	check-ribos-parser-pilot \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

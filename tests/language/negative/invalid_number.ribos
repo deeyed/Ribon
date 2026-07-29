@@ -1,0 +1,5 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    let attempts = 0x_FF
+    return boot.slot(slot.selected())
+}

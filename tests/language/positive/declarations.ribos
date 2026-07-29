@@ -1,0 +1,23 @@
+@bounded(max_steps=8192)
+struct UpdateCondition {
+    minimum_battery: u8
+    require_grounded: bool
+}
+
+enum BootMode {
+    Normal
+    Recovery(RecoveryReason)
+    Diagnostic(u32, StringLiteral[16])
+}
+
+@policy
+def choose_mode(ctx: BootContext) -> BootMode {
+    let condition: UpdateCondition = UpdateCondition(
+        minimum_battery=60,
+        require_grounded=True,
+    )
+    if ctx.power.battery_percent < condition.minimum_battery {
+        return BootMode.Recovery(RecoveryReason.LOW_POWER)
+    }
+    return BootMode.Normal
+}

@@ -1,0 +1,38 @@
+# Ribos lexical token specification consumed by CPython Pegen.
+ENDMARKER
+NAME
+NUMBER
+STRING
+NEWLINE
+
+LPAR                    '('
+RPAR                    ')'
+LSQB                    '['
+RSQB                    ']'
+COLON                   ':'
+COMMA                   ','
+PLUS                    '+'
+MINUS                   '-'
+STAR                    '*'
+SLASH                   '/'
+VBAR                    '|'
+AMPER                   '&'
+LESS                    '<'
+GREATER                 '>'
+EQUAL                   '='
+DOT                     '.'
+PERCENT                 '%'
+LBRACE                  '{'
+RBRACE                  '}'
+EQEQUAL                 '=='
+NOTEQUAL                 '!='
+LESSEQUAL               '<='
+GREATEREQUAL            '>='
+TILDE                   '~'
+CIRCUMFLEX              '^'
+LEFTSHIFT               '<<'
+RIGHTSHIFT              '>>'
+AT                      '@'
+RARROW                  '->'
+FATARROW                 '=>'
+QUESTION                 '?'

@@ -1,0 +1,7 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    while network.ready() {
+        diagnostic.note(Diagnostic.WAITING)?
+    }
+    return boot.slot(slot.selected())
+}

@@ -1,0 +1,24 @@
+@policy
+def configure(ctx: BootContext) -> BootResult {
+    let required_devices = [
+        Device.UART0,
+        Device.STORAGE0,
+        Device.ETH0,
+    ]
+    let profiles: Dict[BoardRevision, Profile, 8] = {
+        BoardRevision.V1: Profile.ETH_PHY_A,
+        BoardRevision.V2: Profile.ETH_PHY_B,
+    }
+    let profile = profiles.get(
+        ctx.board.revision,
+        default=Profile.ETH_PHY_A,
+    )
+
+    for dev in required_devices {
+        device.init(dev, profile)
+    }
+
+    handoff["board.revision"] = ctx.board.revision
+    handoff["delos.ready"] = True
+    return boot.slot(slot.selected())
+}

@@ -1,0 +1,7 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    def nested(value: u32) -> u32 {
+        return value
+    }
+    return boot.slot(slot.selected())
+}

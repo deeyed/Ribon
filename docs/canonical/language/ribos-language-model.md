@@ -84,6 +84,8 @@ UTF-8 .ribos source
         v
 Pegen-generated host parser
         |
+        +--> tracked C snapshot, digest staleness gate
+        |
         v
 typed AST
         |
@@ -119,7 +121,9 @@ signed policy artifact를 검증하고 실행하는 데 `.ribos` source나 CPyth
 
 Pegen grammar는 source syntax의 machine-readable 정본이다. EBNF contract는 사람이
 검토하는 규범 표현이고 Pegen generation 및 syntax corpus가 두 표현의 동등성을
-검증한다.
+검증한다. Generated C는 추적되는 operational snapshot이며 문법 정본이 아니다.
+일반 build는 snapshot을 컴파일하고 digest를 검사하며 Pegen 실행은 explicit
+regeneration operation으로 제한한다.
 
 ## 신뢰 계층
 

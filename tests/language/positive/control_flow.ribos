@@ -1,0 +1,22 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    let devices: List[Device, 8] = [
+        Device.UART0,
+        Device.STORAGE0,
+        Device.ETH0,
+    ]
+    for dev in devices {
+        device.init(dev, Profile.DEFAULT)
+    }
+
+    let selected = slot.selected()
+    match verify(slot.image(selected)) {
+        Result.Ok(verified) => {
+            return boot.image(verified)
+        }
+        Result.Err(reason) => {
+            diagnostic.record_verify_error(reason)?
+            return boot.recovery(RecoveryReason.INVALID_IMAGE)
+        }
+    }
+}

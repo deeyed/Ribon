@@ -1,0 +1,5 @@
+@policy
+def boot(ctx: BootContext) -> BootResult {
+    let profile = Profile.B if ctx.board.revision >= 3 else Profile.A
+    return boot.slot(slot.selected())
+}

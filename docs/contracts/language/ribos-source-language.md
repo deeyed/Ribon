@@ -87,6 +87,7 @@ Lexer는 다음 위치의 physical newline을 logical `NEWLINE`으로 만들지 
 - `[`와 대응 `]` 사이
 - `=`, `,`, `.`, `->`, `=>`, `:`, binary operator 뒤
 - prefix operator 뒤
+- 다음 physical line의 첫 token이 `and` 또는 `or`인 continuation form
 
 `{`와 `}`는 block, struct/enum declaration body와 map literal에 공통으로 사용되므로
 brace 안의 newline은 logical `NEWLINE`이 될 수 있다. Map literal grammar는 해당
@@ -105,6 +106,15 @@ let target = slot.selected()
 ```text
 let target =
     slot.selected()
+```
+
+Boolean expression은 operator를 이전 line 끝이나 다음 line 시작에 둘 수 있다.
+
+```text
+let update_allowed =
+    ota.available(Channel.STABLE)
+    and power.safe()
+    and system.on_ground()
 ```
 
 Delimiter 안에서는 자유롭게 줄을 바꿀 수 있다.

@@ -38,6 +38,7 @@ make check-sdk-surface
 make check-external-plugin
 make check-firmware-personalities
 make host-reference
+make check-ribos-parser-pilot
 make check
 make check-target-builds
 make qemu-aarch64-virt-raw-fdt-smoke
@@ -47,9 +48,20 @@ make qstar-check
 make docs
 ```
 
+Ribos source 문법은 `language/grammar/`가 소유하고 일반 build는
+`language/generated/`의 추적되는 C parser snapshot을 직접 컴파일한다. 일반 build와
+`make check`는 Pegen을 실행하지 않는다. 문법이나 generator integration을 바꿀 때만
+다음 explicit gate를 사용한다.
+
+```sh
+make ribos-parser-generate RIBOS_PEGEN_ROOT=/path/to/cpython/Tools/peg_generator
+make ribos-parser-regenerate-check RIBOS_PEGEN_ROOT=/path/to/cpython/Tools/peg_generator
+```
+
 `make check`는 public API layout, legacy ABI hard cut, plugin graph negative tests,
-protocol-free embed, SDK install reproducibility, external package, firmware reference
-provider, host-reference plan, architecture matrix와 object graph를 검사한다.
+protocol-free embed, Ribos parser snapshot/corpus, SDK install reproducibility, external
+package, firmware reference provider, host-reference plan, architecture matrix와 object
+graph를 검사한다.
 QEMU smoke는 x86_64 UEFI consumer와 AArch64 raw-FDT target의 runtime evidence다.
 RISC-V RPH1 fixture smoke는 OpenSBI, Ribon lifecycle, RPH1 `BOOT_CPU`와
 S-mode/MMU-off entry를 잇는 Ribon 소유 계약 증거이며 실제 Parus kernel boot가 아니다.

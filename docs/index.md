@@ -87,6 +87,7 @@ adr/0012-deterministic-boot-media-pipeline
 adr/0013-generic-entry-port-protocol-hard-cut
 adr/0014-riscv64-bootstrap-hart-authority
 adr/0015-ribos-bounded-policy-language
+adr/0016-tracked-ribos-pegen-snapshot
 ```
 
 ```{toctree}
@@ -139,4 +140,5 @@ log/2026-07-27-r6-typed-service-graph
 log/2026-07-27-r7-bounded-boot-lifecycle
 log/2026-07-27-r8-deterministic-boot-media
 log/2026-07-29-w3-riscv64-rph1-fixture
+log/2026-07-30-ribos-parser-pilot
 ```
