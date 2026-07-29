@@ -75,6 +75,7 @@ native ABI, MMIO, interrupt와 image 실행은 해당 target의 독립 evidence�
 ## 재현성
 
 같은 public header, archive, schema와 template 입력은 byte-identical install tree와
-동일한 SHA-256 file manifest를 생성해야 한다. SDK ABI 3은 Core ABI 3, Plugin ABI major 3와
-bounded boot transaction 및 typed service directory public header를 함께 고정한다. Install manifest에는 timestamp,
+동일한 SHA-256 file manifest를 생성해야 한다. SDK ABI 4는 Core ABI 5, Plugin ABI major 3,
+Image-format ops ABI 2, Architecture ops ABI 3과 bounded boot transaction 및 typed service
+directory public header를 함께 고정한다. Install manifest에는 timestamp,
 checkout 절대 경로와 host-specific 작업 directory를 기록하지 않는다.

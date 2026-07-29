@@ -108,7 +108,7 @@ protocol, MMIO를 직접 호출하지 않는다.
 
 Architecture Backend는 CPU와 instruction ABI만 소유한다.
 
-- executable machine 및 canonical address 검증
+- descriptor-owned format별 executable machine 및 canonical address 검증
 - cache와 instruction synchronization
 - privilege state와 interrupt mask 정규화
 - 최소 translation bridge

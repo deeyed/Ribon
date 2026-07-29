@@ -123,8 +123,9 @@ Ribon/arch/ops.h
 Ribon/arch/entry.h
 ```
 
-Architecture operation은 machine, canonical address, cache, privilege, transfer를
-제공한다. Board resource와 OS permanent page table을 노출하지 않는다.
+Architecture operation은 format별 machine fact, canonical address, cache, privilege,
+transfer를 제공한다. Image parser는 이 descriptor를 소비하지 않고 구조와 machine
+field만 추출한다. Board resource와 OS permanent page table을 노출하지 않는다.
 
 ## Port API
 

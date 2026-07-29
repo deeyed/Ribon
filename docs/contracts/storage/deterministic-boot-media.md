@@ -79,14 +79,16 @@ protocol=parus
 image=elf64
 kernel=/RIBON/PAYLOAD.ELF
 cmdline=console=ttyS0
-module=/RIBON/INITRD.IMG
+init_image=/RIBON/INIT.IMG
+module=/RIBON/EXTRA.IMG
 end
 ```
 
 각 candidate는 `priority`, `protocol`, `image`, `kernel`을 정확히 한 번 가져야 한다.
-`cmdline`은 선택 사항이고 `module`은 bounded repeat field다. Unknown key, duplicate singleton
-key, incomplete block, non-canonical path, count/length overflow는 fail-closed다. Highest priority
-candidate만 선택하며 same-priority tie는 선택하지 않는다.
+`cmdline`과 `init_image`는 선택 singleton이고 `module`은 auxiliary module의 bounded
+repeat field다. Initial image를 포함한 총 module 수는 8개 이하다. Unknown key,
+duplicate singleton key, incomplete block, non-canonical path, count/length overflow는
+fail-closed다. Highest priority candidate만 선택하며 same-priority tie는 선택하지 않는다.
 
 Configuration은 Boot Protocol ID와 image-format ID를 명시한다. Target은 selected product graph가
 그 조합을 지원하지 않거나 protocol이 module component를 인수하지 못하면 candidate를 무시하지
@@ -103,6 +105,13 @@ handle과 Block I/O handle은 environment-private context에만 남는다. File 
 UEFI source provider의 64 MiB input budget은 product-wide source-service 계약이다. x86_64
 consumer target은 그와 독립적으로 2 MiB static payload buffer를 가지며, 선택한 file이 그
 target-local bound를 넘으면 transfer 전에 거부한다.
+
+UEFI target은 선택된 `init_image`와 `module` file을 exact-size
+`EfiLoaderData` page allocation에 읽고 firmware-neutral typed module inventory로
+낮춘다. File open, size, bounded page allocation, exact read 중 하나라도 실패하면
+handoff 전에 종료한다. Boot media, command line과 module inventory는 persistent
+semantic input으로 묶어 최초 environment capture와 모든 final memory-map recapture
+뒤 동일하게 다시 적용한다.
 
 UEFI Block I/O도 optional typed `RibonReadOnlyBlockDevice`로 변환할 수 있다. Generic storage
 library는 EFI type이나 GUID를 include하지 않는다. ExitBootServices 이후에는 file, block,

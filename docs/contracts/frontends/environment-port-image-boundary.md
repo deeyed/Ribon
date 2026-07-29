@@ -59,6 +59,9 @@ Environment가 제공한 borrowed native pointer는 generic Core 또는 Protocol
 
 UEFI final transaction은 memory map capture, handoff refresh, `ExitBootServices`를
 bounded retry로 묶는다. 성공 뒤 Boot Services callback을 호출하지 않는다.
+Target이 선택한 boot media, command line과 typed boot module inventory는
+`RibonBootEnvironmentPersistentInputs`로 분리한다. 최초 capture와 모든 retry capture는
+같은 persistent input을 적용한 뒤에만 protocol handoff를 재생성한다.
 
 UEFI consumer는 loaded-image device의 native file and block handle을 environment-private context에
 유지하고 canonical read-only file source 또는 `RibonReadOnlyBlockDevice`로만 변환한다. File size와
@@ -87,9 +90,11 @@ port object, linker, artifact, package와 evidence marker를 공유하지 않는
 
 ELF64와 PE/COFF parser는 `RibonImageFormatOps`를 구현한다. Parser는 caller-owned segment
 array에 bounds-checked load plan을 만들며 memory allocation, firmware page placement,
-register ABI를 수행하지 않는다.
+register ABI를 수행하지 않는다. Parser는 machine field를 추출하지만 architecture
+descriptor를 소비하거나 ISA 이름을 비교하지 않는다. Machine 일치, canonical virtual
+address와 address-width 검증은 architecture backend만 소유한다.
 
-PE/COFF consumer는 PE32+ x86_64와 AArch64 machine을 구분하고 import 또는 relocation을
+PE/COFF consumer는 PE32+ 구조와 machine field를 추출하고 import 또는 relocation을
 해결하지 않는다. Preferred image base에 배치할 수 없는 product는 별도 relocation
 capability 없이는 해당 image를 거부한다.
 
@@ -99,6 +104,11 @@ Architecture backend는 CPU instruction과 register transfer만 소유한다. Ar
 source에 Parus, RPi5, QEMU 또는 firmware product policy를 두지 않는다. Counter read,
 cache sync, privilege normalization, terminal transfer는 capability와 callback 존재가
 정확히 일치해야 한다.
+
+`RibonArchDescriptor.elf_machine`과 `pe_coff_machine`은 format별 ISA fact다.
+`pe_coff_machine` 0은 해당 ISA에서 그 format을 지원하지 않음을 뜻한다. Architecture
+validator는 parser가 추출한 machine, entry와 segment address를 이 fact 및 address width에
+대해 검증한다.
 
 ## Evidence
 

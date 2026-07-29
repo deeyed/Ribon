@@ -167,6 +167,13 @@ mask size를 각각 u8로 기록한다. 나머지 byte는 0이다.
 32-byte entry table을 사용한다. Entry는 physical address u64, size u64, flags
 u32, reserved u32, name-digest 예약 u64 순서다.
 
+이 section은 선택 사항이지만 존재하면 `count`는 1 이상 8 이하여야 한다. Section
+flag는 `REQUIRED_TO_UNDERSTAND | BORROWED_RANGE_DESCRIPTOR`를 함께 설정한다. Entry
+`flags` 값 0은 auxiliary module, bit 0은 initial image이며 그 밖의 bit는 거부한다.
+한 artifact에는 initial image가 최대 하나만 존재한다. Address와 size는 0일 수 없고
+합 overflow, module 상호 overlap, kernel image physical span과의 overlap은 실패다.
+`reserved`와 예약 name digest는 v1.0에서 반드시 0이다.
+
 `BOOT_MEDIA`는 32 byte다. Kind u32, block size u32, physical address u64, size
 u64, reserved u64 순서다.
 
