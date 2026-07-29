@@ -41,6 +41,7 @@ make host-reference
 make check
 make check-target-builds
 make qemu-aarch64-virt-raw-fdt-smoke
+make qemu-riscv64-virt-rph1-fixture-smoke
 make x86_64-uefi-app-smoke
 make qstar-check
 make docs
@@ -50,6 +51,8 @@ make docs
 protocol-free embed, SDK install reproducibility, external package, firmware reference
 provider, host-reference plan, architecture matrix와 object graph를 검사한다.
 QEMU smoke는 x86_64 UEFI consumer와 AArch64 raw-FDT target의 runtime evidence다.
+RISC-V RPH1 fixture smoke는 OpenSBI, Ribon lifecycle, RPH1 `BOOT_CPU`와
+S-mode/MMU-off entry를 잇는 Ribon 소유 계약 증거이며 실제 Parus kernel boot가 아니다.
 BIOS consumer와 UEFI/BIOS-compatible provider는 compile-only, RPi5는 package evidence다.
 Reference provider 성공은 bootable firmware나 specification conformance 증거가 아니며
 physical board boot 증거도 아니다.

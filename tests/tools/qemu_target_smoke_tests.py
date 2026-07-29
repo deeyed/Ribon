@@ -128,6 +128,41 @@ class QemuTargetSmokeTests(unittest.TestCase):
             )
             self.assertEqual(len(result["firmware"]["sha256"]), 64)
 
+    def test_riscv64_rph1_fixture_uses_its_own_marker_graph(self) -> None:
+        """The Ribon-owned RPH1 fixture remains distinct from a Parus kernel."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            payload = directory / "rph1-fixture.elf"
+            payload.write_bytes(
+                b"\x7fELF"
+                + b"RIBON-RISCV64-RPH1-FIXTURE-V1"
+                + b"\0" * 128
+            )
+            markers = (
+                "RIBON-RPH1-RISCV64-FIXTURE-ENTRY",
+                "RIBON-RPH1-RISCV64-FIXTURE-MMU-OFF",
+                "RIBON-RPH1-RISCV64-FIXTURE-RPH1-OK",
+                "RIBON-RPH1-RISCV64-FIXTURE-BOOT-CPU-OK",
+            )
+            completed, result = self.run_harness(
+                directory,
+                payload,
+                "fixture",
+                target="riscv64-virt-opensbi",
+                required_markers=markers,
+                extra_output="\n".join(
+                    (*markers, "RIBON-RPH1-RISCV64-FIXTURE-OK")
+                ),
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout)
+            self.assertEqual(result["outcome"], "passed")
+            self.assertEqual(result["observed_payload_class"], "fixture")
+            self.assertEqual(result["expected_product_class"], "fixture-smoke")
+            self.assertNotIn(
+                "PARUS-FIXTURE-ENTRY-OK",
+                result["required_markers"],
+            )
+
     def test_fixture_cannot_masquerade_as_external_kernel(self) -> None:
         """A fixture marker rejects an external-kernel product claim."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -146,6 +181,27 @@ class QemuTargetSmokeTests(unittest.TestCase):
             self.assertEqual(result["observed_payload_class"], "fixture")
             self.assertFalse(result["cleanup"]["launched"])
             self.assertTrue(result["cleanup"]["complete"])
+
+    def test_riscv64_fixture_failure_marker_is_terminal(self) -> None:
+        """A Ribon RPH1 fixture failure cannot wait until generic timeout."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            payload = directory / "rph1-fixture.elf"
+            payload.write_bytes(
+                b"\x7fELF"
+                + b"RIBON-RISCV64-RPH1-FIXTURE-V1"
+                + b"\0" * 128
+            )
+            completed, result = self.run_harness(
+                directory,
+                payload,
+                "fixture",
+                target="riscv64-virt-opensbi",
+                extra_output="RIBON-RPH1-RISCV64-FIXTURE-FAIL:crc32c",
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertEqual(result["outcome"], "payload-abi-failure")
+            self.assertEqual(result["terminal"], "payload-abi-failure")
 
     def test_external_kernel_requires_payload_terminal_receipt(self) -> None:
         """A transfer marker alone cannot satisfy an external-kernel claim."""

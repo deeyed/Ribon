@@ -10,6 +10,11 @@ local target_commands = {
     output = "build/qstar/generated/r4/targets/x86_64-uefi-app/esp/EFI/BOOT/BOOTX64.EFI",
   },
   {
+    name = "ribon_qemu_riscv64_rph1_fixture",
+    make_target = "qemu-riscv64-virt-rph1-fixture-product",
+    output = "build/qstar/generated/r4/targets/qemu-riscv64-virt-rph1-fixture/ribon.bin",
+  },
+  {
     name = "ribon_rpi5_raw_fdt_package",
     make_target = "rpi5-aarch64-raw-fdt-package",
     output = "build/qstar/generated/r4/targets/rpi5-aarch64-raw-fdt/package/manifest.json",
@@ -43,6 +48,7 @@ end
 qstar.group "ribon_boot_targets" {
   deps = {
     "//targets:ribon_qemu_aarch64_raw_fdt",
+    "//targets:ribon_qemu_riscv64_rph1_fixture",
     "//targets:ribon_x86_64_uefi_app",
     "//targets:ribon_rpi5_raw_fdt_package",
     "//targets:ribon_x86_bios_compile",

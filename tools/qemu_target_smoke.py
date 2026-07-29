@@ -44,11 +44,23 @@ TARGET_MARKERS = {
         b"RIBON-R4-UEFI-TRANSFER",
     ),
 }
-FIXTURE_MARKERS = (
+LEGACY_FIXTURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-OK",
     b"PARUS-FIXTURE-ENTRY-ABI-FAIL",
 )
-FIXTURE_PROVENANCE = b"RIBON-FIXTURE-PAYLOAD-V1"
+TARGET_FIXTURE_SUCCESS_MARKERS = {
+    "aarch64-virt-raw-fdt": b"PARUS-FIXTURE-ENTRY-OK",
+    "riscv64-virt-opensbi": b"RIBON-RPH1-RISCV64-FIXTURE-OK",
+    "x86_64-uefi": b"PARUS-FIXTURE-ENTRY-OK",
+}
+FIXTURE_FAILURE_MARKERS = (
+    b"PARUS-FIXTURE-ENTRY-ABI-FAIL",
+    b"RIBON-RPH1-RISCV64-FIXTURE-FAIL:",
+)
+FIXTURE_PROVENANCE = (
+    b"RIBON-FIXTURE-PAYLOAD-V1",
+    b"RIBON-RISCV64-RPH1-FIXTURE-V1",
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -80,7 +92,14 @@ def observed_payload_class(path: Path) -> str:
     prefix = path.read_bytes()
     if not prefix.startswith(b"\x7fELF"):
         return "invalid"
-    if FIXTURE_PROVENANCE in prefix or any(marker in prefix for marker in FIXTURE_MARKERS):
+    if (
+        any(provenance in prefix for provenance in FIXTURE_PROVENANCE)
+        or any(marker in prefix for marker in LEGACY_FIXTURE_MARKERS)
+        or any(
+            marker in prefix
+            for marker in TARGET_FIXTURE_SUCCESS_MARKERS.values()
+        )
+    ):
         return "fixture"
     return "kernel"
 
@@ -164,11 +183,11 @@ def process_group_alive(process_group: int) -> bool:
 def required_markers(args: argparse.Namespace) -> tuple[bytes, ...]:
     """Select fixture or actual-payload evidence without kernel policy."""
     candidates = TARGET_MARKERS[args.target]
-    if args.expected_payload_class == "fixture":
-        candidates += (FIXTURE_MARKERS[0],)
     candidates += tuple(
         marker.encode("utf-8") for marker in args.required_marker
     )
+    if args.expected_payload_class == "fixture":
+        candidates += (TARGET_FIXTURE_SUCCESS_MARKERS[args.target],)
     markers: list[bytes] = []
     seen: set[bytes] = set()
     for marker in candidates:
@@ -285,7 +304,11 @@ def main() -> int:
                 chunk = process.stdout.read()
                 if chunk:
                     output += chunk
-                    if b"RIBON-R4-" in output and b"-FAIL" in output:
+                    target_failed = any(
+                        line.startswith(b"RIBON-R4-") and b"-FAIL" in line
+                        for line in output.splitlines()
+                    )
+                    if target_failed:
                         outcome = "target-failure"
                         terminal = "target-failure"
                         break
@@ -301,7 +324,10 @@ def main() -> int:
                         outcome = "payload-failure"
                         terminal = "payload-failure"
                         break
-                    if b"PARUS-FIXTURE-ENTRY-ABI-FAIL" in output:
+                    if any(
+                        marker in output
+                        for marker in FIXTURE_FAILURE_MARKERS
+                    ):
                         outcome = "payload-abi-failure"
                         terminal = "payload-abi-failure"
                         break

@@ -132,4 +132,5 @@ log/2026-07-26-r5-sdk-firmware-composition
 log/2026-07-27-r6-typed-service-graph
 log/2026-07-27-r7-bounded-boot-lifecycle
 log/2026-07-27-r8-deterministic-boot-media
+log/2026-07-29-w3-riscv64-rph1-fixture
 ```

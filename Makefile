@@ -223,6 +223,18 @@ QEMU_RISCV64_OBJS += \
 	$(QEMU_RISCV64_DIR)/obj/generated/embedded_payload.o \
 	$(QEMU_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o
 
+QEMU_RISCV64_RPH1_FIXTURE_DIR := \
+	$(TARGET_BUILD_ROOT)/qemu-riscv64-virt-rph1-fixture
+QEMU_RISCV64_RPH1_FIXTURE_MANIFEST := \
+	products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
+QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD := \
+	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/payload.elf
+QEMU_RISCV64_RPH1_FIXTURE_IMAGE := \
+	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/ribon.bin
+QEMU_RISCV64_RPH1_FIXTURE_OBJS := \
+	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer.o \
+	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer_entry.o
+
 RPI5_DIR := $(TARGET_BUILD_ROOT)/rpi5-aarch64-raw-fdt
 RPI5_MANIFEST := products/bootmgr/manifests/rpi5-aarch64-parus.json
 RPI5_EXTERNAL_MANIFEST := products/bootmgr/manifests/rpi5-aarch64-parus-external.json
@@ -357,6 +369,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
+	qemu-riscv64-virt-rph1-fixture-product \
+	qemu-riscv64-virt-rph1-fixture-smoke \
 	x86_64-uefi-app-smoke x86_64-uefi-parus-smoke \
 	bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-parus-package \
@@ -618,6 +632,25 @@ $(QEMU_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o: \
 	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
 		-mabi=lp64d -mcmodel=medany -c $< -o $@
 
+$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer.o: \
+	tests/fixtures/riscv64/rph1_consumer.c
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer_entry.o: \
+	tests/fixtures/riscv64/rph1_consumer_entry.S
+	@mkdir -p $(@D)
+	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
+		-mabi=lp64d -mcmodel=medany -c $< -o $@
+
+$(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD): \
+	$(QEMU_RISCV64_RPH1_FIXTURE_OBJS) \
+	tests/fixtures/riscv64/rph1_consumer.ld
+	$(LD_LLD) -m elf64lriscv \
+		-T tests/fixtures/riscv64/rph1_consumer.ld \
+		-Map=$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/payload.map \
+		-o $@ $(QEMU_RISCV64_RPH1_FIXTURE_OBJS)
+
 $(QEMU_RISCV64_ELF): $(QEMU_RISCV64_OBJS) \
 	targets/qemu-riscv64-virt-opensbi/linker.ld
 	$(LD_LLD) -m elf64lriscv \
@@ -650,6 +683,31 @@ qemu-riscv64-virt-parus-smoke: qemu-riscv64-virt-parus-product
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-riscv64-virt-parus.log \
 		--result $(RESULTS_DIR)/qemu-riscv64-virt-parus.json
+
+qemu-riscv64-virt-rph1-fixture-product: \
+	$(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD)
+	$(MAKE) --no-print-directory \
+		QEMU_RISCV64_DIR=$(abspath $(QEMU_RISCV64_RPH1_FIXTURE_DIR)) \
+		QEMU_RISCV64_MANIFEST=$(QEMU_RISCV64_RPH1_FIXTURE_MANIFEST) \
+		QEMU_RISCV64_PAYLOAD=$(abspath $(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD)) \
+		$(abspath $(QEMU_RISCV64_RPH1_FIXTURE_IMAGE))
+
+qemu-riscv64-virt-rph1-fixture-smoke: \
+	qemu-riscv64-virt-rph1-fixture-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target riscv64-virt-opensbi --qemu $(QEMU_RISCV64) \
+		--image $(QEMU_RISCV64_RPH1_FIXTURE_IMAGE) \
+		--firmware $(RISCV64_OPENSBI_FIRMWARE) \
+		--payload $(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD) \
+		--expected-payload-class fixture \
+		--product-manifest $(QEMU_RISCV64_RPH1_FIXTURE_MANIFEST) \
+		--required-marker RIBON-RPH1-RISCV64-FIXTURE-ENTRY \
+		--required-marker RIBON-RPH1-RISCV64-FIXTURE-MMU-OFF \
+		--required-marker RIBON-RPH1-RISCV64-FIXTURE-RPH1-OK \
+		--required-marker RIBON-RPH1-RISCV64-FIXTURE-BOOT-CPU-OK \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.log \
+		--result $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.json
 
 $(RPI5_PARUS_VALIDATION): \
 	$(RPI5_EXTERNAL_MANIFEST) $(RPI5_SELECTED_PAYLOAD) \

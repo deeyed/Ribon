@@ -2,16 +2,19 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-28
+last_verified: 2026-07-29
 code_paths:
   - tools/qemu_target_smoke.py
   - tools/validate_external_parus_payload.py
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
+  - products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
+  - tests/fixtures/riscv64/
   - tests/tools/qemu_target_smoke_tests.py
   - tests/tools/external_parus_payload_tests.py
 tests:
   - make check-qemu-evidence
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
+  - make qemu-riscv64-virt-rph1-fixture-smoke
 hardware:
   - none
 supersedes:
@@ -40,6 +43,24 @@ immutability를 확인한다. Fixture target은 별도 build directory와 genera
 External-kernel class는 actual payload identity와 Ribon transfer 증거를 연다. Parus
 boot stage 또는 runtime 성공은 별도 required marker graph와 Parus integration
 harness가 검증해야 하며, payload class만으로 열리지 않는다.
+
+## RISC-V RPH1 contract fixture
+
+`bootmgr.qemu-riscv64-virt-rph1-fixture`는 external-kernel product와 다른 manifest,
+build directory와 marker graph를 사용한다. Fixture ELF는 Ribon tree가 소유하며 다음
+경계를 독립 소비한다.
+
+- OpenSBI `fw_dynamic`의 S-mode entry와 bootstrap hart 0
+- Ribon raw-FDT lifecycle과 payload placement
+- `a0=RPH1`, `a1=RPH1 flag` register ABI
+- terminal entry의 `satp=0`과 masked `sstatus.SIE`
+- RPH1 magic, version, bounded table와 CRC32C
+- RISC-V provenance와 required singleton `BOOT_CPU`
+
+Harness는 fixture provenance를 external kernel과 구분한다. Success marker는
+`RIBON-RPH1-RISCV64-FIXTURE-OK`이고 `PARUS:*` runtime marker를 요구하지 않는다.
+`RIBON-RPH1-RISCV64-FIXTURE-FAIL:`은 timeout을 기다리지 않는 terminal fixture
+failure다.
 
 ## Result와 cleanup
 
