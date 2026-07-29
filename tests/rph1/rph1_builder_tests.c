@@ -56,7 +56,11 @@ static void refresh_checksum(unsigned char *bytes) {
         ribon_parus_rph1_crc32c(bytes, total_size));
 }
 
-static int build_fixture(unsigned char *buffer, struct RibonHandoffArtifact *artifact) {
+static int build_fixture_with_command(
+    unsigned char *buffer,
+    struct RibonHandoffArtifact *artifact,
+    const char *command_line,
+    uint64_t command_line_length) {
     static const struct RibonArchDescriptor arch = {
         .size = sizeof(arch),
         .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
@@ -106,8 +110,8 @@ static int build_fixture(unsigned char *buffer, struct RibonHandoffArtifact *art
             .size = 0x900u,
         },
         .command_line = {
-            .text = "protocol=parus",
-            .length = 14u,
+            .text = command_line,
+            .length = command_line_length,
         },
         .flags = RIBON_BOOT_ENV_HAS_MEMORY_MAP |
                  RIBON_BOOT_ENV_HAS_BOOT_MEDIA |
@@ -147,9 +151,18 @@ static int build_fixture(unsigned char *buffer, struct RibonHandoffArtifact *art
         artifact);
 }
 
+static int build_fixture(
+    unsigned char *buffer,
+    struct RibonHandoffArtifact *artifact) {
+    return build_fixture_with_command(
+        buffer, artifact, "protocol=parus", 14u);
+}
+
 int main(void) {
     unsigned char valid[RIBON_PARUS_RPH1_MAX_TOTAL_SIZE];
     unsigned char mutated[RIBON_PARUS_RPH1_MAX_TOTAL_SIZE];
+    char maximum_command_line[
+        RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE + 1u];
     struct RibonHandoffArtifact artifact = {0};
     struct RibonParusRph1View view = {0};
     uint32_t total_size;
@@ -245,6 +258,46 @@ int main(void) {
     expect(ribon_parus_parse_rph1(mutated, total_size, &view) ==
                RIBON_PARUS_RPH1_PARSE_BAD_HEADER,
            "parser rejects misaligned section table");
+
+    memset(maximum_command_line,
+           'x',
+           RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE);
+    maximum_command_line[
+        RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE - 1u] = '\0';
+    maximum_command_line[
+        RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE] = '\0';
+    expect(
+        build_fixture_with_command(
+            valid,
+            &artifact,
+            maximum_command_line,
+            RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE - 1u) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_OK,
+        "builder accepts command line at the RPH1 v1 maximum");
+    expect(
+        ribon_parus_parse_rph1(valid, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_OK,
+        "parser accepts command line at the RPH1 v1 maximum");
+    table_offset =
+        read_u32(valid, RIBON_PARUS_RPH1_HEADER_SECTION_TABLE_OFFSET);
+    write_u64(
+        valid + table_offset +
+            (3u * RIBON_PARUS_RPH1_SECTION_ENTRY_SIZE),
+        RIBON_PARUS_RPH1_SECTION_LENGTH_OFFSET,
+        RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE + 1u);
+    refresh_checksum(valid);
+    expect(
+        ribon_parus_parse_rph1(valid, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects command line above the RPH1 v1 maximum");
+    expect(
+        build_fixture_with_command(
+            valid,
+            &artifact,
+            maximum_command_line,
+            RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_OUT_OF_CAPACITY,
+        "builder rejects command line above the RPH1 v1 maximum");
 
     if (failures != 0) {
         return 1;

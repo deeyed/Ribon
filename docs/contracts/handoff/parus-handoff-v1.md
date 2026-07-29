@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-29
 code_paths:
   - src/protocols/os/parus/
   - include/Ribon/protocol/
@@ -151,7 +151,9 @@ ACPI metadata0은 RSDP revision이다.
 ### Command line
 
 `COMMAND_LINE`은 artifact 안에 복사한 NUL-terminated byte string이다. Empty payload와
-마지막 NUL이 없는 payload는 거부한다.
+마지막 NUL이 없는 payload는 거부한다. Payload 상한은 종단 NUL을 포함한 4,096 byte다.
+Producer는 이 상한을 넘는 environment command line을 artifact 생성 전에 거부하고,
+producer-side parser와 Parus consumer도 같은 상한을 독립적으로 검증한다.
 
 ### Framebuffer
 

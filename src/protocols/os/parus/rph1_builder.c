@@ -292,7 +292,7 @@ static int rph1_append_command_line(
     if (length == 0u) {
         length = strlen(environment->command_line.text);
     }
-    if (length == UINT64_MAX) {
+    if (length >= RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE) {
         return RIBON_PROTOCOL_HANDOFF_STATUS_OUT_OF_CAPACITY;
     }
     status = rph1_reserve_section(

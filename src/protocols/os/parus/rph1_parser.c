@@ -72,7 +72,9 @@ static int rph1_payload_shape_is_valid(
     case RIBON_PARUS_RPH1_SECTION_ACPI:
         return length == RIBON_PARUS_RPH1_RANGE_DESCRIPTOR_SIZE;
     case RIBON_PARUS_RPH1_SECTION_COMMAND_LINE:
-        return length != 0u && payload[length - 1u] == '\0';
+        return length != 0u &&
+               length <= RIBON_PARUS_RPH1_COMMAND_LINE_MAX_SIZE &&
+               payload[length - 1u] == '\0';
     case RIBON_PARUS_RPH1_SECTION_FRAMEBUFFER:
         return length == RIBON_PARUS_RPH1_FRAMEBUFFER_SIZE;
     case RIBON_PARUS_RPH1_SECTION_MODULES:
