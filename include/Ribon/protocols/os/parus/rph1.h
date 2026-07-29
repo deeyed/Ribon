@@ -63,6 +63,7 @@ struct RibonMutableMemoryMap;
 #define RIBON_PARUS_RPH1_SECTION_BOOT_MEDIA 0x00000009u
 #define RIBON_PARUS_RPH1_SECTION_PROVENANCE 0x0000000au
 #define RIBON_PARUS_RPH1_SECTION_OVERSEER 0x0000000bu
+#define RIBON_PARUS_RPH1_SECTION_BOOT_CPU 0x0000000cu
 
 #define RIBON_PARUS_RPH1_REGION_ENTRY_SIZE 32u
 #define RIBON_PARUS_RPH1_KERNEL_LAYOUT_SIZE 128u
@@ -76,6 +77,16 @@ struct RibonMutableMemoryMap;
     RIBON_PARUS_RPH1_MODULE_FLAG_INITIAL_IMAGE
 #define RIBON_PARUS_RPH1_BOOT_MEDIA_SIZE 32u
 #define RIBON_PARUS_RPH1_PROVENANCE_SIZE 32u
+#define RIBON_PARUS_RPH1_BOOT_CPU_SIZE 32u
+#define RIBON_PARUS_RPH1_BOOT_CPU_ID_OFFSET 0u
+#define RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_OFFSET 8u
+#define RIBON_PARUS_RPH1_BOOT_CPU_FLAGS_OFFSET 12u
+#define RIBON_PARUS_RPH1_BOOT_CPU_RESERVED0_OFFSET 16u
+#define RIBON_PARUS_RPH1_BOOT_CPU_RESERVED1_OFFSET 24u
+#define RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_RISCV_HART_ID 1u
+#define RIBON_PARUS_RPH1_BOOT_CPU_FLAG_BOOTSTRAP (1u << 0)
+#define RIBON_PARUS_RPH1_BOOT_CPU_FLAG_ALL \
+    RIBON_PARUS_RPH1_BOOT_CPU_FLAG_BOOTSTRAP
 #define RIBON_PARUS_RPH1_MAX_KERNEL_SEGMENTS 16u
 
 enum RibonParusRph1ParseStatus {
@@ -100,6 +111,18 @@ struct RibonParusRph1View {
     uint64_t flags;
     uint64_t boot_generation;
     uint64_t manifest_sequence;
+    uint64_t boot_cpu_id;
+    uint32_t boot_cpu_id_namespace;
+    uint32_t boot_cpu_flags;
+    uint32_t has_boot_cpu;
+};
+
+/** @brief Parus kernel entry가 해석하는 OS-specific flag다. */
+enum RibonParusEntryFlag {
+    RIBON_PARUS_ENTRY_FLAG_RPH1 = 1ull << 0,
+    RIBON_PARUS_ENTRY_FLAG_DIRECT_DTB = 1ull << 1,
+    RIBON_PARUS_ENTRY_FLAG_ENTERED_HIGH = 1ull << 2,
+    RIBON_PARUS_ENTRY_FLAG_DIRECT_HIGH = 1ull << 3,
 };
 
 /** @brief Parus Boot Protocol plugin descriptor다. */
@@ -134,10 +157,3 @@ int ribon_parus_parse_rph1(
     struct RibonParusRph1View *out);
 
 #endif
-/** @brief Parus kernel entry가 해석하는 OS-specific flag다. */
-enum RibonParusEntryFlag {
-    RIBON_PARUS_ENTRY_FLAG_RPH1 = 1ull << 0,
-    RIBON_PARUS_ENTRY_FLAG_DIRECT_DTB = 1ull << 1,
-    RIBON_PARUS_ENTRY_FLAG_ENTERED_HIGH = 1ull << 2,
-    RIBON_PARUS_ENTRY_FLAG_DIRECT_HIGH = 1ull << 3,
-};

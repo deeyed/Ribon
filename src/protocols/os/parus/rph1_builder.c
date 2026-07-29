@@ -5,12 +5,13 @@
 #include <stddef.h>
 #include <string.h>
 
-#define RPH1_IMPLEMENTED_SECTION_COUNT 10u
+#define RPH1_BASE_SECTION_CAPACITY 10u
 
 struct Rph1Writer {
     unsigned char *bytes;
     uint64_t capacity;
     uint64_t cursor;
+    uint16_t section_capacity;
     uint16_t section_count;
 };
 
@@ -55,7 +56,8 @@ static int rph1_reserve_section(
     uint64_t payload_offset;
     unsigned char *section;
     if (writer == 0 || writer->bytes == 0 || payload_out == 0 ||
-        writer->section_count >= RIBON_PARUS_RPH1_MAX_SECTIONS) {
+        writer->section_count >= writer->section_capacity ||
+        writer->section_capacity > RIBON_PARUS_RPH1_MAX_SECTIONS) {
         return RIBON_PROTOCOL_HANDOFF_STATUS_BAD_ARGUMENT;
     }
     if (ribon_align_up(
@@ -246,6 +248,64 @@ static int rph1_append_provenance(
     rph1_write_u32(payload, 16u, RIBON_VERSION_PATCH);
     rph1_write_u32(payload, 20u, 0u);
     rph1_write_u64(payload, 24u, 0u);
+    return RIBON_PROTOCOL_HANDOFF_STATUS_OK;
+}
+
+/**
+ * @brief RISC-V primary entry의 bootstrap hart identity를 RPH1에 기록한다.
+ *
+ * 이 section은 artifact 안에 복사되는 fixed payload이며 borrowed native pointer를
+ * 포함하지 않는다.
+ */
+static int rph1_append_boot_cpu(
+    struct Rph1Writer *writer,
+    const struct RibonBootPlan *plan,
+    const struct RibonBootEnvironment *environment) {
+    unsigned char *payload;
+    int status;
+    if (plan->arch == 0 ||
+        plan->arch->id != RIBON_ARCHITECTURE_RISCV64) {
+        return RIBON_PROTOCOL_HANDOFF_STATUS_OK;
+    }
+    if (environment->architecture != RIBON_ARCHITECTURE_RISCV64 ||
+        (environment->flags & RIBON_BOOT_ENV_HAS_BOOT_CPU_ID) == 0u) {
+        return RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN;
+    }
+    if (environment->kind == RIBON_ENVIRONMENT_RAW_FDT &&
+        ((environment->flags & RIBON_BOOT_ENV_HAS_DEVICE_TREE) == 0u ||
+         environment->device_tree.physical_address == 0u ||
+         environment->device_tree.size == 0u)) {
+        return RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN;
+    }
+    status = rph1_reserve_section(
+        writer,
+        RIBON_PARUS_RPH1_SECTION_BOOT_CPU,
+        RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND,
+        RIBON_PARUS_RPH1_BOOT_CPU_SIZE,
+        &payload);
+    if (status != RIBON_PROTOCOL_HANDOFF_STATUS_OK) {
+        return status;
+    }
+    rph1_write_u64(
+        payload,
+        RIBON_PARUS_RPH1_BOOT_CPU_ID_OFFSET,
+        environment->boot_cpu_id);
+    rph1_write_u32(
+        payload,
+        RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_OFFSET,
+        RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_RISCV_HART_ID);
+    rph1_write_u32(
+        payload,
+        RIBON_PARUS_RPH1_BOOT_CPU_FLAGS_OFFSET,
+        RIBON_PARUS_RPH1_BOOT_CPU_FLAG_BOOTSTRAP);
+    rph1_write_u64(
+        payload,
+        RIBON_PARUS_RPH1_BOOT_CPU_RESERVED0_OFFSET,
+        0u);
+    rph1_write_u64(
+        payload,
+        RIBON_PARUS_RPH1_BOOT_CPU_RESERVED1_OFFSET,
+        0u);
     return RIBON_PROTOCOL_HANDOFF_STATUS_OK;
 }
 
@@ -469,6 +529,7 @@ int ribon_parus_build_rph1(
     struct RibonHandoffArtifact *out) {
     struct Rph1Writer writer;
     uint64_t table_capacity;
+    uint16_t section_capacity;
     uint32_t total_size;
     uint32_t checksum;
     struct RibonParusRph1View validated_view;
@@ -482,7 +543,13 @@ int ribon_parus_build_rph1(
     if (capacity > RIBON_PARUS_RPH1_MAX_TOTAL_SIZE) {
         capacity = RIBON_PARUS_RPH1_MAX_TOTAL_SIZE;
     }
-    table_capacity = (uint64_t)RPH1_IMPLEMENTED_SECTION_COUNT *
+    section_capacity =
+        (uint16_t)(RPH1_BASE_SECTION_CAPACITY +
+                   (plan->arch != 0 &&
+                            plan->arch->id == RIBON_ARCHITECTURE_RISCV64 ?
+                        1u :
+                        0u));
+    table_capacity = (uint64_t)section_capacity *
                      RIBON_PARUS_RPH1_SECTION_ENTRY_SIZE;
     if (rph1_add_overflows(RIBON_PARUS_RPH1_HEADER_SIZE, table_capacity)) {
         return RIBON_PROTOCOL_HANDOFF_STATUS_OUT_OF_CAPACITY;
@@ -491,6 +558,7 @@ int ribon_parus_build_rph1(
     writer.bytes = (unsigned char *)buffer;
     writer.capacity = capacity;
     writer.cursor = RIBON_PARUS_RPH1_HEADER_SIZE + table_capacity;
+    writer.section_capacity = section_capacity;
     writer.section_count = 0u;
 
     status = rph1_append_region_list(
@@ -540,6 +608,9 @@ int ribon_parus_build_rph1(
     }
     if (status == RIBON_PROTOCOL_HANDOFF_STATUS_OK) {
         status = rph1_append_provenance(&writer, plan);
+    }
+    if (status == RIBON_PROTOCOL_HANDOFF_STATUS_OK) {
+        status = rph1_append_boot_cpu(&writer, plan, environment);
     }
     if (status != RIBON_PROTOCOL_HANDOFF_STATUS_OK || writer.cursor > UINT32_MAX) {
         return status != RIBON_PROTOCOL_HANDOFF_STATUS_OK ?

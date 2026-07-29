@@ -8,6 +8,24 @@
 
 static int failures;
 
+static const struct RibonArchDescriptor x86_64_arch = {
+    .size = sizeof(x86_64_arch),
+    .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+    .id = RIBON_ARCHITECTURE_X86_64,
+    .canonical_name = "x86_64",
+    .elf_machine = 62u,
+    .pe_coff_machine = 0x8664u,
+};
+
+static const struct RibonArchDescriptor riscv64_arch = {
+    .size = sizeof(riscv64_arch),
+    .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+    .id = RIBON_ARCHITECTURE_RISCV64,
+    .canonical_name = "riscv64",
+    .elf_machine = 243u,
+    .pe_coff_machine = 0u,
+};
+
 static uint16_t read_u16(const unsigned char *bytes, uint64_t offset) {
     return (uint16_t)bytes[offset] | ((uint16_t)bytes[offset + 1u] << 8u);
 }
@@ -56,21 +74,19 @@ static void refresh_checksum(unsigned char *bytes) {
         ribon_parus_rph1_crc32c(bytes, total_size));
 }
 
-static int build_fixture_with_inputs(
+static int build_fixture_with_arch_inputs(
     unsigned char *buffer,
     struct RibonHandoffArtifact *artifact,
+    const struct RibonArchDescriptor *arch,
+    enum RibonEnvironmentKind environment_kind,
+    uint64_t boot_cpu_id,
+    uint32_t environment_extra_flags,
+    uint64_t device_tree_address,
+    uint64_t device_tree_size,
     const char *command_line,
     uint64_t command_line_length,
     const struct RibonBootModule *modules,
     uint32_t module_count) {
-    static const struct RibonArchDescriptor arch = {
-        .size = sizeof(arch),
-        .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
-        .id = RIBON_ARCHITECTURE_X86_64,
-        .canonical_name = "x86_64",
-        .elf_machine = 62u,
-        .pe_coff_machine = 0x8664u,
-    };
     static const struct RibonLoadSegment segments[] = {
         {
             .file_offset = 0x100u,
@@ -107,8 +123,14 @@ static int build_fixture_with_inputs(
     struct RibonBootEnvironment environment = {
         .size = sizeof(environment),
         .abi_version = RIBON_CORE_ABI_VERSION,
-        .kind = RIBON_ENVIRONMENT_UEFI,
-        .architecture = RIBON_ARCHITECTURE_X86_64,
+        .kind = environment_kind,
+        .architecture = arch->id,
+        .boot_cpu_id = boot_cpu_id,
+        .device_tree = {
+            .physical_address = device_tree_address,
+            .size = device_tree_size,
+            .data = (const void *)(uintptr_t)device_tree_address,
+        },
         .boot_media = {
             .kind = RIBON_BOOT_MEDIA_FILE,
             .size = 0x900u,
@@ -124,11 +146,12 @@ static int build_fixture_with_inputs(
         .flags = RIBON_BOOT_ENV_HAS_MEMORY_MAP |
                  RIBON_BOOT_ENV_HAS_BOOT_MEDIA |
                  RIBON_BOOT_ENV_HAS_COMMAND_LINE |
+                 environment_extra_flags |
                  (module_count != 0u ? RIBON_BOOT_ENV_HAS_BOOT_MODULES : 0u),
     };
     struct RibonBootPlan plan = {
-        .environment = RIBON_ENVIRONMENT_UEFI,
-        .arch = &arch,
+        .environment = environment_kind,
+        .arch = arch,
         .kernel_load_segment_count = 1u,
         .kernel_entry_point = 0xffffffff80000080ull,
         .kernel_entry_load_address = 0x200080u,
@@ -158,6 +181,48 @@ static int build_fixture_with_inputs(
         buffer,
         RIBON_PARUS_RPH1_MAX_TOTAL_SIZE,
         artifact);
+}
+
+static int build_fixture_with_inputs(
+    unsigned char *buffer,
+    struct RibonHandoffArtifact *artifact,
+    const char *command_line,
+    uint64_t command_line_length,
+    const struct RibonBootModule *modules,
+    uint32_t module_count) {
+    return build_fixture_with_arch_inputs(
+        buffer,
+        artifact,
+        &x86_64_arch,
+        RIBON_ENVIRONMENT_UEFI,
+        0u,
+        0u,
+        0u,
+        0u,
+        command_line,
+        command_line_length,
+        modules,
+        module_count);
+}
+
+static int build_riscv_fixture(
+    unsigned char *buffer,
+    struct RibonHandoffArtifact *artifact,
+    uint64_t boot_cpu_id,
+    uint32_t environment_flags) {
+    return build_fixture_with_arch_inputs(
+        buffer,
+        artifact,
+        &riscv64_arch,
+        RIBON_ENVIRONMENT_RAW_FDT,
+        boot_cpu_id,
+        environment_flags,
+        0x88000000u,
+        0x1000u,
+        "protocol=parus",
+        14u,
+        0,
+        0u);
 }
 
 static int build_fixture_with_command(
@@ -232,6 +297,8 @@ int main(void) {
     };
     unsigned char *module_section;
     unsigned char *module_payload;
+    unsigned char *boot_cpu_section;
+    unsigned char *boot_cpu_payload;
 
     expect(RIBON_PARUS_ENTRY_FLAG_RPH1 == 0x1u, "RPH1 entry flag is bit 0");
     expect(RIBON_PARUS_ENTRY_FLAG_DIRECT_DTB == 0x2u, "direct DTB entry flag is bit 1");
@@ -243,6 +310,11 @@ int main(void) {
     first_payload = read_u64(
         valid + table_offset,
         RIBON_PARUS_RPH1_SECTION_PAYLOAD_OFFSET);
+    expect(
+        first_payload ==
+            RIBON_PARUS_RPH1_HEADER_SIZE +
+                (10u * RIBON_PARUS_RPH1_SECTION_ENTRY_SIZE),
+        "existing architecture payload table layout remains unchanged");
 
     expect(valid[0] == 'R' && valid[1] == 'P' && valid[2] == 'H' && valid[3] == '1',
            "wire magic is ASCII RPH1");
@@ -263,6 +335,138 @@ int main(void) {
            "parser accepts builder output");
     expect(view.total_size == artifact.size && view.section_count == artifact.section_count,
            "parser publishes bounded view metadata");
+    expect(view.has_boot_cpu == 0u, "x86_64 artifact has no boot CPU section");
+
+    expect(
+        build_riscv_fixture(
+            valid,
+            &artifact,
+            7u,
+            RIBON_BOOT_ENV_HAS_BOOT_CPU_ID |
+                RIBON_BOOT_ENV_HAS_DEVICE_TREE) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_OK,
+        "builder accepts RISC-V bootstrap hart identity");
+    expect(
+        ribon_parus_parse_rph1(valid, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_OK &&
+            view.has_boot_cpu == 1u &&
+            view.boot_cpu_id == 7u &&
+            view.boot_cpu_id_namespace ==
+                RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_RISCV_HART_ID &&
+            view.boot_cpu_flags ==
+                RIBON_PARUS_RPH1_BOOT_CPU_FLAG_BOOTSTRAP,
+        "parser publishes RISC-V bootstrap hart identity");
+    boot_cpu_section = find_section(
+        valid,
+        RIBON_PARUS_RPH1_SECTION_BOOT_CPU,
+        &boot_cpu_payload);
+    expect(
+        boot_cpu_section != 0 && boot_cpu_payload != 0 &&
+            read_u32(
+                boot_cpu_section,
+                RIBON_PARUS_RPH1_SECTION_FLAGS_OFFSET) ==
+                RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND &&
+            read_u64(
+                boot_cpu_section,
+                RIBON_PARUS_RPH1_SECTION_LENGTH_OFFSET) ==
+                RIBON_PARUS_RPH1_BOOT_CPU_SIZE &&
+            read_u64(
+                boot_cpu_payload,
+                RIBON_PARUS_RPH1_BOOT_CPU_ID_OFFSET) == 7u,
+        "RISC-V BOOT_CPU section has required fixed wire shape");
+
+    memcpy(mutated, valid, artifact.size);
+    boot_cpu_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_BOOT_CPU,
+        &boot_cpu_payload);
+    write_u64(
+        boot_cpu_payload,
+        RIBON_PARUS_RPH1_BOOT_CPU_RESERVED0_OFFSET,
+        1u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects nonzero BOOT_CPU reserved field");
+
+    memcpy(mutated, valid, artifact.size);
+    boot_cpu_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_BOOT_CPU,
+        &boot_cpu_payload);
+    write_u32(
+        boot_cpu_payload,
+        RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_OFFSET,
+        2u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects unknown BOOT_CPU namespace");
+
+    memcpy(mutated, valid, artifact.size);
+    boot_cpu_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_BOOT_CPU,
+        &boot_cpu_payload);
+    write_u64(
+        boot_cpu_section,
+        RIBON_PARUS_RPH1_SECTION_LENGTH_OFFSET,
+        RIBON_PARUS_RPH1_BOOT_CPU_SIZE - 1u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects truncated BOOT_CPU payload");
+
+    memcpy(mutated, valid, artifact.size);
+    boot_cpu_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_BOOT_CPU,
+        &boot_cpu_payload);
+    write_u32(
+        boot_cpu_section,
+        RIBON_PARUS_RPH1_SECTION_TYPE_OFFSET,
+        0x80000000u);
+    write_u32(
+        boot_cpu_section,
+        RIBON_PARUS_RPH1_SECTION_FLAGS_OFFSET,
+        0u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_MISSING_REQUIRED_SECTION,
+        "parser rejects RISC-V artifact missing BOOT_CPU");
+
+    expect(
+        build_riscv_fixture(
+            valid,
+            &artifact,
+            0u,
+            RIBON_BOOT_ENV_HAS_BOOT_CPU_ID |
+                RIBON_BOOT_ENV_HAS_DEVICE_TREE) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_OK &&
+            ribon_parus_parse_rph1(valid, artifact.size, &view) ==
+                RIBON_PARUS_RPH1_PARSE_OK &&
+            view.boot_cpu_id == 0u,
+        "bootstrap hart ID zero remains valid");
+    expect(
+        build_riscv_fixture(
+            valid,
+            &artifact,
+            7u,
+            RIBON_BOOT_ENV_HAS_DEVICE_TREE) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN,
+        "builder rejects RISC-V environment without boot CPU authority");
+    expect(
+        build_riscv_fixture(
+            valid,
+            &artifact,
+            7u,
+            RIBON_BOOT_ENV_HAS_BOOT_CPU_ID) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN,
+        "builder rejects raw-FDT RISC-V environment without device tree");
 
     expect(
         build_fixture_with_inputs(

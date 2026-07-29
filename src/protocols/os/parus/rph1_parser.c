@@ -1,4 +1,5 @@
 #include <Ribon/protocols/os/parus/rph1.h>
+#include <Ribon/firmware/environment.h>
 
 #include <stddef.h>
 
@@ -32,7 +33,7 @@ static int rph1_is_power_of_two(uint32_t value) {
 /** @brief Section type이 RPH1 v1 registry에 속하는지 반환한다. */
 static int rph1_is_known_section(uint32_t type) {
     return type >= RIBON_PARUS_RPH1_SECTION_MEMORY_MAP &&
-           type <= RIBON_PARUS_RPH1_SECTION_OVERSEER;
+           type <= RIBON_PARUS_RPH1_SECTION_BOOT_CPU;
 }
 
 static int rph1_payload_shape_is_valid(
@@ -125,9 +126,27 @@ static int rph1_payload_shape_is_valid(
     case RIBON_PARUS_RPH1_SECTION_BOOT_MEDIA:
         return length == RIBON_PARUS_RPH1_BOOT_MEDIA_SIZE;
     case RIBON_PARUS_RPH1_SECTION_PROVENANCE:
-        return length == RIBON_PARUS_RPH1_PROVENANCE_SIZE;
+        return length == RIBON_PARUS_RPH1_PROVENANCE_SIZE &&
+               rph1_read_u32(payload, 20u) == 0u &&
+               rph1_read_u64(payload, 24u) == 0u;
     case RIBON_PARUS_RPH1_SECTION_OVERSEER:
         return length != 0u;
+    case RIBON_PARUS_RPH1_SECTION_BOOT_CPU:
+        return length == RIBON_PARUS_RPH1_BOOT_CPU_SIZE &&
+               rph1_read_u32(
+                   payload,
+                   RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_OFFSET) ==
+                   RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_RISCV_HART_ID &&
+               rph1_read_u32(
+                   payload,
+                   RIBON_PARUS_RPH1_BOOT_CPU_FLAGS_OFFSET) ==
+                   RIBON_PARUS_RPH1_BOOT_CPU_FLAG_BOOTSTRAP &&
+               rph1_read_u64(
+                   payload,
+                   RIBON_PARUS_RPH1_BOOT_CPU_RESERVED0_OFFSET) == 0u &&
+               rph1_read_u64(
+                   payload,
+                   RIBON_PARUS_RPH1_BOOT_CPU_RESERVED1_OFFSET) == 0u;
     default:
         return 1;
     }
@@ -148,6 +167,8 @@ int ribon_parus_parse_rph1(
     uint64_t table_end;
     const unsigned char *kernel_layout = 0;
     const unsigned char *modules = 0;
+    const unsigned char *provenance = 0;
+    const unsigned char *boot_cpu = 0;
     if (bytes == 0 || out == 0) {
         return RIBON_PARUS_RPH1_PARSE_BAD_ARGUMENT;
     }
@@ -236,6 +257,14 @@ int ribon_parus_parse_rph1(
                     return RIBON_PARUS_RPH1_PARSE_BAD_SECTION;
                 }
                 modules = bytes + offset;
+            } else if (type == RIBON_PARUS_RPH1_SECTION_PROVENANCE) {
+                provenance = bytes + offset;
+            } else if (type == RIBON_PARUS_RPH1_SECTION_BOOT_CPU) {
+                if (flags !=
+                    RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND) {
+                    return RIBON_PARUS_RPH1_PARSE_BAD_SECTION;
+                }
+                boot_cpu = bytes + offset;
             }
         }
         for (uint16_t previous = 0; previous < index; ++previous) {
@@ -254,6 +283,22 @@ int ribon_parus_parse_rph1(
         (1u << (RIBON_PARUS_RPH1_SECTION_PROVENANCE - 1u));
     if ((seen_types & required_types) != required_types) {
         return RIBON_PARUS_RPH1_PARSE_MISSING_REQUIRED_SECTION;
+    }
+    if (provenance == 0) {
+        return RIBON_PARUS_RPH1_PARSE_MISSING_REQUIRED_SECTION;
+    }
+    if (rph1_read_u32(provenance, 4u) == 3u) {
+        if (boot_cpu == 0) {
+            return RIBON_PARUS_RPH1_PARSE_MISSING_REQUIRED_SECTION;
+        }
+        if (rph1_read_u32(provenance, 0u) ==
+                (uint32_t)RIBON_ENVIRONMENT_RAW_FDT &&
+            (seen_types &
+             (1u << (RIBON_PARUS_RPH1_SECTION_DEVICE_TREE - 1u))) == 0u) {
+            return RIBON_PARUS_RPH1_PARSE_MISSING_REQUIRED_SECTION;
+        }
+    } else if (boot_cpu != 0) {
+        return RIBON_PARUS_RPH1_PARSE_BAD_SECTION;
     }
     if (modules != 0) {
         const uint64_t kernel_base = rph1_read_u64(kernel_layout, 32u);
@@ -282,5 +327,17 @@ int ribon_parus_parse_rph1(
         rph1_read_u64(bytes, RIBON_PARUS_RPH1_HEADER_BOOT_GENERATION_OFFSET);
     out->manifest_sequence =
         rph1_read_u64(bytes, RIBON_PARUS_RPH1_HEADER_MANIFEST_SEQUENCE_OFFSET);
+    if (boot_cpu != 0) {
+        out->boot_cpu_id = rph1_read_u64(
+            boot_cpu,
+            RIBON_PARUS_RPH1_BOOT_CPU_ID_OFFSET);
+        out->boot_cpu_id_namespace = rph1_read_u32(
+            boot_cpu,
+            RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_OFFSET);
+        out->boot_cpu_flags = rph1_read_u32(
+            boot_cpu,
+            RIBON_PARUS_RPH1_BOOT_CPU_FLAGS_OFFSET);
+        out->has_boot_cpu = 1u;
+    }
     return RIBON_PARUS_RPH1_PARSE_OK;
 }
