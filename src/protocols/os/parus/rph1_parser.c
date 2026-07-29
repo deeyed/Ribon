@@ -84,10 +84,44 @@ static int rph1_payload_shape_is_valid(
         count = rph1_read_u32(payload, 0u);
         entry_size = rph1_read_u32(payload, 4u);
         if (entry_size != RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE ||
-            count > (RIBON_PARUS_RPH1_MAX_TOTAL_SIZE - 8u) / entry_size) {
+            count == 0u || count > RIBON_PARUS_RPH1_MAX_MODULES) {
             return 0;
         }
-        return length == 8u + ((uint64_t)count * entry_size);
+        if (length != 8u + ((uint64_t)count * entry_size)) {
+            return 0;
+        }
+        {
+            uint32_t initial_images = 0u;
+            for (uint32_t index = 0u; index < count; ++index) {
+                const unsigned char *entry =
+                    payload + 8u + ((uint64_t)index * entry_size);
+                const uint64_t address = rph1_read_u64(entry, 0u);
+                const uint64_t size = rph1_read_u64(entry, 8u);
+                const uint32_t flags = rph1_read_u32(entry, 16u);
+                if (address == 0u || size == 0u ||
+                    address > UINT64_MAX - size ||
+                    (flags & ~RIBON_PARUS_RPH1_MODULE_FLAG_ALL) != 0u ||
+                    rph1_read_u32(entry, 20u) != 0u ||
+                    rph1_read_u64(entry, 24u) != 0u) {
+                    return 0;
+                }
+                if ((flags & RIBON_PARUS_RPH1_MODULE_FLAG_INITIAL_IMAGE) != 0u &&
+                    ++initial_images > 1u) {
+                    return 0;
+                }
+                for (uint32_t previous = 0u; previous < index; ++previous) {
+                    const unsigned char *other =
+                        payload + 8u + ((uint64_t)previous * entry_size);
+                    const uint64_t other_address = rph1_read_u64(other, 0u);
+                    const uint64_t other_size = rph1_read_u64(other, 8u);
+                    if (address < other_address + other_size &&
+                        other_address < address + size) {
+                        return 0;
+                    }
+                }
+            }
+        }
+        return 1;
     case RIBON_PARUS_RPH1_SECTION_BOOT_MEDIA:
         return length == RIBON_PARUS_RPH1_BOOT_MEDIA_SIZE;
     case RIBON_PARUS_RPH1_SECTION_PROVENANCE:
@@ -112,6 +146,8 @@ int ribon_parus_parse_rph1(
     uint32_t section_table_offset;
     uint16_t section_count;
     uint64_t table_end;
+    const unsigned char *kernel_layout = 0;
+    const unsigned char *modules = 0;
     if (bytes == 0 || out == 0) {
         return RIBON_PARUS_RPH1_PARSE_BAD_ARGUMENT;
     }
@@ -191,6 +227,16 @@ int ribon_parus_parse_rph1(
             if (!rph1_payload_shape_is_valid(type, bytes + offset, length)) {
                 return RIBON_PARUS_RPH1_PARSE_BAD_SECTION;
             }
+            if (type == RIBON_PARUS_RPH1_SECTION_KERNEL_LAYOUT) {
+                kernel_layout = bytes + offset;
+            } else if (type == RIBON_PARUS_RPH1_SECTION_MODULES) {
+                if (flags !=
+                    (RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND |
+                     RIBON_PARUS_RPH1_SECTION_BORROWED_RANGE_DESCRIPTOR)) {
+                    return RIBON_PARUS_RPH1_PARSE_BAD_SECTION;
+                }
+                modules = bytes + offset;
+            }
         }
         for (uint16_t previous = 0; previous < index; ++previous) {
             if (offset < offsets[previous] + lengths[previous] &&
@@ -208,6 +254,24 @@ int ribon_parus_parse_rph1(
         (1u << (RIBON_PARUS_RPH1_SECTION_PROVENANCE - 1u));
     if ((seen_types & required_types) != required_types) {
         return RIBON_PARUS_RPH1_PARSE_MISSING_REQUIRED_SECTION;
+    }
+    if (modules != 0) {
+        const uint64_t kernel_base = rph1_read_u64(kernel_layout, 32u);
+        const uint64_t kernel_end = rph1_read_u64(kernel_layout, 40u);
+        const uint32_t module_count = rph1_read_u32(modules, 0u);
+        if (kernel_base == 0u || kernel_end <= kernel_base) {
+            return RIBON_PARUS_RPH1_PARSE_BAD_SECTION;
+        }
+        for (uint32_t index = 0u; index < module_count; ++index) {
+            const unsigned char *entry =
+                modules + 8u +
+                ((uint64_t)index * RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE);
+            const uint64_t address = rph1_read_u64(entry, 0u);
+            const uint64_t end = address + rph1_read_u64(entry, 8u);
+            if (address < kernel_end && kernel_base < end) {
+                return RIBON_PARUS_RPH1_PARSE_BAD_SECTION;
+            }
+        }
     }
     out->bytes = bytes;
     out->total_size = total_size;

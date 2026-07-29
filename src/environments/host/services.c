@@ -48,6 +48,7 @@ static const struct RibonBootModule host_boot_modules[] = {
         .name = "host-initrd",
         .physical_address = 0x0000000001000000ull,
         .size = 0x0000000000100000ull,
+        .role = RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE,
     },
 };
 

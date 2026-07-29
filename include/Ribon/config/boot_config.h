@@ -42,7 +42,9 @@ struct RibonBootConfigEntry {
     char image_format[RIBON_BOOT_CONFIG_IDENTIFIER_CAPACITY]; /**< Selected image-format ID다. */
     char kernel_path[RIBON_BOOT_CONFIG_PATH_CAPACITY]; /**< Canonical absolute kernel path다. */
     char command_line[RIBON_BOOT_CONFIG_COMMAND_LINE_CAPACITY]; /**< Protocol-owned command line이다. */
+    char init_image_path[RIBON_BOOT_CONFIG_PATH_CAPACITY]; /**< Optional singleton initial image다. */
     char module_paths[RIBON_BOOT_CONFIG_MAX_MODULES][RIBON_BOOT_CONFIG_PATH_CAPACITY]; /**< Module paths다. */
+    uint32_t has_init_image; /**< `init_image`가 존재하면 1이다. */
     uint32_t module_count; /**< Parsed module 수다. */
     uint32_t priority; /**< Higher value가 먼저 선택된다. */
     uint32_t required_fields; /**< Parser-private completeness bitset이며 caller가 변경하지 않는다. */
@@ -58,7 +60,7 @@ struct RibonBootConfiguration {
  * @brief UTF-8 subset ASCII configuration을 bounded candidate set으로 parse한다.
  *
  * Grammar는 `version=1` 뒤 `entry=<id>` block에서 `priority`, `protocol`, `image`,
- * `kernel`, optional `cmdline`/repeated `module`, `end`를 요구한다. Unknown key와
+ * `kernel`, optional `cmdline`/`init_image`/repeated `module`, `end`를 요구한다. Unknown key와
  * traversal path는 fail-closed다.
  */
 int ribon_boot_configuration_parse(

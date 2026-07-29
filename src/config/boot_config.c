@@ -144,9 +144,29 @@ static int boot_config_apply_key(
             return RIBON_BOOT_CONFIG_STATUS_DUPLICATE_KEY;
         }
         return RIBON_BOOT_CONFIG_STATUS_OK;
+    } else if (key_size == 10u && key[0] == 'i' && key[1] == 'n' &&
+               key[2] == 'i' && key[3] == 't' && key[4] == '_' &&
+               key[5] == 'i' && key[6] == 'm' && key[7] == 'a' &&
+               key[8] == 'g' && key[9] == 'e') {
+        if (entry->has_init_image != 0u) {
+            return RIBON_BOOT_CONFIG_STATUS_DUPLICATE_KEY;
+        }
+        if (entry->module_count == RIBON_BOOT_CONFIG_MAX_MODULES ||
+            !boot_config_copy(
+                entry->init_image_path,
+                sizeof(entry->init_image_path),
+                value,
+                value_size,
+                0) ||
+            !boot_config_path_is_valid(entry->init_image_path)) {
+            return RIBON_BOOT_CONFIG_STATUS_BAD_PATH;
+        }
+        entry->has_init_image = 1u;
+        return RIBON_BOOT_CONFIG_STATUS_OK;
     } else if (key_size == 6u && key[0] == 'm' && key[1] == 'o' && key[2] == 'd' &&
                key[3] == 'u' && key[4] == 'l' && key[5] == 'e') {
-        if (entry->module_count == RIBON_BOOT_CONFIG_MAX_MODULES) {
+        if (entry->module_count + entry->has_init_image ==
+            RIBON_BOOT_CONFIG_MAX_MODULES) {
             return RIBON_BOOT_CONFIG_STATUS_OUT_OF_CAPACITY;
         }
         if (!boot_config_copy(

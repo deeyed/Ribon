@@ -22,6 +22,7 @@ static _Alignas(16) unsigned char arena_storage[RIBON_UEFI_ARENA_CAPACITY];
 static unsigned char boot_config_bytes[RIBON_UEFI_CONFIG_CAPACITY];
 static _Alignas(4096) unsigned char payload_bytes[RIBON_UEFI_PAYLOAD_CAPACITY];
 static struct RibonBootConfiguration boot_configuration;
+static struct RibonBootModule boot_modules[RIBON_BOOT_CONFIG_MAX_MODULES];
 static const struct RibonDiagnosticSinkServiceOperations *diagnostic_sink;
 
 struct UefiRefreshContext {
@@ -115,6 +116,8 @@ EFI_STATUS EFIAPI efi_main(
         .transaction = &transaction,
     };
     const struct RibonBootConfigEntry *selected_config = 0;
+    struct RibonBootEnvironmentPersistentInputs persistent_inputs = {0};
+    uint32_t boot_module_count = 0u;
     uint64_t config_size = 0u;
     int status;
 
@@ -151,7 +154,6 @@ EFI_STATUS EFIAPI efi_main(
         ribon_boot_configuration_select(
             &boot_configuration,
             &selected_config) != RIBON_BOOT_CONFIG_STATUS_OK ||
-        selected_config->module_count != 0u ||
         ribon_uefi_app_open_boot_source(
             &native,
             selected_config->kernel_path,
@@ -173,22 +175,58 @@ EFI_STATUS EFIAPI efi_main(
     protocol = protocol_plugin->operations;
     image_format = image_plugin->operations;
     uefi_marker("RIBON-R8-UEFI-CONFIG-OK");
+    if (selected_config->has_init_image != 0u) {
+        if (ribon_uefi_app_load_boot_module(
+                &native,
+                selected_config->init_image_path,
+                RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE,
+                &boot_modules[boot_module_count]) !=
+            RIBON_UEFI_APP_STATUS_OK) {
+            return uefi_fail("init-image-load");
+        }
+        ++boot_module_count;
+    }
+    for (uint32_t index = 0u; index < selected_config->module_count; ++index) {
+        if (boot_module_count == RIBON_BOOT_CONFIG_MAX_MODULES ||
+            ribon_uefi_app_load_boot_module(
+                &native,
+                selected_config->module_paths[index],
+                RIBON_BOOT_MODULE_ROLE_AUXILIARY,
+                &boot_modules[boot_module_count]) !=
+                RIBON_UEFI_APP_STATUS_OK) {
+            return uefi_fail("module-load");
+        }
+        ++boot_module_count;
+    }
+    if (boot_module_count != 0u) {
+        uefi_marker("RIBON-R9-UEFI-MODULE-LOADED");
+    }
     if (ribon_uefi_app_capture_environment(&native, &environment) !=
         RIBON_UEFI_APP_STATUS_OK) {
         return uefi_fail("environment-capture");
     }
-    environment.boot_media = (struct RibonBootMedia){
-        .kind = source.kind,
-        .path = selected_config->kernel_path,
-        .size = source.size,
+    persistent_inputs = (struct RibonBootEnvironmentPersistentInputs){
+        .boot_media = {
+            .kind = source.kind,
+            .path = selected_config->kernel_path,
+            .size = source.size,
+        },
+        .boot_modules = {
+            .modules = boot_modules,
+            .module_count = boot_module_count,
+        },
+        .command_line = {
+            .text = selected_config->command_line,
+            .length = uefi_text_length(
+                selected_config->command_line,
+                RIBON_BOOT_CONFIG_COMMAND_LINE_CAPACITY),
+        },
     };
-    environment.command_line = (struct RibonCommandLine){
-        .text = selected_config->command_line,
-        .length = uefi_text_length(
-            selected_config->command_line,
-            RIBON_BOOT_CONFIG_COMMAND_LINE_CAPACITY),
-    };
-    environment.flags |= RIBON_BOOT_ENV_HAS_BOOT_MEDIA | RIBON_BOOT_ENV_HAS_COMMAND_LINE;
+    if (!ribon_boot_environment_apply_persistent_inputs(
+            &environment,
+            &persistent_inputs)) {
+        return uefi_fail("persistent-inputs");
+    }
     uefi_marker("RIBON-R4-UEFI-MEMORY-MAP");
 
     ribon_arena_init(&arena, arena_storage, sizeof(arena_storage));
@@ -235,6 +273,7 @@ EFI_STATUS EFIAPI efi_main(
     status = ribon_uefi_app_exit_boot_services(
         &native,
         &environment,
+        &persistent_inputs,
         uefi_refresh_plan,
         &refresh);
     if (status != RIBON_UEFI_APP_STATUS_OK) {

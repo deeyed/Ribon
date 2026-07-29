@@ -135,6 +135,7 @@ ARCH_OPS_TESTS := $(RIBON_ARCHES:%=$(TEST_BUILD_DIR)/arch_ops_%_tests)
 CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
 PORT_SERVICE_TEST := $(TEST_BUILD_DIR)/port_service_tests
 BOOT_LIFECYCLE_TEST := $(TEST_BUILD_DIR)/boot_lifecycle_tests
+ENVIRONMENT_PERSISTENT_INPUTS_TEST := $(TEST_BUILD_DIR)/environment_persistent_inputs_tests
 MEDIA_PIPELINE_TEST := $(TEST_BUILD_DIR)/media_pipeline_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
@@ -273,6 +274,8 @@ UEFI_APP := $(UEFI_DIR)/BOOTX64.EFI
 UEFI_ESP := $(UEFI_DIR)/esp
 UEFI_CONFIG := $(UEFI_ESP)/RIBON/BOOT.CFG
 UEFI_PAYLOAD := $(UEFI_ESP)/RIBON/PAYLOAD.ELF
+UEFI_INIT_IMAGE_FIXTURE := $(UEFI_DIR)/fixtures/init-image.bin
+UEFI_INIT_IMAGE := $(UEFI_ESP)/RIBON/INIT.IMG
 UEFI_SRCS := \
 	src/core/arena.c \
 	src/core/context.c \
@@ -339,7 +342,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 
 .PHONY: all lib sdk-install host-reference check check-one check-loader check-pe-coff \
 	check-fdt check-rph1 check-arch-x86_64 check-arch-aarch64 \
-	check-arch-ops check-core-service check-port-services check-boot-lifecycle check-media-pipeline \
+	check-arch-ops check-core-service check-port-services check-boot-lifecycle \
+	check-environment-persistent-inputs check-media-pipeline \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
 	check-os-packages \
 	check-library-embed check-object-graphs check-public-api \
@@ -408,12 +412,14 @@ $(KERNEL_FIXTURE): tools/make_elf64_fixture.py
 $(LOADER_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/loader/elf64_loader_tests.o \
 	$(TEST_BUILD_DIR)/obj/src/image-formats/elf64.o \
+	$(TEST_BUILD_DIR)/obj/src/arch/common.o \
 	$(TEST_BUILD_DIR)/obj/src/common/image.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(PE_COFF_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/loader/pe_coff_loader_tests.o \
 	$(TEST_BUILD_DIR)/obj/src/image-formats/pe_coff.o \
+	$(TEST_BUILD_DIR)/obj/src/arch/common.o \
 	$(TEST_BUILD_DIR)/obj/src/common/image.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
@@ -464,6 +470,11 @@ $(BOOT_LIFECYCLE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/boot/lifecycle_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
 	$(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(ENVIRONMENT_PERSISTENT_INPUTS_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/boot/environment_persistent_inputs_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/common/environment.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(MEDIA_PIPELINE_TEST): \
@@ -723,19 +734,29 @@ $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_APP)
 $(UEFI_CONFIG): tools/make_boot_config.py Makefile
 	@mkdir -p $(@D)
 	$(PYTHON) $< --output $@ --entry primary --priority 100 \
-		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF
+		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
+		--init-image /RIBON/INIT.IMG
 
 $(UEFI_PAYLOAD): $(UEFI_SELECTED_PAYLOAD) $(UEFI_SELECTED_VALIDATION)
 	@mkdir -p $(@D)
 	cp $< $@
 
-x86_64-uefi-app: $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI $(UEFI_CONFIG) $(UEFI_PAYLOAD)
+$(UEFI_INIT_IMAGE_FIXTURE): tools/make_init_image_fixture.py
+	@mkdir -p $(@D)
+	$(PYTHON) $< --output $@
+
+$(UEFI_INIT_IMAGE): $(UEFI_INIT_IMAGE_FIXTURE)
+	@mkdir -p $(@D)
+	cp $< $@
+
+x86_64-uefi-app: $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI $(UEFI_CONFIG) $(UEFI_PAYLOAD) $(UEFI_INIT_IMAGE)
 
 x86_64-uefi-app-smoke: x86_64-uefi-app
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
 		--esp $(UEFI_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
 		--payload $(UEFI_PAYLOAD) --expected-payload-class fixture \
+		--init-image $(UEFI_INIT_IMAGE) \
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-x86_64-uefi.log \
 		--result $(RESULTS_DIR)/qemu-x86_64-uefi.json
@@ -750,6 +771,7 @@ x86_64-uefi-parus-smoke:
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
 		--esp $(UEFI_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
 		--payload $(UEFI_PARUS_PAYLOAD) --expected-payload-class kernel \
+		--init-image $(UEFI_INIT_IMAGE) \
 		--product-manifest $(UEFI_EXTERNAL_MANIFEST) \
 		$(PARUS_SUCCESS_MARKER_ARGS) \
 		--source-revision $(shell git rev-parse HEAD) \
@@ -809,6 +831,9 @@ check-port-services: $(PORT_SERVICE_TEST)
 
 check-boot-lifecycle: $(BOOT_LIFECYCLE_TEST)
 	$(BOOT_LIFECYCLE_TEST)
+
+check-environment-persistent-inputs: $(ENVIRONMENT_PERSISTENT_INPUTS_TEST)
+	$(ENVIRONMENT_PERSISTENT_INPUTS_TEST)
 
 check-media-pipeline: $(MEDIA_PIPELINE_TEST)
 	$(MEDIA_PIPELINE_TEST) --fuzz-smoke
@@ -979,7 +1004,8 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
-	check-core-service check-port-services check-boot-lifecycle check-media-pipeline check-mode-descriptors check-plugin-descriptors \
+	check-core-service check-port-services check-boot-lifecycle \
+	check-environment-persistent-inputs check-media-pipeline check-mode-descriptors check-plugin-descriptors \
 	check-protocol-contract check-os-packages check-library-embed check-composition-schemas \
 	check-qemu-evidence \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \

@@ -33,6 +33,7 @@ TARGET_MARKERS = {
     "x86_64-uefi": (
         b"RIBON-R4-UEFI-ENTRY",
         b"RIBON-R8-UEFI-CONFIG-OK",
+        b"RIBON-R9-UEFI-MODULE-LOADED",
         b"RIBON-R4-UEFI-MEMORY-MAP",
         b"RIBON-R4-UEFI-PRODUCT-GRAPH-OK",
         b"RIBON-R4-PROTOCOL-HANDOFF-OK",
@@ -224,6 +225,7 @@ def main() -> int:
     parser.add_argument("--esp", type=Path)
     parser.add_argument("--firmware", type=Path)
     parser.add_argument("--payload", type=Path, required=True)
+    parser.add_argument("--init-image", type=Path)
     parser.add_argument("--product-manifest", type=Path)
     parser.add_argument(
         "--expected-payload-class",
@@ -242,6 +244,11 @@ def main() -> int:
     composed_path = args.image if args.image is not None else args.esp
     assert composed_path is not None
     payload_hash = artifact_sha256(args.payload)
+    init_image_hash = (
+        artifact_sha256(args.init_image)
+        if args.init_image is not None
+        else None
+    )
     composed_hash = artifact_sha256(composed_path)
     payload_class = observed_payload_class(args.payload)
     markers = required_markers(args)
@@ -376,6 +383,14 @@ def main() -> int:
             "sha256_after_run": payload_hash_after,
             "immutable": payload_hash == payload_hash_after,
         },
+        "initial_image": (
+            {
+                "path": str(args.init_image),
+                "sha256": init_image_hash,
+            }
+            if args.init_image is not None
+            else None
+        ),
         "product_manifest": (
             {
                 "path": str(args.product_manifest),

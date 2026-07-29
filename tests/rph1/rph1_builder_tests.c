@@ -56,16 +56,20 @@ static void refresh_checksum(unsigned char *bytes) {
         ribon_parus_rph1_crc32c(bytes, total_size));
 }
 
-static int build_fixture_with_command(
+static int build_fixture_with_inputs(
     unsigned char *buffer,
     struct RibonHandoffArtifact *artifact,
     const char *command_line,
-    uint64_t command_line_length) {
+    uint64_t command_line_length,
+    const struct RibonBootModule *modules,
+    uint32_t module_count) {
     static const struct RibonArchDescriptor arch = {
         .size = sizeof(arch),
         .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
         .id = RIBON_ARCHITECTURE_X86_64,
         .canonical_name = "x86_64",
+        .elf_machine = 62u,
+        .pe_coff_machine = 0x8664u,
     };
     static const struct RibonLoadSegment segments[] = {
         {
@@ -113,9 +117,14 @@ static int build_fixture_with_command(
             .text = command_line,
             .length = command_line_length,
         },
+        .boot_modules = {
+            .modules = modules,
+            .module_count = module_count,
+        },
         .flags = RIBON_BOOT_ENV_HAS_MEMORY_MAP |
                  RIBON_BOOT_ENV_HAS_BOOT_MEDIA |
-                 RIBON_BOOT_ENV_HAS_COMMAND_LINE,
+                 RIBON_BOOT_ENV_HAS_COMMAND_LINE |
+                 (module_count != 0u ? RIBON_BOOT_ENV_HAS_BOOT_MODULES : 0u),
     };
     struct RibonBootPlan plan = {
         .environment = RIBON_ENVIRONMENT_UEFI,
@@ -151,11 +160,50 @@ static int build_fixture_with_command(
         artifact);
 }
 
+static int build_fixture_with_command(
+    unsigned char *buffer,
+    struct RibonHandoffArtifact *artifact,
+    const char *command_line,
+    uint64_t command_line_length) {
+    return build_fixture_with_inputs(
+        buffer,
+        artifact,
+        command_line,
+        command_line_length,
+        0,
+        0u);
+}
+
 static int build_fixture(
     unsigned char *buffer,
     struct RibonHandoffArtifact *artifact) {
     return build_fixture_with_command(
         buffer, artifact, "protocol=parus", 14u);
+}
+
+/** @brief Section type의 table entry와 payload를 bounded fixture 안에서 찾는다. */
+static unsigned char *find_section(
+    unsigned char *bytes,
+    uint32_t type,
+    unsigned char **payload_out) {
+    const uint32_t table =
+        read_u32(bytes, RIBON_PARUS_RPH1_HEADER_SECTION_TABLE_OFFSET);
+    const uint16_t count =
+        read_u16(bytes, RIBON_PARUS_RPH1_HEADER_SECTION_COUNT_OFFSET);
+    for (uint16_t index = 0u; index < count; ++index) {
+        unsigned char *entry =
+            bytes + table +
+            ((uint64_t)index * RIBON_PARUS_RPH1_SECTION_ENTRY_SIZE);
+        if (read_u32(entry, RIBON_PARUS_RPH1_SECTION_TYPE_OFFSET) == type) {
+            *payload_out =
+                bytes + read_u64(
+                    entry,
+                    RIBON_PARUS_RPH1_SECTION_PAYLOAD_OFFSET);
+            return entry;
+        }
+    }
+    *payload_out = 0;
+    return 0;
 }
 
 int main(void) {
@@ -168,6 +216,22 @@ int main(void) {
     uint32_t total_size;
     uint32_t table_offset;
     uint64_t first_payload;
+    static const struct RibonBootModule modules[] = {
+        {
+            .name = "init",
+            .physical_address = 0x300000u,
+            .size = 0x8000u,
+            .role = RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE,
+        },
+        {
+            .name = "aux",
+            .physical_address = 0x310000u,
+            .size = 0x4000u,
+            .role = RIBON_BOOT_MODULE_ROLE_AUXILIARY,
+        },
+    };
+    unsigned char *module_section;
+    unsigned char *module_payload;
 
     expect(RIBON_PARUS_ENTRY_FLAG_RPH1 == 0x1u, "RPH1 entry flag is bit 0");
     expect(RIBON_PARUS_ENTRY_FLAG_DIRECT_DTB == 0x2u, "direct DTB entry flag is bit 1");
@@ -199,6 +263,128 @@ int main(void) {
            "parser accepts builder output");
     expect(view.total_size == artifact.size && view.section_count == artifact.section_count,
            "parser publishes bounded view metadata");
+
+    expect(
+        build_fixture_with_inputs(
+            valid,
+            &artifact,
+            "protocol=parus",
+            14u,
+            modules,
+            2u) == RIBON_PROTOCOL_HANDOFF_STATUS_OK,
+        "builder accepts one initial image and ordered auxiliary module");
+    expect(
+        ribon_parus_parse_rph1(valid, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_OK,
+        "parser accepts typed module inventory");
+    module_section = find_section(
+        valid,
+        RIBON_PARUS_RPH1_SECTION_MODULES,
+        &module_payload);
+    expect(
+        module_section != 0 && module_payload != 0 &&
+            read_u32(
+                module_section,
+                RIBON_PARUS_RPH1_SECTION_FLAGS_OFFSET) ==
+                (RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND |
+                 RIBON_PARUS_RPH1_SECTION_BORROWED_RANGE_DESCRIPTOR) &&
+            read_u32(module_payload, 0u) == 2u &&
+            read_u32(module_payload + 8u, 16u) ==
+                RIBON_PARUS_RPH1_MODULE_FLAG_INITIAL_IMAGE &&
+            read_u32(
+                module_payload + 8u +
+                    RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
+                16u) == 0u,
+        "module section records required borrowed role semantics");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_MODULES,
+        &module_payload);
+    write_u32(module_payload + 8u, 16u, 2u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects unknown module role flag");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_MODULES,
+        &module_payload);
+    write_u32(
+        module_payload + 8u + RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
+        16u,
+        RIBON_PARUS_RPH1_MODULE_FLAG_INITIAL_IMAGE);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects duplicate initial image");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_MODULES,
+        &module_payload);
+    write_u64(module_payload + 8u, 0u, 0u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects zero module address");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_MODULES,
+        &module_payload);
+    write_u64(
+        module_payload + 8u + RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
+        0u,
+        0x307000u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects overlapping modules");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_MODULES,
+        &module_payload);
+    write_u64(module_payload + 8u, 0u, 0x200000u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects module and kernel overlap");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated,
+        RIBON_PARUS_RPH1_SECTION_MODULES,
+        &module_payload);
+    write_u64(module_payload + 8u, 24u, 1u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects nonzero reserved name digest");
+
+    expect(
+        build_fixture(valid, &artifact) == RIBON_PROTOCOL_HANDOFF_STATUS_OK,
+        "builder restores command-only fixture");
+    total_size =
+        read_u32(valid, RIBON_PARUS_RPH1_HEADER_TOTAL_SIZE_OFFSET);
+    table_offset =
+        read_u32(valid, RIBON_PARUS_RPH1_HEADER_SECTION_TABLE_OFFSET);
+    first_payload = read_u64(
+        valid + table_offset,
+        RIBON_PARUS_RPH1_SECTION_PAYLOAD_OFFSET);
 
     memcpy(mutated, valid, total_size);
     mutated[first_payload] ^= 0x1u;

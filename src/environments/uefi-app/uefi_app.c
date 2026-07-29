@@ -591,6 +591,72 @@ int ribon_uefi_app_open_boot_source(
     return RIBON_UEFI_APP_STATUS_OUT_OF_CAPACITY;
 }
 
+/** @brief Canonical file을 page allocation에 exact read해 typed module로 고정한다. */
+int ribon_uefi_app_load_boot_module(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    enum RibonBootModuleRole role,
+    struct RibonBootModule *out) {
+    EFI_FILE_PROTOCOL *file = 0;
+    EFI_PHYSICAL_ADDRESS allocation = 0u;
+    uint64_t size = 0u;
+    UINTN pages;
+    EFI_STATUS allocation_status;
+    int status;
+    if (out != 0) {
+        *out = (struct RibonBootModule){0};
+    }
+    if (context == 0 || context->boot_services == 0 || path == 0 || out == 0 ||
+        (role != RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE &&
+         role != RIBON_BOOT_MODULE_ROLE_AUXILIARY)) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    status = uefi_open_file(context, path, &file);
+    if (status != RIBON_UEFI_APP_STATUS_OK ||
+        uefi_file_size(file, &size) != RIBON_UEFI_APP_STATUS_OK ||
+        size == 0u || size > RIBON_UEFI_BOOT_MODULE_MAX_SIZE ||
+        size > UINT64_MAX - 4095u) {
+        if (file != 0 && file->Close != 0) {
+            (void)file->Close(file);
+        }
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    pages = (UINTN)((size + 4095u) / 4096u);
+    allocation_status = context->boot_services->AllocatePages(
+        AllocateAnyPages,
+        EfiLoaderData,
+        pages,
+        &allocation);
+    if (EFI_ERROR(allocation_status) || allocation == 0u) {
+        if (file->Close != 0) {
+            (void)file->Close(file);
+        }
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    memset((void *)(uintptr_t)allocation, 0, pages * 4096u);
+    status = uefi_file_read_exact(
+        file,
+        0u,
+        (void *)(uintptr_t)allocation,
+        size);
+    if (file->Close == 0 || EFI_ERROR(file->Close(file))) {
+        status = RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    if (status != RIBON_UEFI_APP_STATUS_OK) {
+        if (context->boot_services->FreePages != 0) {
+            (void)context->boot_services->FreePages(allocation, pages);
+        }
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    *out = (struct RibonBootModule){
+        .name = path,
+        .physical_address = allocation,
+        .size = size,
+        .role = role,
+    };
+    return RIBON_UEFI_APP_STATUS_OK;
+}
+
 /** @brief Captured UEFI Block I/O를 immutable generic read-only block descriptor로 반환한다. */
 int ribon_uefi_app_read_only_block_device(
     struct RibonUefiAppContext *context,
@@ -782,9 +848,11 @@ int ribon_uefi_app_place_payload(
 int ribon_uefi_app_exit_boot_services(
     struct RibonUefiAppContext *context,
     struct RibonBootEnvironment *environment,
+    const struct RibonBootEnvironmentPersistentInputs *persistent_inputs,
     RibonUefiRefreshPlanFn refresh,
     void *refresh_context) {
-    if (context == 0 || environment == 0 || refresh == 0 ||
+    if (context == 0 || environment == 0 || persistent_inputs == 0 ||
+        refresh == 0 ||
         context->boot_services == 0) {
         return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
     }
@@ -793,6 +861,11 @@ int ribon_uefi_app_exit_boot_services(
         int capture_status = ribon_uefi_app_capture_environment(context, environment);
         if (capture_status != RIBON_UEFI_APP_STATUS_OK) {
             return capture_status;
+        }
+        if (!ribon_boot_environment_apply_persistent_inputs(
+                environment,
+                persistent_inputs)) {
+            return RIBON_UEFI_APP_STATUS_PAYLOAD_ERROR;
         }
         if (refresh(refresh_context, environment) != 0) {
             return RIBON_UEFI_APP_STATUS_PAYLOAD_ERROR;

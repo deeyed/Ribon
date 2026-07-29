@@ -21,6 +21,9 @@
 /** @brief UEFI native path conversion의 NUL 포함 UTF-16 code unit 상한이다. */
 #define RIBON_UEFI_PATH_CAPACITY 128u
 
+/** @brief 한 page-backed boot module의 최대 byte 수다. */
+#define RIBON_UEFI_BOOT_MODULE_MAX_SIZE (64ull * 1024ull * 1024ull)
+
 /** @brief Environment-private UEFI file handle과 validated byte size다. */
 struct RibonUefiFileSource {
     EFI_FILE_PROTOCOL *handle; /**< ExitBootServices 전까지만 유효한 native handle이다. */
@@ -81,6 +84,17 @@ int ribon_uefi_app_open_boot_source(
     const char *path,
     struct RibonBootSource *out);
 
+/**
+ * @brief Canonical UEFI file을 exact-size page-backed boot module로 적재한다.
+ *
+ * Allocation은 `EfiLoaderData`이며 반환 descriptor는 exact file byte 수를 보존한다.
+ */
+int ribon_uefi_app_load_boot_module(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    enum RibonBootModuleRole role,
+    struct RibonBootModule *out);
+
 /** @brief UEFI Block I/O를 native type 없는 bounded read-only block provider로 변환한다. */
 int ribon_uefi_app_read_only_block_device(
     struct RibonUefiAppContext *context,
@@ -105,6 +119,7 @@ int ribon_uefi_app_place_payload(
 int ribon_uefi_app_exit_boot_services(
     struct RibonUefiAppContext *context,
     struct RibonBootEnvironment *environment,
+    const struct RibonBootEnvironmentPersistentInputs *persistent_inputs,
     RibonUefiRefreshPlanFn refresh,
     void *refresh_context);
 

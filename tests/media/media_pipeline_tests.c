@@ -262,7 +262,12 @@ static int test_config(void) {
         "entry=backup\npriority=10\nprotocol=parus\nimage=elf64\n"
         "kernel=/RIBON/BACKUP.ELF\nend\n"
         "entry=primary\npriority=100\nprotocol=parus\nimage=elf64\n"
-        "kernel=/RIBON/PAYLOAD.ELF\nmodule=/RIBON/INITRD.IMG\ncmdline=console=ttyS0\nend\n";
+        "kernel=/RIBON/PAYLOAD.ELF\ninit_image=/RIBON/INIT.IMG\n"
+        "module=/RIBON/EXTRA.IMG\ncmdline=console=ttyS0\nend\n";
+    static const unsigned char duplicate_init[] =
+        "version=1\nentry=bad\npriority=1\nprotocol=parus\nimage=elf64\n"
+        "kernel=/RIBON/PAYLOAD.ELF\ninit_image=/RIBON/A.IMG\n"
+        "init_image=/RIBON/B.IMG\nend\n";
     static const unsigned char traversal[] =
         "version=1\nentry=bad\npriority=1\nprotocol=parus\nimage=elf64\n"
         "kernel=/RIBON/../PAYLOAD.ELF\nend\n";
@@ -279,9 +284,18 @@ static int test_config(void) {
     if (!expect(
             valid_parse == RIBON_BOOT_CONFIG_STATUS_OK &&
                 valid_select == RIBON_BOOT_CONFIG_STATUS_OK && selected != 0 &&
-                selected->priority == 100u && selected->module_count == 1u,
+                selected->priority == 100u && selected->module_count == 1u &&
+                selected->has_init_image == 1u,
             "valid boot configuration rejected")) {
         fprintf(stderr, "media_pipeline_tests: config parse=%d select=%d\n", valid_parse, valid_select);
+        return 0;
+    }
+    if (!expect(
+            ribon_boot_configuration_parse(
+                duplicate_init,
+                sizeof(duplicate_init) - 1u,
+                &configuration) == RIBON_BOOT_CONFIG_STATUS_DUPLICATE_KEY,
+            "duplicate initial image accepted")) {
         return 0;
     }
     if (!expect(

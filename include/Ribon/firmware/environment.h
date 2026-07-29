@@ -97,18 +97,36 @@ struct RibonCommandLine {
     uint32_t length;
 };
 
+/** @brief Boot module의 semantic role이다. */
+enum RibonBootModuleRole {
+    RIBON_BOOT_MODULE_ROLE_INVALID = 0,
+    RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE = 1,
+    RIBON_BOOT_MODULE_ROLE_AUXILIARY = 2,
+};
+
 /** @brief 한 boot module의 physical range다. */
 struct RibonBootModule {
     const char *name;
     uint64_t physical_address;
     uint64_t size;
-    uint32_t flags;
+    enum RibonBootModuleRole role;
 };
 
 /** @brief Borrowed boot module array다. */
 struct RibonBootModuleList {
     const struct RibonBootModule *modules;
     uint32_t module_count;
+};
+
+/**
+ * @brief Firmware memory-map 재캡처 뒤에도 유지할 target 선택 결과다.
+ *
+ * 모든 pointer는 handoff 준비가 끝날 때까지 caller가 소유하며 immutable해야 한다.
+ */
+struct RibonBootEnvironmentPersistentInputs {
+    struct RibonBootMedia boot_media;
+    struct RibonBootModuleList boot_modules;
+    struct RibonCommandLine command_line;
 };
 
 /**
@@ -144,5 +162,14 @@ void ribon_boot_environment_init(
 
 /** @brief Environment field와 flag/pointer 일관성을 검사한다. */
 int ribon_boot_environment_is_valid(const struct RibonBootEnvironment *environment);
+
+/**
+ * @brief Capture된 environment에 immutable target 선택 결과를 다시 적용한다.
+ *
+ * 최초 capture와 모든 final-map recapture 뒤 같은 값을 적용해야 한다.
+ */
+int ribon_boot_environment_apply_persistent_inputs(
+    struct RibonBootEnvironment *environment,
+    const struct RibonBootEnvironmentPersistentInputs *inputs);
 
 #endif

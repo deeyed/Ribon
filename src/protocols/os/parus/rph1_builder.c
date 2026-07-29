@@ -211,19 +211,19 @@ static int rph1_append_kernel_layout(
 
 /** @brief Architecture descriptor를 RPH1 provenance ID로 변환한다. */
 static uint32_t rph1_arch_id(const struct RibonArchDescriptor *arch) {
-    if (arch == 0 || arch->canonical_name == 0) {
+    if (arch == 0) {
         return 0u;
     }
-    if (strcmp(arch->canonical_name, "x86_64") == 0) {
+    switch (arch->id) {
+    case RIBON_ARCHITECTURE_X86_64:
         return 1u;
-    }
-    if (strcmp(arch->canonical_name, "aarch64") == 0) {
+    case RIBON_ARCHITECTURE_AARCH64:
         return 2u;
-    }
-    if (strcmp(arch->canonical_name, "riscv64") == 0) {
+    case RIBON_ARCHITECTURE_RISCV64:
         return 3u;
+    default:
+        return 0u;
     }
-    return 0u;
 }
 
 static int rph1_append_provenance(
@@ -344,6 +344,7 @@ static int rph1_append_framebuffer(
 
 static int rph1_append_modules(
     struct Rph1Writer *writer,
+    const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment) {
     uint32_t count = environment->boot_modules.module_count;
     uint64_t payload_size;
@@ -353,14 +354,41 @@ static int rph1_append_modules(
         return RIBON_PROTOCOL_HANDOFF_STATUS_OK;
     }
     if (environment->boot_modules.modules == 0 ||
-        count > (RIBON_PARUS_RPH1_MAX_TOTAL_SIZE - 8u) / RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE) {
+        count > RIBON_PARUS_RPH1_MAX_MODULES ||
+        plan->kernel_load_end <= plan->kernel_load_base) {
         return RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN;
+    }
+    for (uint32_t index = 0u; index < count; ++index) {
+        const struct RibonBootModule *module =
+            &environment->boot_modules.modules[index];
+        uint64_t module_end;
+        if (module->physical_address == 0u || module->size == 0u ||
+            rph1_add_overflows(module->physical_address, module->size) ||
+            (module->role != RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE &&
+             module->role != RIBON_BOOT_MODULE_ROLE_AUXILIARY)) {
+            return RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN;
+        }
+        module_end = module->physical_address + module->size;
+        if (module->physical_address < plan->kernel_load_end &&
+            plan->kernel_load_base < module_end) {
+            return RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN;
+        }
+        for (uint32_t previous = 0u; previous < index; ++previous) {
+            const struct RibonBootModule *other =
+                &environment->boot_modules.modules[previous];
+            if (module->physical_address <
+                    other->physical_address + other->size &&
+                other->physical_address < module_end) {
+                return RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN;
+            }
+        }
     }
     payload_size = 8u + ((uint64_t)count * RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE);
     status = rph1_reserve_section(
         writer,
         RIBON_PARUS_RPH1_SECTION_MODULES,
-        0u,
+        RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND |
+            RIBON_PARUS_RPH1_SECTION_BORROWED_RANGE_DESCRIPTOR,
         payload_size,
         &payload);
     if (status != RIBON_PROTOCOL_HANDOFF_STATUS_OK) {
@@ -374,7 +402,12 @@ static int rph1_append_modules(
                                ((uint64_t)index * RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE);
         rph1_write_u64(entry, 0u, source->physical_address);
         rph1_write_u64(entry, 8u, source->size);
-        rph1_write_u32(entry, 16u, source->flags);
+        rph1_write_u32(
+            entry,
+            16u,
+            source->role == RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE ?
+                RIBON_PARUS_RPH1_MODULE_FLAG_INITIAL_IMAGE :
+                0u);
         rph1_write_u32(entry, 20u, 0u);
         rph1_write_u64(entry, 24u, 0u);
     }
@@ -500,7 +533,7 @@ int ribon_parus_build_rph1(
         status = rph1_append_framebuffer(&writer, environment);
     }
     if (status == RIBON_PROTOCOL_HANDOFF_STATUS_OK) {
-        status = rph1_append_modules(&writer, environment);
+        status = rph1_append_modules(&writer, plan, environment);
     }
     if (status == RIBON_PROTOCOL_HANDOFF_STATUS_OK) {
         status = rph1_append_boot_media(&writer, environment);
