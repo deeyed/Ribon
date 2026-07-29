@@ -1,0 +1,11 @@
+@policy(
+    capabilities=[
+        Capability.HANDOFF,
+        Capability.BOOT,
+    ],
+    helper_budget=2,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    handoff.set(HandoffKey.BOOT_SLOT, True)?
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

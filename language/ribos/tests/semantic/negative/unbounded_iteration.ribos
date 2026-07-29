@@ -1,0 +1,10 @@
+@policy(
+    capabilities=[Capability.BOOT],
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    for item in ctx {
+        let copy = item
+    }
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

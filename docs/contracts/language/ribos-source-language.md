@@ -6,6 +6,11 @@ last_verified: 2026-07-30
 code_paths:
   - language/ribos/grammar/parser.gram
   - language/ribos/grammar/Tokens
+  - language/ribos/include/ribos/compiler.h
+  - language/ribos/src/ast.c
+  - language/ribos/src/compiler.c
+  - language/ribos/src/dump.c
+  - language/ribos/src/semantic.c
   - language/ribos/tools/
   - src/policy/
 tests:
@@ -14,6 +19,8 @@ tests:
   - ribos-lexer-conformance
   - ribos-negative-syntax
   - ribos-type-negative
+  - ribos-capability-negative
+  - ribos-deterministic-semantic-dump
   - ribos-budget-negative
   - ribon-docs
 hardware:
@@ -56,6 +63,53 @@ Ribos source file의 확장자는 `.ribos`다. 한 source file은 다음 declara
 Top-level executable statement, nested function, import와 module initializer는 허용하지
 않는다. Product가 여러 source file을 조합하는 방식은 language grammar가 아니라
 signed package manifest가 정의한다.
+
+## Front-end phase와 source model
+
+Conforming host front-end는 다음 phase ordering을 보존한다.
+
+```text
+UTF-8 validation
+  -> lossless token/trivia
+  -> Pegen syntax recognition과 AST reduction
+  -> declaration/name resolution
+  -> type와 mutation
+  -> closed match와 propagation
+  -> effect/capability와 source-level bound
+  -> typed AST
+```
+
+Token은 kind, half-open byte span, 1-based line/column과 leading-trivia range를 가진다.
+Trivia는 space, physical newline과 comment를 구분한다. Logical `NEWLINE` token과
+physical newline trivia는 같은 것이 아니다. 전자는 grammar separator이고 후자는
+formatter와 source reconstruction 입력이다.
+
+AST node는 Ribos construct kind, stable numeric ID, source span, child relation,
+operator와 inferred type ID를 가진다. AST에 Python object, reference count, exception
+state와 process pointer identity를 포함하지 않는다.
+
+Deterministic dump는 같은 source와 selected schema에서 byte-for-byte 같아야 한다.
+Raw pointer와 allocator address는 dump에 포함하지 않는다.
+
+Host allocation은 다음 language implementation limit를 넘을 수 없다.
+
+```text
+source bytes        1 MiB
+token records       65,536
+trivia records      131,072
+parser depth        512
+AST reductions      65,536
+parser arena bytes  16 MiB
+transient gather     8 MiB live bytes
+semantic types      256
+functions           64
+parameters/function 16
+locals/function     256
+scope depth         64
+```
+
+Host compiler의 bounded heap은 production VM heap을 뜻하지 않는다. Firmware source
+parser를 선택하는 product는 같은 의미를 caller-owned fixed storage로 제공해야 한다.
 
 ## Character와 encoding
 

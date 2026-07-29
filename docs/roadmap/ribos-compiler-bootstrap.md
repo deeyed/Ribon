@@ -6,6 +6,8 @@ last_verified: 2026-07-30
 code_paths:
   - language/ribos/grammar/
   - language/ribos/generated/
+  - language/ribos/include/ribos/
+  - language/ribos/src/
   - language/ribos/tools/
   - language/ribos/tests/
   - build/generated/ribos/
@@ -15,6 +17,9 @@ tests:
   - ribos-parser-conformance
   - ribos-negative-syntax
   - ribos-generated-parser-reproducibility
+  - ribos-typed-ast
+  - ribos-type-negative
+  - ribos-capability-negative
 hardware:
   - none
 supersedes:
@@ -63,7 +68,7 @@ Host parser lane은 CPython Pegen의 grammar reader와 C generator를 사용한�
 .ribos source
   -> Ribos lexer token stream
   -> Pegen-generated C parser
-  -> generic CST 또는 typed AST builder
+  -> Ribos bounded AST builder
 ```
 
 Generated C source와 token number header는 다음 tracked operational snapshot이다.
@@ -130,33 +135,24 @@ top-level statement
 
 각 negative fixture는 stable diagnostic category와 primary source span을 가진다.
 
-## G3: Standalone fixed parser backend
+## G3: Lossless token과 bounded AST
 
-Firmware parser를 선택하는 product는 Pegen grammar를 공유하되 CPython C runtime을
-사용하지 않는다. Ribon C backend는 다음 storage를 caller-owned context에 둔다.
+Host front-end는 logical parser token과 source-preserving trivia를 분리하고 Pegen
+production action에서 Ribos tagged AST를 직접 만든다.
 
 ```text
-fixed token array
-fixed AST arena
-fixed list-item arena
-fixed memo table
-fixed diagnostic array
-immutable source byte span
+token:
+  kind + byte span + line/column + leading trivia range
+
+trivia:
+  space | physical newline | comment
+
+AST:
+  numeric node ID + construct kind + source span
+  + child relation + operator + inferred type ID
 ```
 
-다음 generator emission을 Ribon primitive로 치환한다.
-
-| CPython C emission | Ribon emission |
-| --- | --- |
-| `PyMem_Malloc/Realloc/Free` | fixed arena allocation과 capacity failure |
-| `asdl_seq` | indexed fixed sequence span |
-| `PyObject` token value | source offset/length와 token kind |
-| `PyErr_*` | stable bounded diagnostic |
-| `PyArena` memo node | fixed memo slot |
-| Python identifier cache | bounded symbol table 또는 source slice |
-
-Grammar의 repetition과 gather는 product limit를 넘어갈 때
-`RIBOS_PARSE_LIMIT_EXCEEDED`로 종료한다. Heap fallback은 없다.
+AST dump는 raw pointer를 포함하지 않고 parse마다 같은 record ordering을 유지한다.
 
 ## G4: AST와 type surface
 
@@ -186,9 +182,58 @@ Type stage는 다음 순서로 닫는다.
 7. exhaustive match
 8. Option/Result propagation
 9. helper typestate
-10. effect, capability와 worst-path budget
+10. effect, capability와 worst-path helper bound
 
-## G5: Parser acceptance gate
+Worst-path helper bound는 sequential composition, branch maximum, bounded loop multiplier와
+reachable user call graph를 포함한다. Recursive call graph는 거부한다.
+
+## G5: Policy IR 준비 경계
+
+Typed AST가 Policy IR로 내려가기 전에 다음 입력이 봉인된다.
+
+```text
+resolved type ID
+required capability union
+helper call-site table
+helper-call upper bound
+maximum call depth
+declared instruction/helper budget
+source map
+selected helper/type/handoff schema identity
+```
+
+AST node 수는 VM instruction 수가 아니다. Exact instruction budget, basic block,
+control-flow target과 stack slot은 Policy IR lowering이 소유한다.
+
+## G6: Standalone fixed parser backend
+
+Firmware parser를 선택하는 product는 Pegen grammar를 공유하되 CPython C runtime을
+사용하지 않는다. Ribon C backend는 다음 storage를 caller-owned context에 둔다.
+
+```text
+fixed token array
+fixed AST arena
+fixed list-item arena
+fixed memo table
+fixed diagnostic array
+immutable source byte span
+```
+
+다음 generator emission을 Ribon primitive로 치환한다.
+
+| CPython C emission | Ribon emission |
+| --- | --- |
+| `PyMem_Malloc/Realloc/Free` | fixed arena allocation과 capacity failure |
+| `asdl_seq` | indexed fixed sequence span |
+| `PyObject` token value | source offset/length와 token kind |
+| `PyErr_*` | stable bounded diagnostic |
+| `PyArena` memo node | fixed memo slot |
+| Python identifier cache | bounded symbol table 또는 source slice |
+
+Grammar의 repetition과 gather는 product limit를 넘어갈 때
+`RIBOS_PARSE_LIMIT_EXCEEDED`로 종료한다. Heap fallback은 없다.
+
+## G7: Front-end acceptance gate
 
 Parser slice의 acceptance는 다음을 모두 요구한다.
 
@@ -199,6 +244,10 @@ generated host C parser compile
 positive corpus parse pass
 negative corpus stable rejection pass
 formatter parse-format-parse equality
+deterministic token/trivia와 typed AST dump
+type, mutation와 collection negative corpus
+match, propagation와 typestate corpus
+capability, pure-effect, recursion과 budget negative corpus
 repository documentation lint pass
 Sphinx warnings-as-errors pass
 ```
@@ -206,35 +255,17 @@ Sphinx warnings-as-errors pass
 이 gate는 다음을 주장하지 않는다.
 
 - standalone no-heap firmware parser
-- typed AST completion
 - bytecode generation
 - static verifier completion
 - policy VM execution
 - Ribon boot product linkage
 - QEMU 또는 physical hardware policy execution
 
-## 첫 구현 slice
+## Remaining compiler/runtime closure
 
-첫 parser 구현 slice는 G0, G1과 G2를 함께 수행한다. Accepted EBNF를 Pegen grammar로
-내리고, tracked C snapshot을 standalone host runtime과 연결하며 같은 surface의
-positive/negative syntax corpus로 검사한다.
+G5 뒤의 독립 작업은 Policy IR, bytecode emission, static artifact verifier와 VM
+execution이다. G6 fixed-storage parser는 source를 firmware에서 받아야 하는 product만
+선택한다.
 
-첫 slice의 결과는 다음으로 제한한다.
-
-```text
-tracked:
-  language/ribos/README.md
-  language/ribos/grammar/parser.gram
-  language/ribos/grammar/Tokens
-  language/ribos/generated/parser.c
-  language/ribos/generated/parser.receipt.json
-  language/ribos/generated/tokens.h
-  language/ribos/include/ribos/parser.h
-  language/ribos/src/
-  language/ribos/tests/
-  language/ribos/tools/
-  generator와 staleness-check wrapper
-```
-
-Standalone fixed-allocation C parser는 G3의 별도 acceptance를 요구한다. Host C parser
-생성 성공을 firmware-ready parser로 표현하지 않는다.
+Host compiler 성공을 firmware-ready parser, artifact verifier 또는 VM execution으로
+표현하지 않는다.

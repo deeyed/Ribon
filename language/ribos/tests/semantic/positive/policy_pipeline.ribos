@@ -1,0 +1,37 @@
+@pure
+def select_profile(revision: BoardRevision) -> Profile {
+    return if revision >= BoardRevision.V3 {
+        Profile.ETH_PHY_B
+    } else {
+        Profile.ETH_PHY_A
+    }
+}
+
+@policy(
+    capabilities=[
+        Capability.INSPECT,
+        Capability.DEVICE,
+        Capability.HANDOFF,
+        Capability.BOOT,
+    ],
+    instruction_budget=2048,
+    helper_budget=8,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    # This comment must survive in the lossless token/trivia model.
+    let devices: Array[Device, 2] = [
+        Device.UART0,
+        Device.STORAGE0,
+    ]
+    let profile = select_profile(ctx.board.revision)
+
+    for dev in devices {
+        device.init(dev, profile)?
+    }
+
+    let target = slot.selected()
+    let candidate = slot.image(target)?
+    let verified = image.verify(candidate)?
+    handoff.set(HandoffKey.BOOT_SLOT, target)?
+    return Ok(boot.slot(target, verified))
+}

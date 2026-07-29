@@ -1,0 +1,23 @@
+@pure
+def profile_for(revision: BoardRevision) -> Profile {
+    let profiles: FrozenMap[BoardRevision, Profile, 2] = {
+        BoardRevision.V1: Profile.ETH_PHY_A,
+        BoardRevision.V2: Profile.ETH_PHY_B,
+    }
+    return profiles.get(
+        revision,
+        default=Profile.ETH_PHY_A,
+    )
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=512,
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let selected = profile_for(ctx.board.revision)
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

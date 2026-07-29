@@ -38,8 +38,8 @@ ribos_copy_token_spelling(
     output[length] = '\0';
 }
 
-static void
-ribos_set_syntax_diagnostic(
+void
+ribos_parser_set_syntax_diagnostic(
     const Parser *parser,
     RibosDiagnostic *diagnostic)
 {
@@ -86,8 +86,8 @@ ribos_set_syntax_diagnostic(
     }
 }
 
-static void
-ribos_free_arena(Parser *parser)
+void
+ribos_parser_release(Parser *parser)
 {
     RibosArenaAllocation *allocation = parser->arena_allocations;
 
@@ -96,6 +96,8 @@ ribos_free_arena(Parser *parser)
         free(allocation);
         allocation = next;
     }
+    ribos_free_token_stream(parser->tokens, parser->trivia);
+    memset(parser, 0, sizeof(*parser));
 }
 
 RibosParseStatus
@@ -109,7 +111,7 @@ ribos_parse_source(
         .farthest_mark = 0,
         .failure_status = RIBOS_PARSE_SYNTAX_ERROR,
     };
-    RibosParseSummary *generated_result;
+    RibosAstNode *generated_result;
     RibosParseStatus status;
 
     if (source == NULL || summary == NULL || diagnostic == NULL) {
@@ -121,6 +123,8 @@ ribos_parse_source(
         source_length,
         &parser.tokens,
         &parser.token_count,
+        &parser.trivia,
+        &parser.trivia_count,
         diagnostic);
     if (status != RIBOS_PARSE_OK) {
         return status;
@@ -135,14 +139,13 @@ ribos_parse_source(
     parser.result.max_parser_depth = parser.max_parser_depth;
     if (generated_result == NULL || parser.error_indicator != 0) {
         status = parser.failure_status;
-        ribos_set_syntax_diagnostic(&parser, diagnostic);
+        ribos_parser_set_syntax_diagnostic(&parser, diagnostic);
     } else {
         *summary = parser.result;
         status = RIBOS_PARSE_OK;
     }
 
-    ribos_free_arena(&parser);
-    ribos_free_tokens(parser.tokens);
+    ribos_parser_release(&parser);
     return status;
 }
 

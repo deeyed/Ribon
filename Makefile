@@ -89,10 +89,15 @@ RIBOS_PEGEN_ROOT ?=
 RIBOS_PARSER_SRCS := \
 	language/ribos/src/lexer.c \
 	language/ribos/src/runtime.c \
+	language/ribos/src/ast.c \
 	language/ribos/src/parser.c \
+	language/ribos/src/compiler.c \
+	language/ribos/src/semantic.c \
+	language/ribos/src/dump.c \
 	language/ribos/generated/parser.c \
 	language/ribos/tools/parse.c
 RIBOS_PARSER_HEADERS := \
+	language/ribos/include/ribos/compiler.h \
 	language/ribos/include/ribos/parser.h \
 	language/ribos/src/parser_internal.h \
 	language/ribos/generated/tokens.h
@@ -379,6 +384,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
 	ribos-parser-pilot check-ribos-parser-snapshot check-ribos-parser-pilot \
+	check-ribos-semantics \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
@@ -413,6 +419,10 @@ check-ribos-parser-pilot: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
 		--parser $(RIBOS_PARSER_PILOT)
 	$(RIBOS_PARSER_PILOT) \
 		language/ribos/tests/positive/full_boot_policy.ribos
+
+check-ribos-semantics: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
+	$(PYTHON) language/ribos/tests/semantic_tests.py \
+		--parser $(RIBOS_PARSER_PILOT)
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1120,7 +1130,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
 check: legacy-hard-cut check-public-api check-frontends check-loader \
-	check-ribos-parser-pilot \
+	check-ribos-parser-pilot check-ribos-semantics \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

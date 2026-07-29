@@ -2,6 +2,13 @@
 
 static _Thread_local Parser *ribos_active_parser;
 
+typedef struct RibosTransientAllocation {
+    Parser *owner;
+    size_t size;
+    max_align_t alignment;
+    unsigned char bytes[];
+} RibosTransientAllocation;
+
 static int
 ribos_token_matches(const Token *token, const char *spelling)
 {
@@ -145,7 +152,6 @@ void *
 _Py_asdl_generic_seq_new(Py_ssize_t size, void *arena)
 {
     Parser *parser = arena;
-    RibosArenaAllocation *allocation;
     asdl_seq *sequence;
     size_t payload_size;
 
@@ -157,49 +163,120 @@ _Py_asdl_generic_seq_new(Py_ssize_t size, void *arena)
         return NULL;
     }
     payload_size = sizeof(*sequence) + (size_t)size * sizeof(void *);
-    if (payload_size > SIZE_MAX - sizeof(*allocation)) {
-        parser->failure_status = RIBOS_PARSE_NO_MEMORY;
+    sequence = ribos_arena_allocate(parser, payload_size);
+    if (sequence == NULL) {
         return NULL;
     }
-
-    allocation = malloc(sizeof(*allocation) + payload_size);
-    if (allocation == NULL) {
-        parser->failure_status = RIBOS_PARSE_NO_MEMORY;
-        return NULL;
-    }
-    allocation->next = parser->arena_allocations;
-    parser->arena_allocations = allocation;
-    sequence = (asdl_seq *)allocation->bytes;
     sequence->size = size;
     return sequence;
+}
+
+asdl_seq *
+_PyPegen_seq_insert_in_front(
+    Parser *parser,
+    void *element,
+    asdl_seq *sequence)
+{
+    asdl_seq *result;
+    Py_ssize_t index;
+    Py_ssize_t tail_size = sequence == NULL ? 0 : sequence->size;
+
+    if (element == NULL || tail_size < 0) {
+        return NULL;
+    }
+    result = _Py_asdl_generic_seq_new(tail_size + 1, parser);
+    if (result == NULL) {
+        return NULL;
+    }
+    asdl_seq_SET_UNTYPED(result, 0, element);
+    for (index = 0; index < tail_size; ++index) {
+        asdl_seq_SET_UNTYPED(result, index + 1, sequence->elements[index]);
+    }
+    return result;
 }
 
 void *
 PyMem_Malloc(size_t size)
 {
-    void *allocation = malloc(size);
+    RibosTransientAllocation *allocation;
+    Parser *parser = ribos_active_parser;
 
-    if (allocation == NULL && ribos_active_parser != NULL) {
-        ribos_active_parser->failure_status = RIBOS_PARSE_NO_MEMORY;
+    if (parser == NULL || size > SIZE_MAX - sizeof(*allocation) ||
+        size > RIBOS_MAX_TRANSIENT_BYTES - parser->transient_bytes) {
+        if (parser != NULL) {
+            parser->failure_status = RIBOS_PARSE_LIMIT_EXCEEDED;
+            parser->error_indicator = 1;
+        }
+        return NULL;
     }
-    return allocation;
+    allocation = malloc(sizeof(*allocation) + size);
+    if (allocation == NULL) {
+        parser->failure_status = RIBOS_PARSE_NO_MEMORY;
+        parser->error_indicator = 1;
+        return NULL;
+    }
+    allocation->owner = parser;
+    allocation->size = size;
+    parser->transient_bytes += size;
+    if (parser->transient_bytes > parser->peak_transient_bytes) {
+        parser->peak_transient_bytes = parser->transient_bytes;
+    }
+    return allocation->bytes;
 }
 
 void *
 PyMem_Realloc(void *allocation, size_t size)
 {
-    void *replacement = realloc(allocation, size);
+    RibosTransientAllocation *header;
+    RibosTransientAllocation *replacement;
+    Parser *parser;
+    size_t retained_bytes;
 
-    if (replacement == NULL && ribos_active_parser != NULL) {
-        ribos_active_parser->failure_status = RIBOS_PARSE_NO_MEMORY;
+    if (allocation == NULL) {
+        return PyMem_Malloc(size);
     }
-    return replacement;
+    header = (RibosTransientAllocation *)(
+        (unsigned char *)allocation -
+        offsetof(RibosTransientAllocation, bytes));
+    parser = header->owner;
+    retained_bytes = parser->transient_bytes - header->size;
+    if (size > SIZE_MAX - sizeof(*header) ||
+        size > RIBOS_MAX_TRANSIENT_BYTES - retained_bytes) {
+        parser->failure_status = RIBOS_PARSE_LIMIT_EXCEEDED;
+        parser->error_indicator = 1;
+        return NULL;
+    }
+    replacement = realloc(header, sizeof(*replacement) + size);
+    if (replacement == NULL) {
+        parser->failure_status = RIBOS_PARSE_NO_MEMORY;
+        parser->error_indicator = 1;
+        return NULL;
+    }
+    replacement->owner = parser;
+    replacement->size = size;
+    parser->transient_bytes = retained_bytes + size;
+    if (parser->transient_bytes > parser->peak_transient_bytes) {
+        parser->peak_transient_bytes = parser->transient_bytes;
+    }
+    return replacement->bytes;
 }
 
 void
 PyMem_Free(void *allocation)
 {
-    free(allocation);
+    RibosTransientAllocation *header;
+
+    if (allocation == NULL) {
+        return;
+    }
+    header = (RibosTransientAllocation *)(
+        (unsigned char *)allocation -
+        offsetof(RibosTransientAllocation, bytes));
+    if (header->owner != NULL &&
+        header->owner->transient_bytes >= header->size) {
+        header->owner->transient_bytes -= header->size;
+    }
+    free(header);
 }
 
 void
@@ -234,12 +311,11 @@ _Pypegen_stack_overflow(Parser *parser)
     parser->failure_status = RIBOS_PARSE_LIMIT_EXCEEDED;
 }
 
-RibosParseSummary *
+RibosAstNode *
 ribos_parser_finish(Parser *parser, const asdl_seq *declarations)
 {
     if (parser == NULL || declarations == NULL) {
         return NULL;
     }
-    parser->result.declaration_count = (size_t)declarations->size;
-    return &parser->result;
+    return ribos_ast_program(parser, (asdl_seq *)declarations);
 }

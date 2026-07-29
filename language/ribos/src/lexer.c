@@ -4,11 +4,16 @@
 
 #define RIBOS_MAX_SOURCE_BYTES (1024u * 1024u)
 #define RIBOS_MAX_TOKENS 65536u
+#define RIBOS_MAX_TRIVIA 131072u
 
 typedef struct RibosTokenBuffer {
     Token *tokens;
     size_t count;
     size_t capacity;
+    RibosTrivia *trivia;
+    size_t trivia_count;
+    size_t trivia_capacity;
+    size_t next_token_trivia_index;
 } RibosTokenBuffer;
 
 typedef struct RibosLexer {
@@ -216,6 +221,63 @@ ribos_validate_utf8(RibosLexer *lexer)
 }
 
 static RibosParseStatus
+ribos_append_trivia(
+    RibosLexer *lexer,
+    RibosTriviaKind kind,
+    size_t start,
+    size_t length,
+    uint32_t line,
+    uint32_t column,
+    uint32_t end_line,
+    uint32_t end_column)
+{
+    RibosTrivia *replacement;
+    size_t new_capacity;
+
+    if (lexer->output.trivia_count == RIBOS_MAX_TRIVIA) {
+        ribos_set_diagnostic(
+            lexer,
+            RIBOS_DIAGNOSTIC_RESOURCE_LIMIT,
+            "",
+            "trivia limit exceeded");
+        return RIBOS_PARSE_LIMIT_EXCEEDED;
+    }
+    if (lexer->output.trivia_count == lexer->output.trivia_capacity) {
+        new_capacity = lexer->output.trivia_capacity == 0 ?
+            128 : lexer->output.trivia_capacity * 2;
+        if (new_capacity > RIBOS_MAX_TRIVIA) {
+            new_capacity = RIBOS_MAX_TRIVIA;
+        }
+        replacement = realloc(
+            lexer->output.trivia,
+            new_capacity * sizeof(*replacement));
+        if (replacement == NULL) {
+            return RIBOS_PARSE_NO_MEMORY;
+        }
+        lexer->output.trivia = replacement;
+        lexer->output.trivia_capacity = new_capacity;
+    }
+    lexer->output.trivia[lexer->output.trivia_count++] = (RibosTrivia){
+        .kind = kind,
+        .start = lexer->source + start,
+        .length = length,
+        .span = {
+            .start = {
+                .byte_offset = start,
+                .line = line,
+                .column = column,
+            },
+            .end = {
+                .byte_offset = start + length,
+                .line = end_line,
+                .column = end_column,
+            },
+        },
+    };
+    return RIBOS_PARSE_OK;
+}
+
+static RibosParseStatus
 ribos_append_token(
     RibosLexer *lexer,
     int type,
@@ -256,9 +318,16 @@ ribos_append_token(
         .start = lexer->source + start,
         .length = length,
         .byte_offset = start,
+        .end_byte_offset = start + length,
         .line = line,
         .column = column,
+        .end_line = line,
+        .end_column = column + (uint32_t)length,
+        .leading_trivia_index = lexer->output.next_token_trivia_index,
+        .leading_trivia_count = lexer->output.trivia_count -
+            lexer->output.next_token_trivia_index,
     };
+    lexer->output.next_token_trivia_index = lexer->output.trivia_count;
     return RIBOS_PARSE_OK;
 }
 
@@ -631,6 +700,8 @@ ribos_lex_source(
     size_t source_length,
     Token **tokens,
     size_t *token_count,
+    RibosTrivia **trivia,
+    size_t *trivia_count,
     RibosDiagnostic *diagnostic)
 {
     RibosLexer lexer = {
@@ -662,8 +733,26 @@ ribos_lex_source(
     while (lexer.offset < lexer.length) {
         byte = (unsigned char)lexer.source[lexer.offset];
         if (byte == ' ') {
-            ++lexer.offset;
-            ++lexer.column;
+            size_t start = lexer.offset;
+            uint32_t column = lexer.column;
+
+            while (lexer.offset < lexer.length &&
+                lexer.source[lexer.offset] == ' ') {
+                ++lexer.offset;
+                ++lexer.column;
+            }
+            status = ribos_append_trivia(
+                &lexer,
+                RIBOS_TRIVIA_SPACE,
+                start,
+                lexer.offset - start,
+                lexer.line,
+                column,
+                lexer.line,
+                lexer.column);
+            if (status != RIBOS_PARSE_OK) {
+                goto fail;
+            }
             continue;
         }
         if (byte == '\t') {
@@ -676,6 +765,10 @@ ribos_lex_source(
             goto fail;
         }
         if (byte == '\r') {
+            size_t start = lexer.offset;
+            uint32_t line = lexer.line;
+            uint32_t column = lexer.column;
+
             if (lexer.offset + 1 >= lexer.length ||
                 lexer.source[lexer.offset + 1] != '\n') {
                 ribos_set_diagnostic(
@@ -693,9 +786,25 @@ ribos_lex_source(
             lexer.offset += 2;
             ++lexer.line;
             lexer.column = 1;
+            status = ribos_append_trivia(
+                &lexer,
+                RIBOS_TRIVIA_NEWLINE,
+                start,
+                2,
+                line,
+                column,
+                lexer.line,
+                lexer.column);
+            if (status != RIBOS_PARSE_OK) {
+                goto fail;
+            }
             continue;
         }
         if (byte == '\n') {
+            size_t start = lexer.offset;
+            uint32_t line = lexer.line;
+            uint32_t column = lexer.column;
+
             status = ribos_emit_newline(&lexer);
             if (status != RIBOS_PARSE_OK) {
                 goto fail;
@@ -703,14 +812,41 @@ ribos_lex_source(
             ++lexer.offset;
             ++lexer.line;
             lexer.column = 1;
+            status = ribos_append_trivia(
+                &lexer,
+                RIBOS_TRIVIA_NEWLINE,
+                start,
+                1,
+                line,
+                column,
+                lexer.line,
+                lexer.column);
+            if (status != RIBOS_PARSE_OK) {
+                goto fail;
+            }
             continue;
         }
         if (byte == '#') {
+            size_t start = lexer.offset;
+            uint32_t column = lexer.column;
+
             while (lexer.offset < lexer.length &&
                 lexer.source[lexer.offset] != '\n' &&
                 lexer.source[lexer.offset] != '\r') {
                 ++lexer.offset;
                 ++lexer.column;
+            }
+            status = ribos_append_trivia(
+                &lexer,
+                RIBOS_TRIVIA_COMMENT,
+                start,
+                lexer.offset - start,
+                lexer.line,
+                column,
+                lexer.line,
+                lexer.column);
+            if (status != RIBOS_PARSE_OK) {
+                goto fail;
             }
             continue;
         }
@@ -749,17 +885,21 @@ ribos_lex_source(
     }
     *tokens = lexer.output.tokens;
     *token_count = lexer.output.count;
+    *trivia = lexer.output.trivia;
+    *trivia_count = lexer.output.trivia_count;
     return RIBOS_PARSE_OK;
 
 fail:
     free(lexer.output.tokens);
+    free(lexer.output.trivia);
     return status;
 }
 
 void
-ribos_free_tokens(Token *tokens)
+ribos_free_token_stream(Token *tokens, RibosTrivia *trivia)
 {
     free(tokens);
+    free(trivia);
 }
 
 const char *

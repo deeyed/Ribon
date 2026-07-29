@@ -8,7 +8,7 @@
   "inputs": {
     "grammar": {
       "path": "language/ribos/grammar/parser.gram",
-      "sha256": "c6793b583c96fd062f6f5c9b1585c0d826593749cb0153f2ebe9c3af01e52541"
+      "sha256": "780b6d313a0db050961adfe4a9e798fd3451fc112b52836a65ab1003ab27030d"
     },
     "tokens": {
       "path": "language/ribos/grammar/Tokens",
@@ -18,11 +18,11 @@
   "outputs": {
     "parser": {
       "path": "language/ribos/generated/parser.c",
-      "sha256": "b4c4e2b2c701fe923f507525cfc97d7cf7f1b8d4d227fc1fb7bfe947109f4e1d"
+      "sha256": "f6dd5c685ae3ecc141e213724aba6b1762ce7b59cb1f8de15366effbb52fdc2a"
     },
     "tokens": {
       "path": "language/ribos/generated/tokens.h",
-      "sha256": "4ec53e76ba6e5af6b550f6fff03dfab3e8734f288e8fe8048ea42d0fd48736ba"
+      "sha256": "a5b675aac0fbbae459ed6d1c3ca6b218f20ddd5bf945a26e605303194ca3b991"
     }
   },
   "schema_version": 1

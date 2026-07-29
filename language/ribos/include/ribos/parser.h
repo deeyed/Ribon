@@ -13,8 +13,7 @@ extern "C" {
  * @brief Host-side syntax parser interface for Ribos source.
  *
  * This interface validates lexical structure and the accepted Ribos grammar.
- * It does not perform name resolution, type checking, capability checking,
- * bytecode generation, or policy execution.
+ * Static semantics are exposed separately through <ribos/compiler.h>.
  */
 
 /** Stable result category returned by the parser pilot. */
@@ -46,6 +45,12 @@ typedef struct RibosSourceLocation {
     uint32_t line;
     uint32_t column;
 } RibosSourceLocation;
+
+/** Half-open source byte range with stable start and end locations. */
+typedef struct RibosSourceSpan {
+    RibosSourceLocation start;
+    RibosSourceLocation end;
+} RibosSourceSpan;
 
 /** Bounded diagnostic emitted by lexical or syntax validation. */
 typedef struct RibosDiagnostic {

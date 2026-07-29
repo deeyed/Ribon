@@ -89,6 +89,7 @@ adr/0014-riscv64-bootstrap-hart-authority
 adr/0015-ribos-bounded-policy-language
 adr/0016-tracked-ribos-pegen-snapshot
 adr/0017-ribos-language-project-hierarchy
+adr/0018-ribos-bounded-typed-front-end
 ```
 
 ```{toctree}
@@ -143,4 +144,5 @@ log/2026-07-27-r8-deterministic-boot-media
 log/2026-07-29-w3-riscv64-rph1-fixture
 log/2026-07-30-ribos-parser-pilot
 log/2026-07-30-ribos-project-hierarchy
+log/2026-07-30-ribos-typed-front-end
 ```

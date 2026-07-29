@@ -1,0 +1,13 @@
+@pure
+def inspect_network() -> bool {
+    return network.ready()
+}
+
+@policy(
+    capabilities=[Capability.BOOT],
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let ready = inspect_network()
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

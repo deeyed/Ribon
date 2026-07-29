@@ -1,0 +1,11 @@
+@policy(
+    capabilities=[
+        Capability.DEVICE,
+        Capability.BOOT,
+    ],
+    helper_budget=2,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    device.init(Device.UART0, Profile.DEBUG)
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

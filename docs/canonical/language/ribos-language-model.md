@@ -5,14 +5,18 @@ authority: normative
 last_verified: 2026-07-30
 code_paths:
   - language/ribos/
+  - language/ribos/include/ribos/compiler.h
   - include/Ribon/plugin/
   - src/core/
   - src/plugins/
 tests:
   - ribos-grammar-generation
   - ribos-parser-conformance
-  - ribos-bytecode-verifier
+  - ribos-typed-ast
+  - ribos-type-negative
   - ribos-capability-negative
+  - ribos-deterministic-semantic-dump
+  - ribos-bytecode-verifier
   - ribon-docs
 hardware:
   - none
@@ -86,12 +90,17 @@ Pegen-generated host parser
         +--> tracked C snapshot, digest staleness gate
         |
         v
-typed AST
+lossless token/trivia와 bounded AST
+        |
+        v
+name, type, mutation, effect, capability와 source bound 검사
+        |
+        +--> deterministic typed-AST/source-map dump
         |
         v
 Ribos policy IR
         |
-        +--> type, effect, capability와 bound 검사
+        +--> control-flow와 exact instruction/helper bound
         |
         v
 bounded bytecode
@@ -117,6 +126,15 @@ Ribon service/plugin mechanism
 Source parser, AST와 source diagnostic은 host compiler의 권한이다. Boot product는
 signed policy artifact를 검증하고 실행하는 데 `.ribos` source나 CPython runtime을
 요구하지 않는다.
+
+Token model은 parser token과 formatter/debug source mapping을 위한 trivia를
+분리한다. Token과 trivia는 immutable source span을 참조하고 stable byte range를
+가진다. AST와 semantic dump는 process address가 아니라 numeric node/type ID만
+노출한다.
+
+Source-level checker는 bounded loop와 reachable call graph에서 helper-call upper
+bound를 계산한다. Bytecode instruction upper bound는 Policy IR lowering 뒤에
+계산한다. AST node count를 VM instruction budget으로 해석하지 않는다.
 
 Pegen grammar는 source syntax의 machine-readable 정본이다. EBNF contract는 사람이
 검토하는 규범 표현이고 Pegen generation 및 syntax corpus가 두 표현의 동등성을

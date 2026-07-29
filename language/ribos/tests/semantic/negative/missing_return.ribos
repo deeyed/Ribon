@@ -1,0 +1,7 @@
+@policy(
+    capabilities=[],
+    helper_budget=0,
+)
+def boot(ctx: BootContext) -> bool {
+    let ready = True
+}
