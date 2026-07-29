@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-07-30
 code_paths:
   - include/Ribon/
   - sdk/
@@ -162,6 +162,23 @@ provider로 변환한다.
 
 Board는 resource와 wiring을 기술하고 driver 구현을 복제하지 않는다. Driver는 특정
 board 이름을 policy 분기로 사용하지 않는다.
+
+### Ribos Policy Language
+
+Ribos는 selected semantic helper를 bounded program으로 조합하는 Ribon 전용 source
+language다. Ribos program은 driver와 firmware mechanism을 구현하지 않으며 raw MMIO,
+raw flash address, native pointer와 arbitrary transfer를 다루지 않는다.
+
+Policy plugin은 host에서 compile되고 검증된 artifact로 product graph에 들어간다.
+Production boot product는 `.ribos` source parser나 CPython runtime을 요구하지 않는다.
+Source parser와 interactive shell은 별도 product selection이며 firmware에 포함될 때
+fixed token, AST와 memo budget을 가진다.
+
+Ribos의 type, capability, bounded collection과 syntax 의미는
+`canonical/language/ribos-language-model` 및
+`contracts/language/ribos-source-language`가 정의한다. OS별 handoff key와 board fact
+type은 selected protocol 또는 port package가 제공하며 Core Language에 Parus, Linux,
+FreeBSD, RPi5 또는 QEMU 이름을 추가하지 않는다.
 
 ### Product와 Target
 

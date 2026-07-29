@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-07-30
 code_paths:
   - docs/
   - include/Ribon/
@@ -21,6 +21,8 @@ supersedes:
 # Ribon 문서
 
 Ribon은 generic boot runtime library, multiprotocol boot manager, firmware/plugin SDK다.
+Ribos는 그 위에서 bounded boot, board adaptation, update와 recovery policy를 표현하는
+정적 타입 source language다.
 문서는 상태 없는 정본, ABI 계약, 결정 기록, 개발 순서, 실행 증거를 서로 다른 권위로
 분리한다.
 
@@ -40,6 +42,7 @@ policy/documentation-policy
 
 canonical/architecture/ribon-architecture
 canonical/lifecycle/boot-update-recovery-model
+canonical/language/ribos-language-model
 ```
 
 ```{toctree}
@@ -53,6 +56,7 @@ contracts/storage/deterministic-boot-media
 contracts/firmware/firmware-personality-plugin
 contracts/firmware/reference-provider-products
 contracts/sdk/sdk-install-and-package
+contracts/language/ribos-source-language
 api/public-c-api
 ```
 
@@ -82,6 +86,7 @@ adr/0011-bounded-boot-transaction-hard-cut
 adr/0012-deterministic-boot-media-pipeline
 adr/0013-generic-entry-port-protocol-hard-cut
 adr/0014-riscv64-bootstrap-hart-authority
+adr/0015-ribos-bounded-policy-language
 ```
 
 ```{toctree}
@@ -110,6 +115,7 @@ platforms/rpi5/native-boot-boundary
 :caption: 개발 프로그램
 
 roadmap/ribon-development-program
+roadmap/ribos-compiler-bootstrap
 ```
 
 ```{toctree}

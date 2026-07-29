@@ -2,7 +2,7 @@
 doc_type: roadmap
 status: accepted
 authority: informative
-last_verified: 2026-07-26
+last_verified: 2026-07-30
 code_paths:
   - docs/
   - include/Ribon/
@@ -84,6 +84,19 @@ QEMU와 physical hardware evidence를 독립적으로 닫는다.
 - power-loss fault injection
 
 Normal boot product에는 recovery network와 update writer를 링크하지 않는다.
+
+## Ribos verified policy runtime
+
+- Pegen 정본 grammar와 reproducible host C parser generation
+- 독립 Ribos AST, type checker와 formatter
+- bounded collection과 acyclic call-graph 검사
+- semantic helper typestate와 capability/effect 검사
+- bounded bytecode, static verifier와 signed policy artifact
+- policy A/B와 immutable factory fallback
+- fixed-arena developer parser와 capability-restricted shell
+- board adaptation, boot, update와 recovery policy corpus
+
+Host parser 성공은 firmware parser, verifier 또는 policy VM 실행 성공을 뜻하지 않는다.
 
 ## Product hardening
 
