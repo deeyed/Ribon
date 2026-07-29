@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-07-29
 code_paths:
   - src/arch/
   - src/protocols/
@@ -10,6 +10,7 @@ code_paths:
 tests:
   - ribon-entry-bridge-unit
   - ribon-protocol-entry-contract-test
+  - ribon-parus-entry-contract-test
   - ribon-os-owned-address-space-test
 hardware:
   - none
@@ -83,6 +84,11 @@ RISC-V normal entry bridge는 terminal transfer 전에 `sie=0`, `sstatus.SIE=0`,
 `satp=0`, `sfence.vma`와 `fence.i` ordering을 만족해야 한다. 이 전환은 Ribon이
 permanent Sv39/Sv48 page table을 소유한다는 의미가 아니다. Parus EB3와 RISC-V VM
 backend가 permanent mapping, high stack, trap vector와 identity lifetime을 소유한다.
+Parus Boot Protocol은 이 경로에 `RIBON_ENTRY_TRANSLATION_DISABLED`를 선택한다.
+Architecture contract validator는 RISC-V direct-high 요구를 terminal transfer 전에
+거부한다. 다른 protocol을 위한 preserve-reachable 값은 generic contract에 남지만
+Parus profile은 이를 선택하지 않는다. Backend는 `SIE`와 `SPIE`를 지우고 `SPP`를
+설정한 `sret`으로 S-mode를 정규화한다.
 
 ## Direct-high
 

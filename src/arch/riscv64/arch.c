@@ -58,21 +58,32 @@ _Noreturn void ribon_arch_transfer_prepared(
     const uint64_t argument1 = prepared->invocation.arguments[1];
     const uint64_t argument2 = prepared->invocation.arguments[2];
     const uint64_t argument3 = prepared->invocation.arguments[3];
+    const uint64_t disable_translation =
+        prepared->invocation.translation ==
+        RIBON_ENTRY_TRANSLATION_DISABLED;
     __asm__ __volatile__(
+        "beqz %5, 1f\n"
+        "csrw satp, zero\n"
+        "sfence.vma zero, zero\n"
+        "1:\n"
         "mv t0, %4\n"
         "mv a0, %0\n"
         "mv a1, %1\n"
         "mv a2, %2\n"
         "mv a3, %3\n"
-        "csrci sstatus, 2\n"
         "csrw sie, zero\n"
+        "li t1, 34\n"
+        "csrc sstatus, t1\n"
+        "li t1, 256\n"
+        "csrs sstatus, t1\n"
         "fence rw, rw\n"
         "fence.i\n"
-        "jr t0\n"
+        "csrw sepc, t0\n"
+        "sret\n"
         :
         : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
-          "r"(entry)
-        : "t0", "a0", "a1", "a2", "a3", "memory");
+          "r"(entry), "r"(disable_translation)
+        : "t0", "t1", "a0", "a1", "a2", "a3", "memory");
 #else
     (void)prepared;
 #endif

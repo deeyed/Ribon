@@ -30,6 +30,7 @@ enum RibonEntryPrivilegeRequirement {
 enum RibonEntryTranslationRequirement {
     RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE = 0,
     RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE = 1,
+    RIBON_ENTRY_TRANSLATION_DISABLED = 2,
 };
 
 /**

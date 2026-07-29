@@ -78,6 +78,8 @@ static int parus_prepare_entry_invocation(
     const struct RibonHandoffArtifact *handoff,
     struct RibonEntryInvocation *out) {
     enum RibonRegisterAbi register_abi;
+    enum RibonEntryTranslationRequirement translation =
+        RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE;
     (void)environment;
     if (arch == 0 || plan == 0 || handoff == 0 || handoff->data == 0 ||
         handoff->size == 0u || out == 0 ||
@@ -93,6 +95,7 @@ static int parus_prepare_entry_invocation(
         break;
     case RIBON_ARCHITECTURE_RISCV64:
         register_abi = RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3;
+        translation = RIBON_ENTRY_TRANSLATION_DISABLED;
         break;
     default:
         *out = (struct RibonEntryInvocation){0};
@@ -110,7 +113,7 @@ static int parus_prepare_entry_invocation(
         },
         .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
         .privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR,
-        .translation = RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE,
+        .translation = translation,
     };
     return RIBON_PROTOCOL_STATUS_OK;
 }

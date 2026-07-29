@@ -139,6 +139,7 @@ ENVIRONMENT_PERSISTENT_INPUTS_TEST := $(TEST_BUILD_DIR)/environment_persistent_i
 MEDIA_PIPELINE_TEST := $(TEST_BUILD_DIR)/media_pipeline_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
+PARUS_ENTRY_CONTRACT_TEST := $(TEST_BUILD_DIR)/parus_entry_contract_tests
 OS_PACKAGE_TEST := $(TEST_BUILD_DIR)/os_package_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
 SDK_INSTALL_ROOT := $(BUILD_ROOT)/sdk/install
@@ -345,6 +346,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-arch-ops check-core-service check-port-services check-boot-lifecycle \
 	check-environment-persistent-inputs check-media-pipeline \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
+	check-parus-entry-contract \
 	check-os-packages \
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
@@ -493,6 +495,15 @@ $(PROTOCOL_CONTRACT_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/protocol/contract_tests.o \
 	$(ARCH_OBJS) $(BUILD_DIR)/obj/src/protocols/synthetic/protocol.o \
 	$(BOOT_LIB) $(CORE_LIB)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(PARUS_ENTRY_CONTRACT_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/protocol/parus_entry_contract_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_builder.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_parser.o \
+	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/core/memory.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(OS_PACKAGE_TEST): \
@@ -852,6 +863,9 @@ check-plugin-descriptors: $(PLUGIN_DESCRIPTOR_TEST)
 check-protocol-contract: $(PROTOCOL_CONTRACT_TEST)
 	$(PROTOCOL_CONTRACT_TEST)
 
+check-parus-entry-contract: $(PARUS_ENTRY_CONTRACT_TEST)
+	$(PARUS_ENTRY_CONTRACT_TEST)
+
 check-os-packages: $(OS_PACKAGE_TEST)
 	$(OS_PACKAGE_TEST)
 
@@ -1006,7 +1020,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \
 	check-environment-persistent-inputs check-media-pipeline check-mode-descriptors check-plugin-descriptors \
-	check-protocol-contract check-os-packages check-library-embed check-composition-schemas \
+	check-protocol-contract check-parus-entry-contract check-os-packages \
+	check-library-embed check-composition-schemas \
 	check-qemu-evidence \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
 	check-external-plugin check-firmware-personalities \

@@ -34,6 +34,20 @@ qstar.test "rph1_builder_tests" {
   },
 }
 
+qstar.test "parus_entry_contract_tests" {
+  sources = {
+    "tests/protocol/parus_entry_contract_tests.c",
+    "src/protocols/os/parus/protocol.c",
+    "src/protocols/os/parus/rph1_builder.c",
+    "src/protocols/os/parus/rph1_parser.c",
+    "src/common/protocol.c",
+    "src/core/memory.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
 qstar.test "pe_coff_loader_tests" {
   sources = {
     "tests/loader/pe_coff_loader_tests.c",
@@ -89,6 +103,7 @@ qstar.group "ribon_tests" {
     "//tests:plugin_descriptor_tests",
     "//tests:protocol_free_embed_tests",
     "//tests:rph1_builder_tests",
+    "//tests:parus_entry_contract_tests",
     "//tests:pe_coff_loader_tests",
     "//tests:fdt_parser_tests",
     "//tests:os_package_tests",

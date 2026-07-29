@@ -6,6 +6,8 @@
 _start:
     csrci   sstatus, 2
     csrw    sie, zero
+    csrw    satp, zero
+    sfence.vma zero, zero
     mv      s2, a0
     mv      s3, a1
 

@@ -209,6 +209,22 @@ static int entry_abi_matches_architecture(
     }
 }
 
+/** @brief Entry translation requirement가 architecture의 normal bridge와 맞는지 검사한다. */
+static int entry_translation_matches_architecture(
+    enum RibonArchitectureId architecture,
+    enum RibonEntryTranslationRequirement translation) {
+    if (architecture == RIBON_ARCHITECTURE_RISCV64) {
+        return translation == RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE ||
+               translation == RIBON_ENTRY_TRANSLATION_DISABLED;
+    }
+    if (architecture == RIBON_ARCHITECTURE_X86_64 ||
+        architecture == RIBON_ARCHITECTURE_AARCH64) {
+        return translation == RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE ||
+               translation == RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE;
+    }
+    return 0;
+}
+
 /** @brief Protocol invocation을 selected architecture의 prepared entry로 검증한다. */
 int ribon_arch_prepare_entry(
     const struct RibonArchDescriptor *arch,
@@ -222,8 +238,9 @@ int ribon_arch_prepare_entry(
         !entry_abi_matches_architecture(arch->id, invocation->register_abi) ||
         invocation->interrupts != RIBON_ENTRY_INTERRUPTS_MASKED ||
         invocation->privilege != RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR ||
-        (invocation->translation != RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE &&
-         invocation->translation != RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE)) {
+        !entry_translation_matches_architecture(
+            arch->id,
+            invocation->translation)) {
         if (out != 0) {
             *out = (struct RibonPreparedEntry){0};
         }
