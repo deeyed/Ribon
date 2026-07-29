@@ -4,9 +4,9 @@ status: accepted
 authority: normative
 last_verified: 2026-07-30
 code_paths:
-  - language/grammar/ribos.gram
-  - language/grammar/Tokens
-  - tools/ribosc/
+  - language/ribos/grammar/parser.gram
+  - language/ribos/grammar/Tokens
+  - language/ribos/tools/
   - src/policy/
 tests:
   - ribos-grammar-generation

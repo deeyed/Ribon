@@ -4,8 +4,7 @@ status: accepted
 authority: normative
 last_verified: 2026-07-30
 code_paths:
-  - language/
-  - tools/ribosc/
+  - language/ribos/
   - include/Ribon/plugin/
   - src/core/
   - src/plugins/

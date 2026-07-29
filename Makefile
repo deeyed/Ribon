@@ -87,15 +87,15 @@ RESULTS_DIR := $(BUILD_ROOT)/results
 RIBOS_PARSER_PILOT := $(BUILD_ROOT)/tools/ribos-parse
 RIBOS_PEGEN_ROOT ?=
 RIBOS_PARSER_SRCS := \
-	language/src/ribos_lexer.c \
-	language/src/ribos_runtime.c \
-	language/src/ribos_parser.c \
-	language/generated/ribos_parser.c \
-	language/tools/ribos_parse.c
+	language/ribos/src/lexer.c \
+	language/ribos/src/runtime.c \
+	language/ribos/src/parser.c \
+	language/ribos/generated/parser.c \
+	language/ribos/tools/parse.c
 RIBOS_PARSER_HEADERS := \
-	language/include/ribos/parser.h \
-	language/src/ribos_parser_internal.h \
-	language/generated/ribos_tokens.h
+	language/ribos/include/ribos/parser.h \
+	language/ribos/src/parser_internal.h \
+	language/ribos/generated/tokens.h
 
 # Header ABI hard cuts must rebuild every previously emitted object on the next make run.
 -include $(shell find "$(BUILD_ROOT)" -type f -name '*.d' -print 2>/dev/null)
@@ -399,31 +399,33 @@ host-reference: $(HOST_REFERENCE)
 $(RIBOS_PARSER_PILOT): $(RIBOS_PARSER_SRCS) $(RIBOS_PARSER_HEADERS) Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/include -Ilanguage/src -Ilanguage/generated \
+		-Ilanguage/ribos/include -Ilanguage/ribos/src \
+		-Ilanguage/ribos/generated \
 		$(RIBOS_PARSER_SRCS) -o $@
 
 ribos-parser-pilot: $(RIBOS_PARSER_PILOT)
 
 check-ribos-parser-snapshot:
-	$(PYTHON) tools/ribosc/check_parser_snapshot.py
+	$(PYTHON) language/ribos/tools/check_parser_snapshot.py
 
 check-ribos-parser-pilot: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
-	$(PYTHON) tests/language/parser_pilot_tests.py \
+	$(PYTHON) language/ribos/tests/parser_pilot_tests.py \
 		--parser $(RIBOS_PARSER_PILOT)
-	$(RIBOS_PARSER_PILOT) tests/language/positive/full_boot_policy.ribos
+	$(RIBOS_PARSER_PILOT) \
+		language/ribos/tests/positive/full_boot_policy.ribos
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
 ribos-parser-generate:
 	@test -n "$(RIBOS_PEGEN_ROOT)" || \
 		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
-	$(PYTHON) tools/ribosc/generate_parser.py \
+	$(PYTHON) language/ribos/tools/generate_parser.py \
 		--pegen-root $(RIBOS_PEGEN_ROOT)
 
 ribos-parser-regenerate-check:
 	@test -n "$(RIBOS_PEGEN_ROOT)" || \
 		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
-	$(PYTHON) tools/ribosc/generate_parser.py \
+	$(PYTHON) language/ribos/tools/generate_parser.py \
 		--pegen-root $(RIBOS_PEGEN_ROOT) --check
 
 $(BUILD_DIR)/obj/%.o: %.c

@@ -1,0 +1,29 @@
+{
+  "generator": {
+    "command": "python -m pegen -q c language/ribos/grammar/parser.gram language/ribos/grammar/Tokens -o parser.c",
+    "cpython_revision": "9ccd5bb81edde823fb5fdbd51287f4a0ddfcd149",
+    "exit_status": 0,
+    "kind": "cpython-pegen-c"
+  },
+  "inputs": {
+    "grammar": {
+      "path": "language/ribos/grammar/parser.gram",
+      "sha256": "c6793b583c96fd062f6f5c9b1585c0d826593749cb0153f2ebe9c3af01e52541"
+    },
+    "tokens": {
+      "path": "language/ribos/grammar/Tokens",
+      "sha256": "e165aaa43d399dfde9ba9744fac94cc836f3665ccf56777b0d9757ce963f85fc"
+    }
+  },
+  "outputs": {
+    "parser": {
+      "path": "language/ribos/generated/parser.c",
+      "sha256": "b4c4e2b2c701fe923f507525cfc97d7cf7f1b8d4d227fc1fb7bfe947109f4e1d"
+    },
+    "tokens": {
+      "path": "language/ribos/generated/tokens.h",
+      "sha256": "4ec53e76ba6e5af6b550f6fff03dfab3e8734f288e8fe8048ea42d0fd48736ba"
+    }
+  },
+  "schema_version": 1
+}

@@ -48,9 +48,10 @@ make qstar-check
 make docs
 ```
 
-Ribos source 문법은 `language/grammar/`가 소유하고 일반 build는
-`language/generated/`의 추적되는 C parser snapshot을 직접 컴파일한다. 일반 build와
-`make check`는 Pegen을 실행하지 않는다. 문법이나 generator integration을 바꿀 때만
+Ribos language project는 `language/ribos/` 아래에서 grammar, generated snapshot,
+host parser, tools와 corpus를 함께 소유한다. 일반 build는
+`language/ribos/generated/`의 추적되는 C parser snapshot을 직접 컴파일하며
+`make check`도 Pegen을 실행하지 않는다. 문법이나 generator integration을 바꿀 때만
 다음 explicit gate를 사용한다.
 
 ```sh

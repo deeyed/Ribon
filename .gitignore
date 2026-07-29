@@ -2,9 +2,9 @@ build/
 .qstar/
 compile_commands.json
 generated/
-!language/generated/
-!language/generated/ribos_parser.c
-!language/generated/ribos_parser.receipt.json
-!language/generated/ribos_tokens.h
+!language/ribos/generated/
+!language/ribos/generated/parser.c
+!language/ribos/generated/parser.receipt.json
+!language/ribos/generated/tokens.h
 stage/
 tools/__pycache__/

@@ -1,4 +1,4 @@
-#include "ribos_parser_internal.h"
+#include "parser_internal.h"
 
 static void
 ribos_clear_outputs(

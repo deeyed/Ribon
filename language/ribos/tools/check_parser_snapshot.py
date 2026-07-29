@@ -10,15 +10,25 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-GRAMMAR = ROOT / "language" / "grammar" / "ribos.gram"
-TOKENS = ROOT / "language" / "grammar" / "Tokens"
+ROOT = Path(__file__).resolve().parents[3]
+PROJECT = ROOT / "language" / "ribos"
+GRAMMAR = PROJECT / "grammar" / "parser.gram"
+TOKENS = PROJECT / "grammar" / "Tokens"
 SNAPSHOTS = (
-    ROOT / "language" / "generated" / "ribos_parser.c",
-    ROOT / "language" / "generated" / "ribos_tokens.h",
+    PROJECT / "generated" / "parser.c",
+    PROJECT / "generated" / "tokens.h",
 )
-RECEIPT = ROOT / "language" / "generated" / "ribos_parser.receipt.json"
+RECEIPT = PROJECT / "generated" / "parser.receipt.json"
 EXPECTED_PEGEN_REVISION = "9ccd5bb81edde823fb5fdbd51287f4a0ddfcd149"
+LEGACY_PROJECT_PATHS = (
+    ROOT / "language" / "grammar",
+    ROOT / "language" / "generated",
+    ROOT / "language" / "include",
+    ROOT / "language" / "src",
+    ROOT / "language" / "tools",
+    ROOT / "tools" / "ribosc",
+    ROOT / "tests" / "language",
+)
 
 
 def sha256(path: Path) -> str:
@@ -45,6 +55,22 @@ def main() -> int:
         "RIBOS_TOKENS_SHA256": sha256(TOKENS),
     }
     failed = False
+    for legacy_path in LEGACY_PROJECT_PATHS:
+        if legacy_path.exists():
+            print(
+                f"legacy Ribos project path remains: "
+                f"{legacy_path.relative_to(ROOT)}",
+                file=sys.stderr,
+            )
+            failed = True
+    for project_file in PROJECT.rglob("*"):
+        if project_file.is_file() and "ribos_" in project_file.name:
+            print(
+                f"redundant Ribos filename prefix: "
+                f"{project_file.relative_to(ROOT)}",
+                file=sys.stderr,
+            )
+            failed = True
     for snapshot in SNAPSHOTS:
         if not snapshot.is_file():
             print(f"missing snapshot: {snapshot.relative_to(ROOT)}", file=sys.stderr)
@@ -111,6 +137,7 @@ def main() -> int:
         f"grammar={expected['RIBOS_GRAMMAR_SHA256']} "
         f"tokens={expected['RIBOS_TOKENS_SHA256']}"
     )
+    print("RIBOS-PROJECT-LAYOUT-OK root=language/ribos")
     return 0
 
 

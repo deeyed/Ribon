@@ -9,9 +9,9 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-POSITIVE = ROOT / "tests" / "language" / "positive"
-NEGATIVE = ROOT / "tests" / "language" / "negative"
+PROJECT = Path(__file__).resolve().parents[1]
+POSITIVE = PROJECT / "tests" / "positive"
+NEGATIVE = PROJECT / "tests" / "negative"
 EXPECTED_NEGATIVE_KIND = {
     "exception_try.ribos": "reserved-feature",
     "invalid_number.ribos": "invalid-number",

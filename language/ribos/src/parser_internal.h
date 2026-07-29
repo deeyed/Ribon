@@ -9,7 +9,7 @@
 #include <string.h>
 
 #include "ribos/parser.h"
-#include "ribos_tokens.h"
+#include "tokens.h"
 
 #define MAXSTACK 512
 #define UNUSED(value) ((void)(value))

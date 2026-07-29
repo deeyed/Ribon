@@ -1,4 +1,4 @@
-#include "ribos_parser_internal.h"
+#include "parser_internal.h"
 
 static _Thread_local Parser *ribos_active_parser;
 

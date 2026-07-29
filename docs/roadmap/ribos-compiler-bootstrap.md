@@ -4,10 +4,10 @@ status: accepted
 authority: informative
 last_verified: 2026-07-30
 code_paths:
-  - language/grammar/
-  - language/generated/
-  - tools/ribosc/
-  - tests/language/
+  - language/ribos/grammar/
+  - language/ribos/generated/
+  - language/ribos/tools/
+  - language/ribos/tests/
   - build/generated/ribos/
   - build/results/
 tests:
@@ -32,12 +32,12 @@ firmware integration의 증거를 대신하지 않는다.
 정본 EBNF를 다음 source로 변환한다.
 
 ```text
-language/grammar/ribos.gram
-language/grammar/Tokens
-language/grammar/README.md
+language/ribos/grammar/parser.gram
+language/ribos/grammar/Tokens
+language/ribos/README.md
 ```
 
-`ribos.gram`은 다음 construct를 모두 구분한다.
+`parser.gram`은 다음 construct를 모두 구분한다.
 
 - decorator와 top-level declaration
 - function, typed parameter와 return
@@ -69,9 +69,9 @@ Host parser lane은 CPython Pegen의 grammar reader와 C generator를 사용한�
 Generated C source와 token number header는 다음 tracked operational snapshot이다.
 
 ```text
-language/generated/ribos_parser.c
-language/generated/ribos_parser.receipt.json
-language/generated/ribos_tokens.h
+language/ribos/generated/parser.c
+language/ribos/generated/parser.receipt.json
+language/ribos/generated/tokens.h
 ```
 
 Generated source를 repository syntax authority로 취급하지 않는다. 일반 build는 이
@@ -223,15 +223,16 @@ positive/negative syntax corpus로 검사한다.
 
 ```text
 tracked:
-  language/grammar/ribos.gram
-  language/grammar/Tokens
-  language/grammar/README.md
-  language/generated/ribos_parser.c
-  language/generated/ribos_parser.receipt.json
-  language/generated/ribos_tokens.h
-  language/include/ribos/parser.h
-  language/src/
-  tests/language/
+  language/ribos/README.md
+  language/ribos/grammar/parser.gram
+  language/ribos/grammar/Tokens
+  language/ribos/generated/parser.c
+  language/ribos/generated/parser.receipt.json
+  language/ribos/generated/tokens.h
+  language/ribos/include/ribos/parser.h
+  language/ribos/src/
+  language/ribos/tests/
+  language/ribos/tools/
   generator와 staleness-check wrapper
 ```
 
