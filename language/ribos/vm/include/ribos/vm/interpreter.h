@@ -14,14 +14,14 @@ extern "C" {
  * @file interpreter.h
  * @brief PreparedProgram만 실행하는 architecture-neutral Ribos interpreter v1.
  *
- * R10 API는 single-frame scalar/control-flow engine이다. Full policy success나
- * BootAction을 만들지 않으며 지원 범위 밖 opcode는 fail closed한다.
+ * v1.1 API는 scalar/control-flow와 bounded direct call/loop engine이다. Full policy
+ * success나 BootAction을 만들지 않으며 지원 범위 밖 opcode는 fail closed한다.
  */
 
 #define RIBOS_VM_INTERPRETER_V1_MAJOR 1u
-#define RIBOS_VM_INTERPRETER_V1_MINOR 0u
+#define RIBOS_VM_INTERPRETER_V1_MINOR 1u
 
-/** Caller가 관찰할 수 있는 single-frame interpreter 상태다. */
+/** Caller가 관찰할 수 있는 bounded interpreter 상태다. */
 typedef enum RibosVmInterpreterState {
     RIBOS_VM_INTERPRETER_EMPTY = 0,
     RIBOS_VM_INTERPRETER_READY = 1,
@@ -49,14 +49,18 @@ typedef struct RibosVmInterpreterSnapshot {
     uint32_t fault_code;
     uint64_t remaining_instructions;
     uint64_t consumed_instructions;
-    uint64_t reserved[4];
+    uint32_t frame_depth;
+    uint32_t reserved0;
+    uint64_t stack_bytes;
+    uint64_t reserved[2];
 } RibosVmInterpreterSnapshot;
 
 /**
  * Entry function과 immutable context를 initialized storage에 결박한다.
  *
  * Context type ID와 byte size는 entry parameter slot과 정확히 일치해야 한다.
- * 함수는 frame을 reset하고 첫 verified instruction ID를 control region에 봉인한다.
+ * 함수는 entry frame record와 loop counter를 reset하고 첫 verified instruction ID를
+ * control region에 봉인한다.
  */
 RibosVmStatus ribos_vm_interpreter_initialize_v1(
     const RibosPreparedProgram *prepared_program,
@@ -79,10 +83,11 @@ RibosVmStatus ribos_vm_interpreter_step_v1(
     RibosVmInterpreterSnapshot *snapshot);
 
 /**
- * `RETURNED` 또는 `FAULTED`까지 bounded instruction loop를 실행한다.
+ * Entry `RETURNED` 또는 `FAULTED`까지 bounded instruction loop를 실행한다.
  *
- * Loop의 반복 상한은 arena에 봉인된 remaining instruction counter다. 이 함수는
- * helper callback, direct call, aggregate 또는 boot transfer를 실행하지 않는다.
+ * Direct call은 arena frame stack만 사용하고 loop는 verified row별 trip counter를
+ * 집행한다. 이 함수는 helper callback, aggregate 또는 boot transfer를 실행하지
+ * 않는다.
  */
 RibosVmStatus ribos_vm_interpreter_run_v1(
     const RibosPreparedProgram *prepared_program,
@@ -91,7 +96,7 @@ RibosVmStatus ribos_vm_interpreter_run_v1(
     size_t arena_size,
     RibosVmInterpreterSnapshot *snapshot);
 
-/** 현재 interpreter control state를 pointer-free snapshot으로 읽는다. */
+/** Active interpreter control state를 pointer-free snapshot으로 읽는다. */
 RibosVmStatus ribos_vm_interpreter_snapshot_v1(
     const RibosPreparedProgram *prepared_program,
     const RibosVmStorage *storage,

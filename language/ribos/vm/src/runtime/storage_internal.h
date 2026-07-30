@@ -20,11 +20,29 @@ typedef struct RibosVmStorageExecutionControl {
     uint32_t instruction_id;
     uint32_t return_slot_id;
     uint64_t frame_base;
+    uint64_t stack_cursor;
+    uint32_t frame_depth;
     uint64_t consumed_instructions;
     uint64_t context_generation;
     uint32_t context_type_id;
     uint8_t context_digest[RIBOS_VM_DIGEST_BYTES];
 } RibosVmStorageExecutionControl;
+
+typedef struct RibosVmStorageCallTarget {
+    uint32_t function_id;
+    uint32_t entry_block_id;
+    uint32_t entry_instruction_id;
+    uint32_t frame_size;
+    uint64_t frame_base;
+} RibosVmStorageCallTarget;
+
+typedef struct RibosVmStorageReturnTarget {
+    uint32_t function_id;
+    uint32_t block_id;
+    uint32_t instruction_id;
+    uint32_t return_slot_id;
+    uint64_t frame_base;
+} RibosVmStorageReturnTarget;
 
 RibosVmStatus ribos_vm_storage_execution_begin_internal_v1(
     const RibosPreparedProgram *prepared_program,
@@ -44,6 +62,49 @@ RibosVmStatus ribos_vm_storage_execution_store_internal_v1(
     RibosVmStorage *storage,
     size_t arena_size,
     const RibosVmStorageExecutionControl *control);
+
+RibosVmStatus ribos_vm_storage_call_target_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *caller,
+    uint32_t callee_function_id,
+    RibosVmStorageCallTarget *target,
+    uint32_t *fault_code);
+
+RibosVmStatus ribos_vm_storage_frame_push_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *caller,
+    const RibosVmStorageCallTarget *target,
+    uint32_t continuation_instruction_id,
+    uint32_t return_slot_id,
+    RibosVmStorageExecutionControl *callee);
+
+RibosVmStatus ribos_vm_storage_return_target_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *callee,
+    RibosVmStorageReturnTarget *target);
+
+RibosVmStatus ribos_vm_storage_frame_pop_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *callee,
+    const RibosVmStorageReturnTarget *target,
+    RibosVmStorageExecutionControl *caller);
+
+RibosVmStatus ribos_vm_storage_loop_transition_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint32_t source_block_id,
+    uint32_t target_block_id,
+    uint32_t *violation_loop_id);
 
 RibosVmStatus ribos_vm_storage_consume_instruction_internal_v1(
     const RibosPreparedProgram *prepared_program,

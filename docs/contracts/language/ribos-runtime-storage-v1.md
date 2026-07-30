@@ -14,6 +14,8 @@ code_paths:
 tests:
   - make check-ribos-runtime-storage
   - make check-ribos-vm-scalar
+  - make check-ribos-vm-calls
+  - make check-ribos-vm-loops
   - make check-ribos-prepared-program
   - make check-ribos-resources
   - make check-ribos-verifier
@@ -130,18 +132,24 @@ current function/block/instruction ID, return slot, frame base, consumed count�
 context generation/type/digest가 들어간다. Native pointer와 C structure image는
 저장하지 않는다.
 
-Frame record, handle record, outcome와 trace의 v1 byte capacity는 interpreter가
-사용할 bounded storage reservation이다. Fault region의 첫 152 bytes는 stable receipt
-field와 artifact/trace digest이고 마지막 8 bytes는 seal과 recovery-notified state다.
-Public `RibosVmFaultReceipt`의 native padding이나 reserved word는 arena에 복사하지
-않는다. Storage v1 API는 이 영역에서 opcode, handle transition 또는 recovery callback을
-실행하지 않는다.
+Frame record는 direct-call interpreter가 실제로 push/pop하는 bounded control
+record다. Handle record, outcome와 trace는 후속 interpreter가 사용할 reservation이다.
+Fault region의 첫 152 bytes는 stable receipt field와 artifact/trace digest이고 마지막
+8 bytes는 seal과 recovery-notified state다. Public `RibosVmFaultReceipt`의 native
+padding이나 reserved word는 arena에 복사하지 않는다. Storage v1 API는 opcode,
+handle transition 또는 recovery callback을 직접 dispatch하지 않는다.
 
 ## Frame와 slot
 
 Frame value region 크기는 verifier가 artifact에서 재계산한 maximum stack bytes와
 정확히 같다. 개별 function frame의 slot offset, size와 alignment도 verified function
 및 slot table 값을 사용한다.
+
+32-byte frame record는 function ID, continuation instruction ID, caller return slot,
+frame base와 frame size를 explicit little-endian field로 가진다. Entry record의
+continuation과 return slot은 invalid sentinel이고 nested record에는 둘 다 있어야
+한다. Active record의 base와 size는 빈틈 없이 stack cursor까지 이어지고 top record는
+current function/frame과 일치한다.
 
 Slot state는 artifact global slot ID로 index한다. ISA v1에서 slot은 한 function에만
 속하고 recursive direct-call graph가 금지되므로 동시에 활성인 서로 다른 function은
@@ -193,9 +201,12 @@ Prepared binding digest와 canonical region descriptor를 control region에 기�
 Validation도 호출자가 제공한 PreparedProgram에서 plan을 다시 계산해 control bytes와
 대조한다.
 
-Loop counter는 verified loop trip count로 초기화한다. Helper counter row는 imported
-stable helper ID와 entry function의 verified helper별 upper bound를 가진다. 전체
-instruction/helper와 product operation/poll counter는 control region에 초기화한다.
+Loop counter는 verified loop trip count로 초기화한다. Function call과 latch가 아닌
+header entry는 해당 function/loop counter를 reset하고 verified latch-to-header
+backedge만 1을 감소시킨다. Header-to-body는 remaining count가 nonzero인지 검사한다.
+Helper counter row는 imported stable helper ID와 entry function의 verified helper별
+upper bound를 가진다. 전체 instruction/helper와 product operation/poll counter는
+control region에 초기화한다.
 
 ## Diagnostic poison
 
@@ -245,6 +256,9 @@ Stage-1/Stage-2 preparation 뒤 다음을 검사한다.
 - explicit little-endian scalar bytes
 - optional diagnostic poison state
 
-이 gate는 compiler와 verifier gate를 선행하지만 interpreter instruction semantics,
-helper dispatch, production signature/rollback, Ribon boot product linkage, QEMU와
-hardware 실행을 증명하지 않는다.
+`make check-ribos-vm-calls`와 `make check-ribos-vm-loops`는 이 layout 위에서 explicit
+frame push/pop, exact stack cursor, loop trip 소진과 external-entry reset을 실행한다.
+
+Storage gate 자체는 compiler와 verifier gate를 선행하지만 interpreter instruction
+semantics, helper dispatch, production signature/rollback, Ribon boot product linkage,
+QEMU와 hardware 실행을 증명하지 않는다.

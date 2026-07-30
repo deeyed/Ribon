@@ -10,6 +10,8 @@ code_paths:
   - docs/contracts/language/ribos-scalar-interpreter-v1.md
 tests:
   - make check-ribos-vm-scalar
+  - make check-ribos-vm-calls
+  - make check-ribos-vm-loops
   - make check-ribos-runtime-storage
   - make check-ribos-verifier
   - make check-ribos-host-boundary
@@ -63,6 +65,8 @@ board service는 VM Core가 아니라 후속 embedder 계층이 소유해야 한
   benchmark가 필요성을 입증하기 전에는 복잡성을 추가하지 않는다.
 - Internal incremental API는 full-policy execute API가 아니므로 product가 직접 boot
   authority로 연결할 수 없다.
+- 후속 ADR 0029는 같은 portable switch와 verified instruction ID 위에 explicit
+  direct-call frame과 latch-bound loop counter를 추가한다.
 
 ## 기각한 대안
 

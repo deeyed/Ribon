@@ -49,6 +49,14 @@
 #define RIBOS_VM_CONTROL_EXECUTION_RESERVED_OFFSET 476u
 #define RIBOS_VM_CONTROL_CONTEXT_DIGEST_OFFSET 480u
 
+#define RIBOS_VM_FRAME_FUNCTION_OFFSET 0u
+#define RIBOS_VM_FRAME_CONTINUATION_OFFSET 4u
+#define RIBOS_VM_FRAME_RETURN_SLOT_OFFSET 8u
+#define RIBOS_VM_FRAME_RESERVED0_OFFSET 12u
+#define RIBOS_VM_FRAME_BASE_OFFSET 16u
+#define RIBOS_VM_FRAME_SIZE_OFFSET 24u
+#define RIBOS_VM_FRAME_RESERVED1_OFFSET 28u
+
 #define RIBOS_VM_FAULT_CODE_OFFSET 0u
 #define RIBOS_VM_FAULT_SUBJECT_OFFSET 4u
 #define RIBOS_VM_FAULT_FUNCTION_OFFSET 8u
@@ -83,6 +91,14 @@ typedef struct RibosVmSlotLocation {
     uint64_t value_offset;
     uint64_t state_offset;
 } RibosVmSlotLocation;
+
+typedef struct RibosVmFrameRecord {
+    uint32_t function_id;
+    uint32_t continuation_instruction_id;
+    uint32_t return_slot_id;
+    uint64_t frame_base;
+    uint32_t frame_size;
+} RibosVmFrameRecord;
 
 static uint16_t
 ribos_vm_value_read_u16(const uint8_t *bytes)
@@ -1735,40 +1751,253 @@ ribos_vm_storage_slot_load_bool_v1(
     return RIBOS_VM_STATUS_OK;
 }
 
-RibosVmStatus
-ribos_vm_storage_execution_begin_internal_v1(
+static RibosVmStatus
+ribos_vm_storage_function_info(
     const RibosPreparedProgram *prepared_program,
-    RibosVmStorage *storage,
-    size_t arena_size,
-    const RibosVmStorageExecutionControl *control)
+    uint32_t function_id,
+    uint32_t *entry_block_id,
+    uint32_t *entry_instruction_id,
+    uint32_t *frame_size)
 {
-    uint8_t *bytes;
-    RibosVmStatus status;
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(prepared_program);
+    const RibosArtifactSectionView *functions;
+    const RibosArtifactSectionView *blocks;
+    const uint8_t *function;
+    const uint8_t *block;
+    uint32_t entry;
 
-    if (control == NULL || control->state != 1 ||
-        control->function_id == RIBOS_VM_INVALID_ID ||
-        control->block_id == RIBOS_VM_INVALID_ID ||
-        control->instruction_id == RIBOS_VM_INVALID_ID ||
-        control->return_slot_id != RIBOS_VM_INVALID_ID ||
-        control->frame_base != 0 ||
-        control->consumed_instructions != 0 ||
-        control->context_generation == 0 ||
-        control->context_type_id == RIBOS_VM_INVALID_ID ||
-        !ribos_vm_digest_is_nonzero(control->context_digest)) {
+    if (view == NULL || frame_size == NULL) {
         return RIBOS_VM_STATUS_INVALID_ARGUMENT;
     }
-    status = ribos_vm_storage_validate_v1(
-        prepared_program,
-        storage,
-        arena_size);
-    if (status != RIBOS_VM_STATUS_OK) {
-        return status;
+    functions = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_FUNCTIONS);
+    blocks = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_BLOCKS);
+    function = ribos_vm_storage_row(functions, function_id);
+    if (function == NULL ||
+        ribos_vm_value_read_u32(function) != function_id) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
     }
-    bytes = ribos_vm_storage_mutable_bytes(storage);
-    if (ribos_vm_value_read_u32(
-            bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET) != 0) {
-        return RIBOS_VM_STATUS_INVALID_STATE;
+    entry = ribos_vm_value_read_u32(function + 12);
+    block = ribos_vm_storage_row(blocks, entry);
+    if (block == NULL ||
+        ribos_vm_value_read_u32(block) != entry ||
+        ribos_vm_value_read_u32(block + 4) != function_id) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
     }
+    if (entry_block_id != NULL) {
+        *entry_block_id = entry;
+    }
+    if (entry_instruction_id != NULL) {
+        *entry_instruction_id = ribos_vm_value_read_u32(block + 8);
+    }
+    *frame_size = ribos_vm_value_read_u32(function + 88);
+    return RIBOS_VM_STATUS_OK;
+}
+
+static uint8_t *
+ribos_vm_storage_frame_bytes(
+    RibosVmStorage *storage,
+    const RibosVmStoragePlan *plan,
+    uint32_t depth_index)
+{
+    const RibosVmStorageRegion *frames =
+        &plan->regions[RIBOS_VM_STORAGE_REGION_FRAMES];
+
+    if (depth_index >= frames->count ||
+        frames->stride != RIBOS_VM_FRAME_RECORD_BYTES) {
+        return NULL;
+    }
+    return ribos_vm_storage_mutable_bytes(storage) +
+        (size_t)frames->offset +
+        (size_t)depth_index * RIBOS_VM_FRAME_RECORD_BYTES;
+}
+
+static const uint8_t *
+ribos_vm_storage_const_frame_bytes(
+    const RibosVmStorage *storage,
+    const RibosVmStoragePlan *plan,
+    uint32_t depth_index)
+{
+    const RibosVmStorageRegion *frames =
+        &plan->regions[RIBOS_VM_STORAGE_REGION_FRAMES];
+
+    if (depth_index >= frames->count ||
+        frames->stride != RIBOS_VM_FRAME_RECORD_BYTES) {
+        return NULL;
+    }
+    return ribos_vm_storage_const_bytes(storage) +
+        (size_t)frames->offset +
+        (size_t)depth_index * RIBOS_VM_FRAME_RECORD_BYTES;
+}
+
+static void
+ribos_vm_storage_encode_frame(
+    uint8_t *bytes,
+    const RibosVmFrameRecord *record)
+{
+    memset(bytes, 0, RIBOS_VM_FRAME_RECORD_BYTES);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_FRAME_FUNCTION_OFFSET,
+        record->function_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_FRAME_CONTINUATION_OFFSET,
+        record->continuation_instruction_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_FRAME_RETURN_SLOT_OFFSET,
+        record->return_slot_id);
+    ribos_vm_value_write_u64(
+        bytes + RIBOS_VM_FRAME_BASE_OFFSET,
+        record->frame_base);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_FRAME_SIZE_OFFSET,
+        record->frame_size);
+}
+
+static int
+ribos_vm_storage_decode_frame(
+    const uint8_t *bytes,
+    RibosVmFrameRecord *record)
+{
+    if (bytes == NULL || record == NULL ||
+        ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_FRAME_RESERVED0_OFFSET) != 0 ||
+        ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_FRAME_RESERVED1_OFFSET) != 0) {
+        return 0;
+    }
+    *record = (RibosVmFrameRecord){
+        .function_id = ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_FRAME_FUNCTION_OFFSET),
+        .continuation_instruction_id = ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_FRAME_CONTINUATION_OFFSET),
+        .return_slot_id = ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_FRAME_RETURN_SLOT_OFFSET),
+        .frame_base = ribos_vm_value_read_u64(
+            bytes + RIBOS_VM_FRAME_BASE_OFFSET),
+        .frame_size = ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_FRAME_SIZE_OFFSET),
+    };
+    return record->function_id != RIBOS_VM_INVALID_ID;
+}
+
+static int
+ribos_vm_storage_execution_control_matches(
+    const RibosVmStorageExecutionControl *left,
+    const RibosVmStorageExecutionControl *right)
+{
+    return left != NULL && right != NULL &&
+        left->state == right->state &&
+        left->function_id == right->function_id &&
+        left->block_id == right->block_id &&
+        left->instruction_id == right->instruction_id &&
+        left->return_slot_id == right->return_slot_id &&
+        left->frame_base == right->frame_base &&
+        left->stack_cursor == right->stack_cursor &&
+        left->frame_depth == right->frame_depth &&
+        left->consumed_instructions == right->consumed_instructions &&
+        left->context_generation == right->context_generation &&
+        left->context_type_id == right->context_type_id &&
+        memcmp(
+            left->context_digest,
+            right->context_digest,
+            RIBOS_VM_DIGEST_BYTES) == 0;
+}
+
+static int
+ribos_vm_storage_frames_are_valid(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    const RibosVmStoragePlan *plan,
+    const RibosVmStorageExecutionControl *control)
+{
+    uint64_t cursor = 0;
+    uint32_t index;
+
+    if (control->state == 0) {
+        return control->frame_depth == 0 &&
+            control->stack_cursor == 0 &&
+            control->frame_base == 0;
+    }
+    if (control->frame_depth == 0 ||
+        control->frame_depth > plan->call_depth ||
+        control->frame_depth >
+            plan->regions[RIBOS_VM_STORAGE_REGION_FRAMES].count) {
+        return 0;
+    }
+    for (index = 0; index < control->frame_depth; ++index) {
+        RibosVmFrameRecord record;
+        uint32_t expected_size;
+        uint32_t previous;
+
+        if (!ribos_vm_storage_decode_frame(
+                ribos_vm_storage_const_frame_bytes(
+                    storage,
+                    plan,
+                    index),
+                &record) ||
+            ribos_vm_storage_function_info(
+                prepared_program,
+                record.function_id,
+                NULL,
+                NULL,
+                &expected_size) != RIBOS_VM_STATUS_OK ||
+            record.frame_base != cursor ||
+            record.frame_size != expected_size ||
+            !ribos_checked_u64_add(
+                cursor,
+                record.frame_size,
+                &cursor)) {
+            return 0;
+        }
+        if ((index == 0 &&
+             (record.continuation_instruction_id !=
+                  RIBOS_VM_INVALID_ID ||
+              record.return_slot_id != RIBOS_VM_INVALID_ID)) ||
+            (index != 0 &&
+             (record.continuation_instruction_id ==
+                  RIBOS_VM_INVALID_ID ||
+              record.return_slot_id == RIBOS_VM_INVALID_ID))) {
+            return 0;
+        }
+        for (previous = 0; previous < index; ++previous) {
+            RibosVmFrameRecord active;
+
+            if (!ribos_vm_storage_decode_frame(
+                    ribos_vm_storage_const_frame_bytes(
+                        storage,
+                        plan,
+                        previous),
+                    &active) ||
+                active.function_id == record.function_id) {
+                return 0;
+            }
+        }
+        if (index + 1 == control->frame_depth &&
+            (record.function_id != control->function_id ||
+             record.frame_base != control->frame_base)) {
+            return 0;
+        }
+    }
+    return cursor == control->stack_cursor &&
+        cursor <= plan->regions[
+            RIBOS_VM_STORAGE_REGION_FRAME_VALUES].byte_size;
+}
+
+static void
+ribos_vm_storage_write_execution_control(
+    uint8_t *bytes,
+    const RibosVmStorageExecutionControl *control)
+{
+    ribos_vm_value_write_u64(
+        bytes + RIBOS_VM_CONTROL_STACK_CURSOR_OFFSET,
+        control->stack_cursor);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_FRAME_DEPTH_OFFSET,
+        control->frame_depth);
     ribos_vm_value_write_u32(
         bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET,
         control->state);
@@ -1803,6 +2032,156 @@ ribos_vm_storage_execution_begin_internal_v1(
         bytes + RIBOS_VM_CONTROL_CONTEXT_DIGEST_OFFSET,
         control->context_digest,
         RIBOS_VM_DIGEST_BYTES);
+}
+
+static RibosVmStatus
+ribos_vm_storage_reset_function_loops(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id)
+{
+    const RibosArtifactView *view;
+    const RibosArtifactSectionView *loops;
+    RibosVmStoragePlan plan;
+    size_t required_size;
+    uint8_t *counters;
+    uint32_t index;
+    RibosVmStatus status;
+
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    status = ribos_vm_storage_validate_v1(
+        prepared_program,
+        storage,
+        arena_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    view = ribos_prepared_program_artifact_view_v1(prepared_program);
+    loops = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_LOOPS);
+    if (loops == NULL || loops->count != plan.loop_count) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    counters = ribos_vm_storage_mutable_bytes(storage) +
+        (size_t)plan.regions[
+            RIBOS_VM_STORAGE_REGION_LOOP_COUNTERS].offset;
+    for (index = 0; index < loops->count; ++index) {
+        const uint8_t *row = ribos_vm_storage_row(loops, index);
+
+        if (row == NULL || ribos_vm_value_read_u32(row) != index) {
+            return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+        }
+        if (ribos_vm_value_read_u32(row + 4) == function_id) {
+            ribos_vm_value_write_u64(
+                counters +
+                    (size_t)index * RIBOS_VM_LOOP_COUNTER_BYTES,
+                ribos_vm_value_read_u32(row + 24));
+        }
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_execution_begin_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control)
+{
+    RibosVmStorageExecutionControl initial;
+    RibosVmStoragePlan plan;
+    RibosVmFrameRecord frame;
+    uint8_t *frame_bytes;
+    uint8_t *bytes;
+    size_t required_size;
+    uint32_t entry_block;
+    uint32_t entry_instruction;
+    uint32_t frame_size;
+    RibosVmStatus status;
+
+    if (control == NULL || control->state != 1 ||
+        control->function_id == RIBOS_VM_INVALID_ID ||
+        control->block_id == RIBOS_VM_INVALID_ID ||
+        control->instruction_id == RIBOS_VM_INVALID_ID ||
+        control->return_slot_id != RIBOS_VM_INVALID_ID ||
+        control->frame_base != 0 ||
+        control->stack_cursor != 0 ||
+        control->frame_depth != 0 ||
+        control->consumed_instructions != 0 ||
+        control->context_generation == 0 ||
+        control->context_type_id == RIBOS_VM_INVALID_ID ||
+        !ribos_vm_digest_is_nonzero(control->context_digest)) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    status = ribos_vm_storage_validate_v1(
+        prepared_program,
+        storage,
+        arena_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    status = ribos_vm_storage_function_info(
+        prepared_program,
+        control->function_id,
+        &entry_block,
+        &entry_instruction,
+        &frame_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (plan.call_depth == 0 ||
+        control->block_id != entry_block ||
+        control->instruction_id != entry_instruction ||
+        frame_size > plan.regions[
+            RIBOS_VM_STORAGE_REGION_FRAME_VALUES].byte_size) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    bytes = ribos_vm_storage_mutable_bytes(storage);
+    if (ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET) != 0) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    frame = (RibosVmFrameRecord){
+        .function_id = control->function_id,
+        .continuation_instruction_id = RIBOS_VM_INVALID_ID,
+        .return_slot_id = RIBOS_VM_INVALID_ID,
+        .frame_base = 0,
+        .frame_size = frame_size,
+    };
+    frame_bytes = ribos_vm_storage_frame_bytes(storage, &plan, 0);
+    if (frame_bytes == NULL) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    status = ribos_vm_storage_reset_function_loops(
+        prepared_program,
+        storage,
+        arena_size,
+        control->function_id);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    ribos_vm_storage_encode_frame(frame_bytes, &frame);
+    initial = *control;
+    initial.stack_cursor = frame_size;
+    initial.frame_depth = 1;
+    ribos_vm_storage_write_execution_control(bytes, &initial);
     return RIBOS_VM_STATUS_OK;
 }
 
@@ -1815,6 +2194,8 @@ ribos_vm_storage_execution_load_internal_v1(
     uint64_t *remaining_instructions)
 {
     const uint8_t *bytes;
+    RibosVmStoragePlan plan;
+    size_t required_size;
     RibosVmStatus status;
 
     if (control == NULL || remaining_instructions == NULL) {
@@ -1829,6 +2210,14 @@ ribos_vm_storage_execution_load_internal_v1(
     if (status != RIBOS_VM_STATUS_OK) {
         return status;
     }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
     bytes = ribos_vm_storage_const_bytes(storage);
     control->state = ribos_vm_value_read_u32(
         bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET);
@@ -1842,6 +2231,10 @@ ribos_vm_storage_execution_load_internal_v1(
         bytes + RIBOS_VM_CONTROL_RETURN_SLOT_OFFSET);
     control->frame_base = ribos_vm_value_read_u64(
         bytes + RIBOS_VM_CONTROL_CURRENT_FRAME_BASE_OFFSET);
+    control->stack_cursor = ribos_vm_value_read_u64(
+        bytes + RIBOS_VM_CONTROL_STACK_CURSOR_OFFSET);
+    control->frame_depth = ribos_vm_value_read_u32(
+        bytes + RIBOS_VM_CONTROL_FRAME_DEPTH_OFFSET);
     control->consumed_instructions = ribos_vm_value_read_u64(
         bytes + RIBOS_VM_CONTROL_CONSUMED_INSTRUCTIONS_OFFSET);
     control->context_generation = ribos_vm_value_read_u64(
@@ -1859,15 +2252,23 @@ ribos_vm_storage_execution_load_internal_v1(
         ribos_vm_value_read_u32(
             bytes + RIBOS_VM_CONTROL_EXECUTION_RESERVED_OFFSET) != 0 ||
         (control->state != 0 &&
-         (control->function_id == RIBOS_VM_INVALID_ID ||
-          control->block_id == RIBOS_VM_INVALID_ID ||
-          control->instruction_id == RIBOS_VM_INVALID_ID ||
-          control->frame_base != 0 ||
-          control->context_generation == 0 ||
+	         (control->function_id == RIBOS_VM_INVALID_ID ||
+	          control->block_id == RIBOS_VM_INVALID_ID ||
+	          control->instruction_id == RIBOS_VM_INVALID_ID ||
+	          control->context_generation == 0 ||
           control->context_type_id == RIBOS_VM_INVALID_ID ||
           !ribos_vm_digest_is_nonzero(control->context_digest) ||
           ((control->state == 3) !=
            (control->return_slot_id != RIBOS_VM_INVALID_ID))))) {
+        memset(control, 0, sizeof(*control));
+        *remaining_instructions = 0;
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (!ribos_vm_storage_frames_are_valid(
+            prepared_program,
+            storage,
+            &plan,
+            control)) {
         memset(control, 0, sizeof(*control));
         *remaining_instructions = 0;
         return RIBOS_VM_STATUS_INVALID_STATE;
@@ -1912,6 +2313,8 @@ ribos_vm_storage_execution_store_internal_v1(
         existing.state == 4 || control->state == 1 ||
         existing.function_id != control->function_id ||
         existing.frame_base != control->frame_base ||
+        existing.stack_cursor != control->stack_cursor ||
+        existing.frame_depth != control->frame_depth ||
         existing.context_generation != control->context_generation ||
         existing.context_type_id != control->context_type_id ||
         memcmp(
@@ -1923,24 +2326,522 @@ ribos_vm_storage_execution_store_internal_v1(
         return RIBOS_VM_STATUS_INVALID_STATE;
     }
     bytes = ribos_vm_storage_mutable_bytes(storage);
-    ribos_vm_value_write_u32(
-        bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET,
-        control->state);
-    ribos_vm_value_write_u32(
-        bytes + RIBOS_VM_CONTROL_CURRENT_FUNCTION_OFFSET,
-        control->function_id);
-    ribos_vm_value_write_u32(
-        bytes + RIBOS_VM_CONTROL_CURRENT_BLOCK_OFFSET,
-        control->block_id);
-    ribos_vm_value_write_u32(
-        bytes + RIBOS_VM_CONTROL_CURRENT_INSTRUCTION_OFFSET,
-        control->instruction_id);
-    ribos_vm_value_write_u32(
-        bytes + RIBOS_VM_CONTROL_RETURN_SLOT_OFFSET,
-        control->return_slot_id);
-    ribos_vm_value_write_u64(
-        bytes + RIBOS_VM_CONTROL_CURRENT_FRAME_BASE_OFFSET,
-        control->frame_base);
+    ribos_vm_storage_write_execution_control(bytes, control);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_call_target_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *caller,
+    uint32_t callee_function_id,
+    RibosVmStorageCallTarget *target,
+    uint32_t *fault_code)
+{
+    RibosVmStorageExecutionControl existing;
+    RibosVmStoragePlan plan;
+    uint64_t remaining;
+    uint64_t frame_end;
+    size_t required_size;
+    uint32_t frame_size;
+    uint32_t entry_block_id;
+    uint32_t entry_instruction_id;
+    uint32_t index;
+    RibosVmStatus status;
+
+    if (caller == NULL || target == NULL || fault_code == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    memset(target, 0, sizeof(*target));
+    *fault_code = RIBOS_VM_FAULT_NONE;
+    status = ribos_vm_storage_execution_load_internal_v1(
+        prepared_program,
+        storage,
+        arena_size,
+        &existing,
+        &remaining);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)remaining;
+    if ((caller->state != 1 && caller->state != 2) ||
+        !ribos_vm_storage_execution_control_matches(
+            &existing,
+            caller)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    if (caller->frame_depth >= plan.call_depth) {
+        *fault_code = RIBOS_VM_FAULT_CALL_DEPTH;
+        return RIBOS_VM_STATUS_LIMIT_EXCEEDED;
+    }
+    for (index = 0; index < caller->frame_depth; ++index) {
+        RibosVmFrameRecord active;
+
+        if (!ribos_vm_storage_decode_frame(
+                ribos_vm_storage_const_frame_bytes(
+                    storage,
+                    &plan,
+                    index),
+                &active)) {
+            return RIBOS_VM_STATUS_INVALID_STATE;
+        }
+        if (active.function_id == callee_function_id) {
+            *fault_code = RIBOS_VM_FAULT_CALL_DEPTH;
+            return RIBOS_VM_STATUS_LIMIT_EXCEEDED;
+        }
+    }
+    status = ribos_vm_storage_function_info(
+        prepared_program,
+        callee_function_id,
+        &entry_block_id,
+        &entry_instruction_id,
+        &frame_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (!ribos_checked_u64_add(
+            caller->stack_cursor,
+            frame_size,
+            &frame_end) ||
+        frame_end > plan.regions[
+            RIBOS_VM_STORAGE_REGION_FRAME_VALUES].byte_size) {
+        *fault_code = RIBOS_VM_FAULT_STACK_BOUNDS;
+        return RIBOS_VM_STATUS_LIMIT_EXCEEDED;
+    }
+    *target = (RibosVmStorageCallTarget){
+        .function_id = callee_function_id,
+        .entry_block_id = entry_block_id,
+        .entry_instruction_id = entry_instruction_id,
+        .frame_size = frame_size,
+        .frame_base = caller->stack_cursor,
+    };
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_frame_push_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *caller,
+    const RibosVmStorageCallTarget *target,
+    uint32_t continuation_instruction_id,
+    uint32_t return_slot_id,
+    RibosVmStorageExecutionControl *callee)
+{
+    const RibosArtifactView *view;
+    const RibosArtifactSectionView *instructions;
+    const RibosArtifactSectionView *blocks;
+    const RibosArtifactSectionView *slots;
+    const uint8_t *continuation;
+    const uint8_t *block;
+    const uint8_t *slot;
+    RibosVmStorageCallTarget expected;
+    RibosVmStoragePlan plan;
+    RibosVmFrameRecord record;
+    uint8_t *frame_bytes;
+    uint8_t *bytes;
+    uint64_t frame_end;
+    size_t required_size;
+    uint32_t query_fault;
+    RibosVmStatus status;
+
+    if (caller == NULL || target == NULL || callee == NULL ||
+        continuation_instruction_id == RIBOS_VM_INVALID_ID ||
+        return_slot_id == RIBOS_VM_INVALID_ID) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    memset(callee, 0, sizeof(*callee));
+    status = ribos_vm_storage_call_target_internal_v1(
+        prepared_program,
+        storage,
+        arena_size,
+        caller,
+        target->function_id,
+        &expected,
+        &query_fault);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (query_fault != RIBOS_VM_FAULT_NONE ||
+        expected.function_id != target->function_id ||
+        expected.entry_block_id != target->entry_block_id ||
+        expected.entry_instruction_id != target->entry_instruction_id ||
+        expected.frame_size != target->frame_size ||
+        expected.frame_base != target->frame_base) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    view = ribos_prepared_program_artifact_view_v1(prepared_program);
+    instructions = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+    blocks = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_BLOCKS);
+    slots = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_SLOTS);
+    continuation = ribos_vm_storage_row(
+        instructions,
+        continuation_instruction_id);
+    slot = ribos_vm_storage_row(slots, return_slot_id);
+    if (continuation == NULL ||
+        ribos_vm_value_read_u32(continuation + 4) !=
+            continuation_instruction_id ||
+        (block = ribos_vm_storage_row(
+            blocks,
+            ribos_vm_value_read_u32(continuation + 8))) == NULL ||
+        ribos_vm_value_read_u32(block + 4) != caller->function_id ||
+        slot == NULL ||
+        ribos_vm_value_read_u32(slot) != return_slot_id ||
+        ribos_vm_value_read_u32(slot + 4) != caller->function_id ||
+        !ribos_checked_u64_add(
+            target->frame_base,
+            target->frame_size,
+            &frame_end)) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    frame_bytes = ribos_vm_storage_frame_bytes(
+        storage,
+        &plan,
+        caller->frame_depth);
+    if (frame_bytes == NULL) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    status = ribos_vm_storage_reset_function_loops(
+        prepared_program,
+        storage,
+        arena_size,
+        target->function_id);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    record = (RibosVmFrameRecord){
+        .function_id = target->function_id,
+        .continuation_instruction_id = continuation_instruction_id,
+        .return_slot_id = return_slot_id,
+        .frame_base = target->frame_base,
+        .frame_size = target->frame_size,
+    };
+    ribos_vm_storage_encode_frame(frame_bytes, &record);
+    *callee = *caller;
+    callee->state = 2;
+    callee->function_id = target->function_id;
+    callee->block_id = target->entry_block_id;
+    callee->instruction_id = target->entry_instruction_id;
+    callee->return_slot_id = RIBOS_VM_INVALID_ID;
+    callee->frame_base = target->frame_base;
+    callee->stack_cursor = frame_end;
+    callee->frame_depth = caller->frame_depth + 1;
+    bytes = ribos_vm_storage_mutable_bytes(storage);
+    ribos_vm_storage_write_execution_control(bytes, callee);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_return_target_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *callee,
+    RibosVmStorageReturnTarget *target)
+{
+    const RibosArtifactView *view;
+    const RibosArtifactSectionView *instructions;
+    const RibosArtifactSectionView *blocks;
+    const RibosArtifactSectionView *slots;
+    const uint8_t *continuation;
+    const uint8_t *block;
+    const uint8_t *slot;
+    RibosVmStorageExecutionControl existing;
+    RibosVmStoragePlan plan;
+    RibosVmFrameRecord current;
+    RibosVmFrameRecord previous;
+    uint64_t remaining;
+    size_t required_size;
+    RibosVmStatus status;
+
+    if (callee == NULL || target == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    memset(target, 0, sizeof(*target));
+    status = ribos_vm_storage_execution_load_internal_v1(
+        prepared_program,
+        storage,
+        arena_size,
+        &existing,
+        &remaining);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)remaining;
+    if (callee->state != 2 ||
+        callee->frame_depth <= 1 ||
+        !ribos_vm_storage_execution_control_matches(
+            &existing,
+            callee)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    if (!ribos_vm_storage_decode_frame(
+            ribos_vm_storage_const_frame_bytes(
+                storage,
+                &plan,
+                callee->frame_depth - 1),
+            &current) ||
+        !ribos_vm_storage_decode_frame(
+            ribos_vm_storage_const_frame_bytes(
+                storage,
+                &plan,
+                callee->frame_depth - 2),
+            &previous) ||
+        current.function_id != callee->function_id ||
+        current.continuation_instruction_id == RIBOS_VM_INVALID_ID ||
+        current.return_slot_id == RIBOS_VM_INVALID_ID) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    view = ribos_prepared_program_artifact_view_v1(prepared_program);
+    instructions = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+    blocks = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_BLOCKS);
+    slots = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_SLOTS);
+    continuation = ribos_vm_storage_row(
+        instructions,
+        current.continuation_instruction_id);
+    slot = ribos_vm_storage_row(slots, current.return_slot_id);
+    if (continuation == NULL ||
+        ribos_vm_value_read_u32(continuation + 4) !=
+            current.continuation_instruction_id ||
+        (block = ribos_vm_storage_row(
+            blocks,
+            ribos_vm_value_read_u32(continuation + 8))) == NULL ||
+        ribos_vm_value_read_u32(block + 4) != previous.function_id ||
+        slot == NULL ||
+        ribos_vm_value_read_u32(slot) != current.return_slot_id ||
+        ribos_vm_value_read_u32(slot + 4) != previous.function_id) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    *target = (RibosVmStorageReturnTarget){
+        .function_id = previous.function_id,
+        .block_id = ribos_vm_value_read_u32(continuation + 8),
+        .instruction_id = current.continuation_instruction_id,
+        .return_slot_id = current.return_slot_id,
+        .frame_base = previous.frame_base,
+    };
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_frame_pop_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *callee,
+    const RibosVmStorageReturnTarget *target,
+    RibosVmStorageExecutionControl *caller)
+{
+    RibosVmStorageReturnTarget expected;
+    RibosVmStoragePlan plan;
+    RibosVmFrameRecord current;
+    uint8_t *frame_bytes;
+    uint8_t *bytes;
+    size_t required_size;
+    RibosVmStatus status;
+
+    if (callee == NULL || target == NULL || caller == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    memset(caller, 0, sizeof(*caller));
+    status = ribos_vm_storage_return_target_internal_v1(
+        prepared_program,
+        storage,
+        arena_size,
+        callee,
+        &expected);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (expected.function_id != target->function_id ||
+        expected.block_id != target->block_id ||
+        expected.instruction_id != target->instruction_id ||
+        expected.return_slot_id != target->return_slot_id ||
+        expected.frame_base != target->frame_base) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    frame_bytes = ribos_vm_storage_frame_bytes(
+        storage,
+        &plan,
+        callee->frame_depth - 1);
+    if (!ribos_vm_storage_decode_frame(frame_bytes, &current)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    status = ribos_vm_storage_reset_frame_v1(
+        prepared_program,
+        storage,
+        arena_size,
+        callee->function_id,
+        callee->frame_base);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    memset(frame_bytes, 0, RIBOS_VM_FRAME_RECORD_BYTES);
+    *caller = *callee;
+    caller->state = 2;
+    caller->function_id = target->function_id;
+    caller->block_id = target->block_id;
+    caller->instruction_id = target->instruction_id;
+    caller->return_slot_id = RIBOS_VM_INVALID_ID;
+    caller->frame_base = target->frame_base;
+    caller->stack_cursor = current.frame_base;
+    caller->frame_depth = callee->frame_depth - 1;
+    bytes = ribos_vm_storage_mutable_bytes(storage);
+    ribos_vm_storage_write_execution_control(bytes, caller);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_loop_transition_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint32_t source_block_id,
+    uint32_t target_block_id,
+    uint32_t *violation_loop_id)
+{
+    const RibosArtifactView *view;
+    const RibosArtifactSectionView *loops;
+    RibosVmStoragePlan plan;
+    uint8_t *counters;
+    size_t required_size;
+    uint32_t latch_matches = 0;
+    uint32_t header_matches = 0;
+    uint32_t index;
+    RibosVmStatus status;
+
+    if (violation_loop_id == NULL ||
+        function_id == RIBOS_VM_INVALID_ID ||
+        source_block_id == RIBOS_VM_INVALID_ID ||
+        target_block_id == RIBOS_VM_INVALID_ID) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    *violation_loop_id = RIBOS_VM_INVALID_ID;
+    status = ribos_vm_storage_validate_v1(
+        prepared_program,
+        storage,
+        arena_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    view = ribos_prepared_program_artifact_view_v1(prepared_program);
+    loops = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_LOOPS);
+    if (loops == NULL || loops->count != plan.loop_count) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    counters = ribos_vm_storage_mutable_bytes(storage) +
+        (size_t)plan.regions[
+            RIBOS_VM_STORAGE_REGION_LOOP_COUNTERS].offset;
+    for (index = 0; index < loops->count; ++index) {
+        const uint8_t *row = ribos_vm_storage_row(loops, index);
+        uint32_t owner;
+        uint32_t header;
+        uint32_t body;
+        uint32_t latch;
+        uint32_t trip_count;
+        uint8_t *counter;
+        uint64_t remaining;
+
+        if (row == NULL || ribos_vm_value_read_u32(row) != index) {
+            return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+        }
+        owner = ribos_vm_value_read_u32(row + 4);
+        header = ribos_vm_value_read_u32(row + 8);
+        body = ribos_vm_value_read_u32(row + 12);
+        latch = ribos_vm_value_read_u32(row + 20);
+        trip_count = ribos_vm_value_read_u32(row + 24);
+        if (owner != function_id) {
+            continue;
+        }
+        counter = counters +
+            (size_t)index * RIBOS_VM_LOOP_COUNTER_BYTES;
+        remaining = ribos_vm_value_read_u64(counter);
+        if (trip_count == 0 || remaining > trip_count) {
+            return RIBOS_VM_STATUS_INVALID_STATE;
+        }
+        if (source_block_id == latch &&
+            target_block_id == header) {
+            ++latch_matches;
+            if (remaining == 0) {
+                *violation_loop_id = index;
+                return RIBOS_VM_STATUS_LIMIT_EXCEEDED;
+            }
+            ribos_vm_value_write_u64(counter, remaining - 1);
+            continue;
+        }
+        if (source_block_id == header &&
+            target_block_id == body) {
+            ++header_matches;
+            if (remaining == 0) {
+                *violation_loop_id = index;
+                return RIBOS_VM_STATUS_LIMIT_EXCEEDED;
+            }
+        }
+        if (target_block_id == header &&
+            source_block_id != latch) {
+            ribos_vm_value_write_u64(counter, trip_count);
+        }
+    }
+    if (latch_matches > 1 || header_matches > 1) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
     return RIBOS_VM_STATUS_OK;
 }
 

@@ -94,6 +94,7 @@ RIBOS_RUNTIME_CONTRACT_TEST := $(TEST_BUILD_DIR)/ribos_runtime_contract_tests
 RIBOS_PREPARED_PROGRAM_TEST := $(TEST_BUILD_DIR)/ribos_prepared_program_tests
 RIBOS_RUNTIME_STORAGE_TEST := $(TEST_BUILD_DIR)/ribos_runtime_storage_tests
 RIBOS_VM_SCALAR_TEST := $(TEST_BUILD_DIR)/ribos_vm_scalar_tests
+RIBOS_VM_CALLS_LOOPS_TEST := $(TEST_BUILD_DIR)/ribos_vm_calls_loops_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
@@ -459,6 +460,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-resources check-ribos-artifact check-ribos-verifier \
 	check-ribos-runtime-contract check-ribos-prepared-program \
 	check-ribos-runtime-storage check-ribos-vm-scalar \
+	check-ribos-vm-calls check-ribos-vm-loops \
 	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
@@ -721,6 +723,35 @@ check-ribos-vm-scalar: check-ribos-runtime-storage \
 			"$$tmp/scalar-interpreter.rba" \
 			language/ribos/vm/tests/scalar_interpreter.rbs; \
 		$(RIBOS_VM_SCALAR_TEST) "$$tmp/scalar-interpreter.rba"
+
+$(RIBOS_VM_CALLS_LOOPS_TEST): \
+		language/ribos/vm/tests/calls_loops_interpreter_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		-Ilanguage/ribos/vm/src/runtime \
+		language/ribos/vm/tests/calls_loops_interpreter_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+check-ribos-vm-calls: check-ribos-vm-scalar \
+		$(RIBOS_VM_CALLS_LOOPS_TEST)
+	@tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/calls-loops-interpreter.rba" \
+			language/ribos/vm/tests/calls_loops_interpreter.rbs; \
+		$(RIBOS_VM_CALLS_LOOPS_TEST) \
+			"$$tmp/calls-loops-interpreter.rba" calls
+
+check-ribos-vm-loops: check-ribos-vm-scalar \
+		$(RIBOS_VM_CALLS_LOOPS_TEST)
+	@tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/calls-loops-interpreter.rba" \
+			language/ribos/vm/tests/calls_loops_interpreter.rbs; \
+		$(RIBOS_VM_CALLS_LOOPS_TEST) \
+			"$$tmp/calls-loops-interpreter.rba" loops
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1432,7 +1463,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-ir check-ribos-resources check-ribos-artifact \
 	check-ribos-verifier check-ribos-runtime-contract \
 	check-ribos-prepared-program check-ribos-runtime-storage \
-	check-ribos-vm-scalar \
+	check-ribos-vm-scalar check-ribos-vm-calls \
+	check-ribos-vm-loops \
 	check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
