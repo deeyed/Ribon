@@ -66,6 +66,19 @@ typedef struct RibosArtifactWriter {
     int failed;
 } RibosArtifactWriter;
 
+/**
+ * Target-safe streaming SHA-256 context shared by artifact and VM internals.
+ *
+ * This is not a serialized ABI.  Public callers use the one-shot artifact and
+ * schema identity APIs instead.
+ */
+typedef struct RibosArtifactSha256 {
+    uint32_t state[8];
+    uint64_t bit_count;
+    uint8_t block[64];
+    size_t block_size;
+} RibosArtifactSha256;
+
 int ribos_artifact_size_add(
     size_t left,
     size_t right,
@@ -139,6 +152,18 @@ int ribos_artifact_bytes_are_zero(
 void ribos_artifact_sha256(
     const uint8_t *input,
     size_t input_size,
+    uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES]);
+
+void ribos_artifact_sha256_initialize(
+    RibosArtifactSha256 *context);
+
+void ribos_artifact_sha256_update(
+    RibosArtifactSha256 *context,
+    const uint8_t *input,
+    size_t input_size);
+
+void ribos_artifact_sha256_finish(
+    RibosArtifactSha256 *context,
     uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES]);
 
 #endif

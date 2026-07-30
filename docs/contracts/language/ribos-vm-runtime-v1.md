@@ -5,11 +5,14 @@ authority: normative
 last_verified: 2026-07-31
 code_paths:
   - language/ribos/vm/include/ribos/vm/runtime.h
+  - language/ribos/vm/include/ribos/vm/prepared.h
+  - language/ribos/vm/src/prepared.c
   - language/ribos/vm/tests/runtime_contract_tests.c
   - language/ribos/vm/tests/check_runtime_header.py
   - Makefile
 tests:
   - make check-ribos-runtime-contract
+  - make check-ribos-prepared-program
   - make check-ribos-schema
   - make check-ribos-verifier
   - make check-ribos-host-boundary
@@ -368,6 +371,8 @@ context와 세 outcome tag의 fail-closed validation을 host C unit으로 검사
 header scan은 packed layout, native-width field, host/firmware/OS include와 Ribon service
 type 유입을 거부한다.
 
-이 성공은 ABI와 host compile/unit 증거다. PreparedProgram authorization, opcode
-interpreter, helper 실행, Ribon service adapter, QEMU와 hardware policy 실행을 증명하지
-않는다.
+이 성공은 ABI와 host compile/unit 증거다.
+{doc}`ribos-prepared-program-v1`과 `make check-ribos-prepared-program`은 별도로
+authorization, two-stage verification과 immutable binding 수명을 검증한다. 이 두
+gate 모두 opcode interpreter, helper 실행, Ribon service adapter, QEMU와 hardware
+policy 실행을 증명하지 않는다.

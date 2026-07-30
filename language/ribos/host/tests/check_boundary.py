@@ -112,6 +112,7 @@ def inspect_archives(
         "artifact_sha256.o",
         "artifact_codec.o",
         "verifier.o",
+        "prepared.o",
     }
     missing_target = sorted(required_target_members.difference(target_members))
     if missing_target:

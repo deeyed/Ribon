@@ -2,13 +2,6 @@
 
 #include <string.h>
 
-typedef struct RibosArtifactSha256 {
-    uint32_t state[8];
-    uint64_t bit_count;
-    uint8_t block[64];
-    size_t block_size;
-} RibosArtifactSha256;
-
 static uint32_t
 ribos_artifact_sha_rotate_right(uint32_t value, unsigned shift)
 {
@@ -112,8 +105,8 @@ ribos_artifact_sha_transform(
     context->state[7] += h;
 }
 
-static void
-ribos_artifact_sha_initialize(RibosArtifactSha256 *context)
+void
+ribos_artifact_sha256_initialize(RibosArtifactSha256 *context)
 {
     static const uint32_t initial[8] = {
         0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
@@ -124,8 +117,8 @@ ribos_artifact_sha_initialize(RibosArtifactSha256 *context)
     memcpy(context->state, initial, sizeof(initial));
 }
 
-static void
-ribos_artifact_sha_update(
+void
+ribos_artifact_sha256_update(
     RibosArtifactSha256 *context,
     const uint8_t *input,
     size_t input_size)
@@ -153,8 +146,8 @@ ribos_artifact_sha_update(
     }
 }
 
-static void
-ribos_artifact_sha_finish(
+void
+ribos_artifact_sha256_finish(
     RibosArtifactSha256 *context,
     uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES])
 {
@@ -195,9 +188,9 @@ ribos_artifact_sha256(
 {
     RibosArtifactSha256 context;
 
-    ribos_artifact_sha_initialize(&context);
+    ribos_artifact_sha256_initialize(&context);
     if (input_size != 0) {
-        ribos_artifact_sha_update(&context, input, input_size);
+        ribos_artifact_sha256_update(&context, input, input_size);
     }
-    ribos_artifact_sha_finish(&context, digest);
+    ribos_artifact_sha256_finish(&context, digest);
 }

@@ -28,6 +28,7 @@ Runtime public ABI는 다음 header가 소유한다.
 
 ```text
 include/ribos/vm/runtime.h
+include/ribos/vm/prepared.h
 ```
 
 Runtime ABI 1.0은 product schema 1.1과 helper execution contract 1.0을 분리한다.
@@ -37,12 +38,21 @@ handle transition을 소유한다. `RibosPreparedProgram`과 `RibosVmHelperCall`
 process-local type이며 public structure는 fixed-width field와 explicit pointer만
 사용한다.
 
+`prepared.h`는 raw artifact와 execution 사이의 authorization/preparation lifetime을
+제공한다. Product callback이 signature, key와 rollback authority를 소유하고 generic
+VM은 copied artifact에 Stage-1과 Stage-2를 실행한다. 성공한
+`RibosPreparedProgram`은 exact artifact byte, copied helper callback table, verifier
+report, effective limits와 artifact/schema/helper binding digest를 caller-owned
+workspace에 봉인한다. Selected schema pointer와 original helper table pointer는
+보존하지 않는다.
+
 Execute의 terminal 결과는 sealed `BootAction`, typed `PolicyError`, catch 불가능한
 `VmFault` 세 class뿐이다. BootAction은 실제 jump가 아닌 single-consume intent이며
 fault recovery callback은 sealed receipt를 통지할 뿐 outcome을 바꾸지 않는다.
 
 ```sh
 make check-ribos-runtime-contract
+make check-ribos-prepared-program
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
 ```
@@ -68,5 +78,6 @@ Structural reader가 envelope, payload hash와 section range를 통과시킨 art
 아니다. Runtime counter, Ed25519 signature, rollback과 product key policy가 실행
 허가 전에 별도로 통과해야 한다.
 
-이 README와 host gate는 runtime ABI와 verifier의 host compile/unit 경계만 설명한다.
-VM dispatch, boot product linkage, QEMU 또는 hardware policy 실행 증거가 아니다.
+이 README와 host gate는 runtime ABI, verifier와 host-side execution eligibility
+경계만 설명한다. VM dispatch, production signature/rollback provider, boot product
+linkage, QEMU 또는 hardware policy 실행 증거가 아니다.
