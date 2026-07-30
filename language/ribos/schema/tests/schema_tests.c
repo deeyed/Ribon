@@ -96,6 +96,11 @@ test_descriptor_and_lookup_rules(void)
     RibosProductSchema unsupported_version = *schema;
     const RibosSchemaHelper *helper =
         ribos_schema_find_helper(schema, "boot.slot", strlen("boot.slot"));
+    const RibosSchemaType *type =
+        ribos_schema_find_type(
+            schema,
+            "BootContext",
+            strlen("BootContext"));
     const RibosSchemaMember *member = ribos_schema_find_member(
         schema,
         "BootContext",
@@ -115,6 +120,8 @@ test_descriptor_and_lookup_rules(void)
             RIBOS_SCHEMA_INVALID_DESCRIPTOR &&
         ribos_schema_validate(&unsupported_version) ==
             RIBOS_SCHEMA_INVALID_DESCRIPTOR &&
+        type != NULL && type->stable_id == 1 &&
+        type->type_class == RIBOS_SCHEMA_TYPE_FACT &&
         helper != NULL && helper->stable_id == 21 &&
         member != NULL && member->stable_id == 1 &&
         field != NULL && field->stable_id == 3;

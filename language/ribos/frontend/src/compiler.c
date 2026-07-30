@@ -239,6 +239,8 @@ ribos_compile_diagnostic_code_name(RibosCompileDiagnosticCode code)
         return "E_PURE_FUNCTION_HAS_EFFECT";
     case RIBOS_E_HELPER_BUDGET_EXCEEDED:
         return "E_HELPER_BUDGET_EXCEEDED";
+    case RIBOS_E_INSTRUCTION_BUDGET_EXCEEDED:
+        return "E_INSTRUCTION_BUDGET_EXCEEDED";
     case RIBOS_E_RECURSIVE_CALL_GRAPH:
         return "E_RECURSIVE_CALL_GRAPH";
     case RIBOS_E_SCHEMA_INVALID:

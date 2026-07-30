@@ -59,6 +59,12 @@ RibosIrStatus ribos_ir_builder_update_block(
     RibosIrModule *module,
     const RibosIrBlock *block);
 
+/** Bounded loop의 header, body, exit, latch와 최대 trip count를 추가한다. */
+RibosIrStatus ribos_ir_builder_add_loop(
+    RibosIrModule *module,
+    const RibosIrLoop *loop,
+    uint32_t *loop_id);
+
 /** Function-owned typed virtual slot을 추가한다. */
 RibosIrStatus ribos_ir_builder_add_slot(
     RibosIrModule *module,

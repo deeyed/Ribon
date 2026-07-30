@@ -1,5 +1,6 @@
 #include "semantic_internal.h"
 
+#include "ribos/ir/analysis.h"
 #include "ribos/ir/builder.h"
 
 #include <stdlib.h>
@@ -1509,6 +1510,8 @@ ribos_lower_for_statement(
     uint32_t compare;
     uint32_t compare_operands[2];
     uint32_t branch_operand[1];
+    uint32_t latch_block = RIBOS_IR_INVALID_ID;
+    uint32_t loop_id;
     size_t binding_mark;
 
     (void)ribos_lower_emit(
@@ -1620,7 +1623,27 @@ ribos_lower_for_statement(
             RIBOS_IR_INVALID_ID,
             RIBOS_IR_INVALID_ID,
             0);
+        latch_block = context->current_block;
         (void)ribos_lower_jump(context, statement, condition_block);
+    }
+    {
+        RibosIrLoop loop = {
+            .function_id = context->function_id,
+            .header_block = condition_block,
+            .body_block = body_block,
+            .exit_block = exit_block,
+            .latch_block = latch_block,
+            .trip_count = iterable_type->bound,
+            .source_map_id = ribos_lower_source_map(context, statement),
+        };
+
+        context->ir_status = ribos_ir_builder_add_loop(
+            context->module,
+            &loop,
+            &loop_id);
+        if (context->ir_status != RIBOS_IR_OK) {
+            ribos_lower_fail(context, statement);
+        }
     }
     context->current_block = exit_block;
 }
@@ -1995,6 +2018,7 @@ ribos_lower_types(RibosLowerContext *context)
             .bits = source->bits,
             .shape_start = shape_offset,
         };
+        const RibosSchemaType *schema_type = NULL;
         uint32_t id;
 
         if (source->declaration != NULL &&
@@ -2019,6 +2043,24 @@ ribos_lower_types(RibosLowerContext *context)
                     target.shape_count +=
                         (uint32_t)variant->items->size;
                 }
+            }
+        }
+        if (target.kind == RIBOS_IR_TYPE_NAMED &&
+            source->name != NULL) {
+            schema_type = ribos_schema_find_type(
+                context->semantic->schema,
+                source->name,
+                source->name_length);
+            if (schema_type == NULL) {
+                ribos_lower_fail(context, source->declaration);
+                return 0;
+            }
+            if (schema_type->type_class == RIBOS_SCHEMA_TYPE_ENUM) {
+                target.abi_size = 4;
+                target.abi_alignment = 4;
+            } else {
+                target.abi_size = 8;
+                target.abi_alignment = 8;
             }
         }
         if (target.shape_count > UINT32_MAX - shape_offset) {
@@ -2285,6 +2327,7 @@ ribos_lower_policy_ir(
     RibosIrModule *module)
 {
     RibosLowerContext *context;
+    RibosIrResourceClosure *resources = NULL;
     size_t index;
 
     if (semantic == NULL || module == NULL) {
@@ -2323,6 +2366,75 @@ ribos_lower_policy_ir(
         ribos_ir_validate_v1(module) != RIBOS_IR_OK) {
         ribos_lower_fail(context, semantic->parser->root);
     }
+    if (semantic->status == RIBOS_COMPILE_OK) {
+        resources = ribos_ir_resource_closure_create();
+        if (resources == NULL) {
+            semantic->status = RIBOS_COMPILE_NO_MEMORY;
+            semantic->diagnostic->code = RIBOS_E_RESOURCE_LIMIT;
+            (void)snprintf(
+                semantic->diagnostic->message,
+                sizeof(semantic->diagnostic->message),
+                "Policy IR resource-closure allocation failed");
+        } else {
+            RibosIrStatus resource_status =
+                ribos_ir_analyze_resources_v1(module, resources);
+
+            if (resource_status == RIBOS_IR_OK) {
+                resource_status = ribos_ir_enforce_resource_budgets_v1(
+                    module,
+                    resources);
+            }
+            if (resource_status == RIBOS_IR_BUDGET_EXCEEDED) {
+                semantic->status = RIBOS_COMPILE_BOUND_ERROR;
+                semantic->diagnostic->code =
+                    RIBOS_E_INSTRUCTION_BUDGET_EXCEEDED;
+                (void)snprintf(
+                    semantic->diagnostic->message,
+                    sizeof(semantic->diagnostic->message),
+                    "Policy IR worst-case execution exceeds a declared budget");
+            } else if (resource_status != RIBOS_IR_OK) {
+                ribos_lower_fail(context, semantic->parser->root);
+                (void)snprintf(
+                    semantic->diagnostic->message,
+                    sizeof(semantic->diagnostic->message),
+                    "Policy IR resource closure failed with status %u",
+                    (unsigned)resource_status);
+            }
+        }
+    }
+    if (semantic->status == RIBOS_COMPILE_OK && resources != NULL) {
+        for (index = 0; index < semantic->function_count; ++index) {
+            const RibosIrFunctionResource *resource =
+                ribos_ir_resource_function(resources, (uint32_t)index);
+
+            if (resource != NULL &&
+                semantic->functions[index].is_policy) {
+                semantic->summary->instruction_upper_bound =
+                    resource->instruction_upper_bound;
+                semantic->summary->helper_call_upper_bound =
+                    resource->helper_call_upper_bound;
+                semantic->summary->maximum_stack_bytes =
+                    resource->maximum_stack_bytes;
+                semantic->summary->frame_byte_upper_bound =
+                    resource->frame_bytes;
+                semantic->summary->aggregate_storage_upper_bound =
+                    resource->aggregate_slot_bytes;
+                semantic->summary->reachable_block_count =
+                    resource->reachable_block_count;
+            }
+        }
+        {
+            RibosIrResourceSummary resource_summary;
+
+            if (ribos_ir_resource_summary(
+                    resources,
+                    &resource_summary) == RIBOS_IR_OK) {
+                semantic->summary->bounded_loop_count =
+                    (uint32_t)resource_summary.loop_count;
+            }
+        }
+    }
+    ribos_ir_resource_closure_destroy(resources);
     free(context);
     return semantic->status;
 }

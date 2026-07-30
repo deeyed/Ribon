@@ -746,6 +746,28 @@ ribos_schema_compute_identity(
     return RIBOS_SCHEMA_OK;
 }
 
+const RibosSchemaType *
+ribos_schema_find_type(
+    const RibosProductSchema *schema,
+    const char *name,
+    size_t name_length)
+{
+    size_t index;
+
+    if (schema == NULL || name == NULL) {
+        return NULL;
+    }
+    for (index = 0; index < schema->type_count; ++index) {
+        const RibosSchemaType *type = &schema->types[index];
+
+        if (strlen(type->name) == name_length &&
+            memcmp(type->name, name, name_length) == 0) {
+            return type;
+        }
+    }
+    return NULL;
+}
+
 const RibosSchemaHelper *
 ribos_schema_find_helper(
     const RibosProductSchema *schema,

@@ -2,7 +2,7 @@
 doc_type: roadmap
 status: accepted
 authority: informative
-last_verified: 2026-07-30
+last_verified: 2026-07-31
 code_paths:
   - language/ribos/frontend/grammar/
   - language/ribos/frontend/generated/
@@ -10,6 +10,8 @@ code_paths:
   - language/ribos/frontend/src/
   - language/ribos/frontend/tools/
   - language/ribos/frontend/tests/
+  - language/ribos/schema/
+  - language/ribos/ir/
   - build/generated/ribos/
   - build/results/
 tests:
@@ -20,6 +22,8 @@ tests:
   - ribos-typed-ast
   - ribos-type-negative
   - ribos-capability-negative
+  - ribos-policy-ir-v1
+  - ribos-resource-closure-v1
 hardware:
   - none
 supersedes:
@@ -209,8 +213,11 @@ Product helper/type/handoff schema는 semantic implementation에서 분리한다
 Product/plugin graph가 versioned canonical schema artifact를 생성하고 compiler와
 artifact verifier가 같은 bytes를 소비한다.
 
-AST node 수는 VM instruction 수가 아니다. Exact bytecode instruction budget과 runtime
-stack/register allocation은 다음 backend가 소유한다.
+AST node 수는 VM instruction 수가 아니다. Policy IR resource closure는 reachable CFG,
+bounded loop, terminal path, type/slot layout, frame/stack, call depth, instruction과
+helper별 upper bound를 계산한다. Compiler는 이 값으로 source budget을 집행한다.
+Bytecode emitter는 이 closure를 deterministic encoding으로 옮기고 verifier가 다시
+계산할 수 있게 해야 한다.
 
 ## G6: Bytecode와 artifact verifier
 
@@ -219,7 +226,7 @@ Policy IR을 bounded bytecode와 signed artifact로 내린다.
 ```text
 Policy IR validation
   -> deterministic bytecode selection
-  -> exact instruction/call/stack bound
+  -> IR resource closure 재검사와 bytecode counter mapping
   -> schema digest와 capability manifest
   -> source/helper map
   -> canonical artifact serialization

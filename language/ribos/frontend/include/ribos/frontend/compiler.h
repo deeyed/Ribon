@@ -62,6 +62,7 @@ typedef enum RibosCompileDiagnosticCode {
     RIBOS_E_CAPABILITY_NOT_DECLARED,
     RIBOS_E_PURE_FUNCTION_HAS_EFFECT,
     RIBOS_E_HELPER_BUDGET_EXCEEDED,
+    RIBOS_E_INSTRUCTION_BUDGET_EXCEEDED,
     RIBOS_E_RECURSIVE_CALL_GRAPH,
     RIBOS_E_SCHEMA_INVALID,
     RIBOS_E_IR_LOWERING,
@@ -80,8 +81,14 @@ typedef struct RibosCompileSummary {
     size_t function_count;
     size_t helper_call_site_count;
     uint64_t helper_call_upper_bound;
+    uint64_t instruction_upper_bound;
     uint64_t declared_instruction_budget;
     uint64_t declared_helper_budget;
+    uint64_t maximum_stack_bytes;
+    uint32_t frame_byte_upper_bound;
+    uint32_t aggregate_storage_upper_bound;
+    uint32_t reachable_block_count;
+    uint32_t bounded_loop_count;
     uint32_t declared_capabilities;
     uint32_t required_capabilities;
     uint32_t max_scope_depth;

@@ -87,11 +87,13 @@ RESULTS_DIR := $(BUILD_ROOT)/results
 RIBOS_PARSER_PILOT := $(BUILD_ROOT)/tools/ribos-parse
 RIBOS_SCHEMA_TEST := $(TEST_BUILD_DIR)/ribos_schema_tests
 RIBOS_IR_MODULE_TEST := $(TEST_BUILD_DIR)/ribos_ir_module_tests
+RIBOS_IR_RESOURCE_TEST := $(TEST_BUILD_DIR)/ribos_ir_resource_tests
 RIBOS_PEGEN_ROOT ?=
 RIBOS_PARSER_SRCS := \
 	language/ribos/schema/src/schema.c \
 	language/ribos/ir/src/module.c \
 	language/ribos/ir/src/dump.c \
+	language/ribos/ir/src/analysis.c \
 	language/ribos/frontend/src/lexer.c \
 	language/ribos/frontend/src/runtime.c \
 	language/ribos/frontend/src/ast.c \
@@ -108,6 +110,7 @@ RIBOS_PARSER_HEADERS := \
 	language/ribos/schema/include/ribos/schema/schema.h \
 	language/ribos/ir/include/ribos/ir/ir.h \
 	language/ribos/ir/include/ribos/ir/builder.h \
+	language/ribos/ir/include/ribos/ir/analysis.h \
 	language/ribos/ir/src/ir_internal.h \
 	language/ribos/frontend/src/parser_internal.h \
 	language/ribos/frontend/src/semantic_internal.h \
@@ -396,6 +399,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
 	ribos-parser-pilot check-ribos-parser-snapshot check-ribos-parser-pilot \
 	check-ribos-semantics check-ribos-schema check-ribos-ir \
+	check-ribos-resources \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
@@ -464,10 +468,32 @@ $(RIBOS_IR_MODULE_TEST): language/ribos/ir/src/module.c \
 		language/ribos/ir/src/module.c \
 		language/ribos/ir/tests/module_tests.c -o $@
 
+$(RIBOS_IR_RESOURCE_TEST): language/ribos/ir/src/module.c \
+		language/ribos/ir/src/analysis.c \
+		language/ribos/ir/src/ir_internal.h \
+		language/ribos/ir/include/ribos/ir/ir.h \
+		language/ribos/ir/include/ribos/ir/builder.h \
+		language/ribos/ir/include/ribos/ir/analysis.h \
+		language/ribos/ir/tests/resource_tests.c Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		-Ilanguage/ribos/schema/include \
+		-Ilanguage/ribos/ir/include \
+		-Ilanguage/ribos/ir/src \
+		language/ribos/ir/src/module.c \
+		language/ribos/ir/src/analysis.c \
+		language/ribos/ir/tests/resource_tests.c -o $@
+
 check-ribos-ir: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT) \
 		$(RIBOS_IR_MODULE_TEST)
 	$(RIBOS_IR_MODULE_TEST)
 	$(PYTHON) language/ribos/ir/tests/ir_tests.py \
+		--compiler $(RIBOS_PARSER_PILOT)
+
+check-ribos-resources: check-ribos-parser-snapshot \
+		$(RIBOS_PARSER_PILOT) $(RIBOS_IR_RESOURCE_TEST)
+	$(RIBOS_IR_RESOURCE_TEST)
+	$(PYTHON) language/ribos/ir/tests/resource_tests.py \
 		--compiler $(RIBOS_PARSER_PILOT)
 
 # Generation is intentionally explicit. Normal builds compile and validate the
@@ -1177,7 +1203,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-parser-pilot check-ribos-semantics check-ribos-schema \
-	check-ribos-ir \
+	check-ribos-ir check-ribos-resources \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

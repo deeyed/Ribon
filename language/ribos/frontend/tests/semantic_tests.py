@@ -23,6 +23,7 @@ EXPECTED = {
     "handoff_value_type.rbs": "E_ARGUMENT_TYPE_MISMATCH",
     "heterogeneous_list.rbs": "E_COLLECTION_ELEMENT_TYPE_MISMATCH",
     "immutable_assignment.rbs": "E_MUTATE_IMMUTABLE_BINDING",
+    "instruction_budget.rbs": "E_INSTRUCTION_BUDGET_EXCEEDED",
     "missing_return.rbs": "E_MISSING_RETURN",
     "non_exhaustive_match.rbs": "E_NON_EXHAUSTIVE_MATCH",
     "pure_effect.rbs": "E_PURE_FUNCTION_HAS_EFFECT",

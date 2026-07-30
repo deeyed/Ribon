@@ -21,7 +21,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
     (void)fprintf(
         output,
         " types=%zu shapes=%zu constants=%zu constant-bytes=%zu functions=%zu "
-        "blocks=%zu slots=%zu instructions=%zu operands=%zu "
+        "blocks=%zu loops=%zu slots=%zu instructions=%zu operands=%zu "
         "source-maps=%zu helper-calls=%zu\n",
         module->type_count,
         module->shape_count,
@@ -29,6 +29,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
         module->constant_byte_count,
         module->function_count,
         module->block_count,
+        module->loop_count,
         module->slot_count,
         module->instruction_count,
         module->operand_count,
@@ -40,7 +41,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
         (void)fprintf(
             output,
             "IR-TYPE id=%u kind=%u name=%s first=%u second=%u "
-            "bound=%u shape=%u+%u bits=%u\n",
+            "bound=%u shape=%u+%u abi=%u/%u bits=%u\n",
             type->id,
             (unsigned)type->kind,
             type->name,
@@ -49,6 +50,8 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
             type->bound,
             type->shape_start,
             type->shape_count,
+            type->abi_size,
+            type->abi_alignment,
             type->bits);
     }
     for (index = 0; index < module->shape_count; ++index) {
@@ -163,6 +166,29 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
                 value->source_map_id);
             instruction = value->next_in_block;
         }
+    }
+    for (index = 0; index < module->loop_count; ++index) {
+        const RibosIrLoop *loop = &module->loops[index];
+
+        (void)fprintf(
+            output,
+            "IR-LOOP id=l%u function=%u header=b%u body=b%u exit=b%u "
+            "latch=",
+            loop->id,
+            loop->function_id,
+            loop->header_block,
+            loop->body_block,
+            loop->exit_block);
+        if (loop->latch_block == RIBOS_IR_INVALID_ID) {
+            (void)fprintf(output, "-");
+        } else {
+            (void)fprintf(output, "b%u", loop->latch_block);
+        }
+        (void)fprintf(
+            output,
+            " trips=%u source=m%u\n",
+            loop->trip_count,
+            loop->source_map_id);
     }
     for (index = 0; index < module->slot_count; ++index) {
         const RibosIrSlot *slot = &module->slots[index];

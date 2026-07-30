@@ -58,6 +58,7 @@ contracts/firmware/reference-provider-products
 contracts/sdk/sdk-install-and-package
 contracts/language/ribos-source-language
 contracts/language/ribos-policy-ir-v1
+contracts/language/ribos-resource-closure-v1
 api/public-c-api
 ```
 
@@ -91,6 +92,7 @@ adr/0015-ribos-bounded-policy-language
 adr/0016-tracked-ribos-pegen-snapshot
 adr/0018-ribos-bounded-typed-front-end
 adr/0019-ribos-policy-ir-and-product-schema
+adr/0020-ribos-cfg-resource-closure
 ```
 
 ```{toctree}
@@ -148,4 +150,5 @@ log/2026-07-30-ribos-parser-pilot
 log/2026-07-30-ribos-project-hierarchy
 log/2026-07-30-ribos-typed-front-end
 log/2026-07-30-ribos-policy-ir-v1
+log/2026-07-31-ribos-cfg-resource-closure
 ```

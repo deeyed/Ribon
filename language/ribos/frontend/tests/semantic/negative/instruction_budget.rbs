@@ -1,0 +1,8 @@
+@policy(
+    capabilities=[Capability.BOOT],
+    instruction_budget=1,
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

@@ -9,6 +9,7 @@
 #define RIBOS_IR_MAX_CONSTANT_BYTES (1024u * 1024u)
 #define RIBOS_IR_MAX_FUNCTIONS 64u
 #define RIBOS_IR_MAX_BLOCKS 4096u
+#define RIBOS_IR_MAX_LOOPS 1024u
 #define RIBOS_IR_MAX_SLOTS 16384u
 #define RIBOS_IR_MAX_INSTRUCTIONS 65536u
 #define RIBOS_IR_MAX_OPERANDS 131072u
@@ -31,6 +32,8 @@ struct RibosIrModule {
     size_t function_count;
     RibosIrBlock blocks[RIBOS_IR_MAX_BLOCKS];
     size_t block_count;
+    RibosIrLoop loops[RIBOS_IR_MAX_LOOPS];
+    size_t loop_count;
     RibosIrSlot slots[RIBOS_IR_MAX_SLOTS];
     size_t slot_count;
     RibosIrInstruction instructions[RIBOS_IR_MAX_INSTRUCTIONS];

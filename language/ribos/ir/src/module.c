@@ -56,6 +56,7 @@ ribos_ir_module_summary(
         .constant_byte_count = module->constant_byte_count,
         .function_count = module->function_count,
         .block_count = module->block_count,
+        .loop_count = module->loop_count,
         .slot_count = module->slot_count,
         .instruction_count = module->instruction_count,
         .operand_count = module->operand_count,
@@ -265,6 +266,35 @@ ribos_ir_builder_update_block(
         return RIBOS_IR_INVALID_ARGUMENT;
     }
     *existing = *block;
+    return RIBOS_IR_OK;
+}
+
+RibosIrStatus
+ribos_ir_builder_add_loop(
+    RibosIrModule *module,
+    const RibosIrLoop *loop,
+    uint32_t *loop_id)
+{
+    RibosIrLoop value;
+
+    if (module == NULL || loop == NULL || loop_id == NULL ||
+        loop->function_id >= module->function_count ||
+        loop->header_block >= module->block_count ||
+        loop->body_block >= module->block_count ||
+        loop->exit_block >= module->block_count ||
+        (loop->latch_block != RIBOS_IR_INVALID_ID &&
+         loop->latch_block >= module->block_count) ||
+        loop->trip_count == 0 ||
+        loop->source_map_id >= module->source_map_count) {
+        return RIBOS_IR_INVALID_ARGUMENT;
+    }
+    if (module->loop_count == RIBOS_IR_MAX_LOOPS) {
+        return RIBOS_IR_CAPACITY_EXCEEDED;
+    }
+    value = *loop;
+    value.id = (uint32_t)module->loop_count;
+    module->loops[module->loop_count++] = value;
+    *loop_id = value.id;
     return RIBOS_IR_OK;
 }
 
@@ -479,7 +509,16 @@ ribos_ir_validate_v1(const RibosIrModule *module)
               type->kind == RIBOS_IR_TYPE_DICT ||
               type->kind == RIBOS_IR_TYPE_RESULT) &&
              (type->first_type >= module->type_count ||
-              type->second_type >= module->type_count))) {
+              type->second_type >= module->type_count)) ||
+            (type->kind == RIBOS_IR_TYPE_NAMED &&
+             (type->abi_size == 0 ||
+              type->abi_alignment == 0 ||
+              type->abi_alignment > 8 ||
+              (type->abi_alignment &
+               (type->abi_alignment - 1)) != 0)) ||
+            (type->kind != RIBOS_IR_TYPE_NAMED &&
+             (type->abi_size != 0 ||
+              type->abi_alignment != 0))) {
             return RIBOS_IR_INVALID_MODULE;
         }
         for (shape = type->shape_start;
@@ -575,6 +614,64 @@ ribos_ir_validate_v1(const RibosIrModule *module)
             source_map->end_line == 0 ||
             source_map->end_column == 0) {
             return RIBOS_IR_INVALID_MODULE;
+        }
+    }
+    for (index = 0; index < module->loop_count; ++index) {
+        const RibosIrLoop *loop = &module->loops[index];
+        const RibosIrBlock *header;
+        const RibosIrInstruction *branch;
+        size_t duplicate;
+
+        if (loop->id != index ||
+            loop->function_id >= module->function_count ||
+            loop->header_block >= module->block_count ||
+            loop->body_block >= module->block_count ||
+            loop->exit_block >= module->block_count ||
+            (loop->latch_block != RIBOS_IR_INVALID_ID &&
+             loop->latch_block >= module->block_count) ||
+            loop->trip_count == 0 ||
+            loop->source_map_id >= module->source_map_count ||
+            module->blocks[loop->header_block].function_id !=
+                loop->function_id ||
+            module->blocks[loop->body_block].function_id !=
+                loop->function_id ||
+            module->blocks[loop->exit_block].function_id !=
+                loop->function_id ||
+            (loop->latch_block != RIBOS_IR_INVALID_ID &&
+             module->blocks[loop->latch_block].function_id !=
+                loop->function_id)) {
+            return RIBOS_IR_INVALID_MODULE;
+        }
+        for (duplicate = 0; duplicate < index; ++duplicate) {
+            if (module->loops[duplicate].header_block ==
+                loop->header_block) {
+                return RIBOS_IR_INVALID_MODULE;
+            }
+        }
+        header = &module->blocks[loop->header_block];
+        if (header->last_instruction >= module->instruction_count) {
+            return RIBOS_IR_INVALID_MODULE;
+        }
+        branch = &module->instructions[header->last_instruction];
+        if (branch->opcode != RIBOS_IR_OP_BRANCH ||
+            branch->target != loop->body_block ||
+            branch->alternate != loop->exit_block ||
+            branch->immediate != loop->trip_count) {
+            return RIBOS_IR_INVALID_MODULE;
+        }
+        if (loop->latch_block != RIBOS_IR_INVALID_ID) {
+            const RibosIrBlock *latch =
+                &module->blocks[loop->latch_block];
+            const RibosIrInstruction *jump;
+
+            if (latch->last_instruction >= module->instruction_count) {
+                return RIBOS_IR_INVALID_MODULE;
+            }
+            jump = &module->instructions[latch->last_instruction];
+            if (jump->opcode != RIBOS_IR_OP_JUMP ||
+                jump->target != loop->header_block) {
+                return RIBOS_IR_INVALID_MODULE;
+            }
         }
     }
     for (index = 0; index < module->block_count; ++index) {

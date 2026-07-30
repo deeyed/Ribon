@@ -9,8 +9,9 @@ Frontend public API는 `include/ribos/frontend/`에 있다. `parser_internal.h`�
 
 `src/lower.c`는 typed AST를 public Policy IR builder로 내리는 유일한 bridge다.
 이 파일은 VM register, bytecode encoding, runtime stack과 dispatch를 알지 않는다.
-향후 bytecode backend와 verifier는 frontend private AST 대신 `ribos/ir/ir.h`만
-소비한다.
+향후 bytecode backend와 verifier는 frontend private AST 대신 `ribos/ir/ir.h`와
+`ribos/ir/analysis.h`만 소비한다. 모든 successful semantic compile은 Policy IR
+resource closure까지 수행해 declared instruction/helper budget을 검사한다.
 
 정상 build는 `generated/` snapshot을 사용한다. `grammar/` 또는 generator integration
 변경이 없으면 Pegen을 다시 실행하지 않는다.

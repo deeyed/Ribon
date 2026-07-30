@@ -42,6 +42,7 @@ make check-ribos-parser-pilot
 make check-ribos-semantics
 make check-ribos-schema
 make check-ribos-ir
+make check-ribos-resources
 make check
 make check-target-builds
 make qemu-aarch64-virt-raw-fdt-smoke
@@ -56,7 +57,10 @@ Ribos language project는 `language/ribos/` 아래에서 `frontend`, versioned p
 `.rbs`이며 legacy alias는 없다. Pegen action은 bounded Ribos AST를 생성하고 semantic
 gate는 type, mutation, match, capability와 helper-call upper bound를 검사한다. Policy
 IR gate는 typed virtual slot, explicit CFG, direct call/branch, aggregate shape,
-source map, helper call-site와 product schema identity를 검사한다. 일반 build는
+source map, helper call-site와 product schema identity를 검사한다. Resource gate는
+reachable CFG, bounded loop, terminal closure, frame/stack layout, instruction과
+helper별 upper bound를 검사하고 declared budget을 집행한다. Dict는 fixed-capacity
+sorted array와 bounded linear search를 사용한다. 일반 build는
 `language/ribos/frontend/generated/`의 추적되는 C parser snapshot을 직접 컴파일하며
 `make check`도 Pegen을 실행하지 않는다. 문법이나 generator integration을 바꿀 때만
 다음 explicit gate를 사용한다.
@@ -67,7 +71,8 @@ make ribos-parser-regenerate-check RIBOS_PEGEN_ROOT=/path/to/cpython/Tools/peg_g
 ```
 
 `make check`는 public API layout, legacy ABI hard cut, plugin graph negative tests,
-protocol-free embed, Ribos parser·semantic·schema·Policy IR corpus, SDK install
+protocol-free embed, Ribos parser·semantic·schema·Policy IR·resource-closure corpus,
+SDK install
 reproducibility, external package, firmware reference provider, host-reference plan,
 architecture matrix와 object graph를 검사한다.
 QEMU smoke는 x86_64 UEFI consumer와 AArch64 raw-FDT target의 runtime evidence다.

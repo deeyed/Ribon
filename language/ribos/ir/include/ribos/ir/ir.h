@@ -17,7 +17,7 @@ extern "C" {
  */
 
 #define RIBOS_IR_V1_MAJOR 1u
-#define RIBOS_IR_V1_MINOR 0u
+#define RIBOS_IR_V1_MINOR 1u
 #define RIBOS_IR_INVALID_ID UINT32_MAX
 
 /** Policy IR의 안정된 종료 상태다. */
@@ -26,7 +26,10 @@ typedef enum RibosIrStatus {
     RIBOS_IR_INVALID_ARGUMENT,
     RIBOS_IR_CAPACITY_EXCEEDED,
     RIBOS_IR_INVALID_MODULE,
-    RIBOS_IR_LOWERING_FAILED
+    RIBOS_IR_LOWERING_FAILED,
+    RIBOS_IR_UNBOUNDED_CONTROL_FLOW,
+    RIBOS_IR_RESOURCE_EXCEEDED,
+    RIBOS_IR_BUDGET_EXCEEDED
 } RibosIrStatus;
 
 /** VM bytecode와 독립적인 typed Policy IR opcode다. */
@@ -124,6 +127,8 @@ typedef struct RibosIrType {
     uint32_t bound;
     uint32_t shape_start;
     uint32_t shape_count;
+    uint32_t abi_size;
+    uint32_t abi_alignment;
     uint8_t bits;
     char name[64];
 } RibosIrType;
@@ -188,6 +193,24 @@ typedef struct RibosIrBlock {
 } RibosIrBlock;
 
 /**
+ * Source의 bounded `for` 하나를 CFG back-edge와 결합하는 record다.
+ *
+ * header는 `body_block`과 `exit_block`으로 분기한다. `latch_block`이 유효하면
+ * 그 block은 header로 직접 jump하며 `trip_count`번까지만 재진입할 수 있다.
+ * Body가 첫 iteration에서 항상 terminal이면 latch는 `INVALID_ID`다.
+ */
+typedef struct RibosIrLoop {
+    uint32_t id;
+    uint32_t function_id;
+    uint32_t header_block;
+    uint32_t body_block;
+    uint32_t exit_block;
+    uint32_t latch_block;
+    uint32_t trip_count;
+    uint32_t source_map_id;
+} RibosIrLoop;
+
+/**
  * Policy IR instruction이다.
  *
  * operand_start/count는 module operand table의 연속 slice다. target과 alternate는
@@ -247,6 +270,7 @@ typedef struct RibosIrSummary {
     size_t constant_byte_count;
     size_t function_count;
     size_t block_count;
+    size_t loop_count;
     size_t slot_count;
     size_t instruction_count;
     size_t operand_count;

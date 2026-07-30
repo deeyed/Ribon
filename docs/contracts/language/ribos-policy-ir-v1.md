@@ -2,10 +2,11 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-30
+last_verified: 2026-07-31
 code_paths:
   - language/ribos/ir/include/ribos/ir/ir.h
   - language/ribos/ir/include/ribos/ir/builder.h
+  - language/ribos/ir/include/ribos/ir/analysis.h
   - language/ribos/ir/src/
   - language/ribos/schema/include/ribos/schema/schema.h
   - language/ribos/schema/src/schema.c
@@ -13,6 +14,7 @@ code_paths:
 tests:
   - make check-ribos-schema
   - make check-ribos-ir
+  - make check-ribos-resources
   - make check
   - make docs
 hardware:
@@ -26,7 +28,7 @@ supersedes:
 ## 목적과 버전
 
 Policy IR v1은 typed frontend와 bytecode emitter/artifact verifier 사이의 VM 독립
-계약이다. Version은 `1.0`이다. Minor version은 기존 reader가 모르는 필드를
+계약이다. Version은 `1.1`이다. Minor version은 기존 reader가 모르는 필드를
 결정론적으로 무시할 수 있을 때만 증가한다. Opcode, type, control-flow 또는 fault
 의미가 바뀌면 major version을 증가한다.
 
@@ -71,6 +73,11 @@ allocator address는 ordering 근거가 될 수 없다.
 
 IR type record는 scalar width, collection element/key/value와 capacity, `Option`,
 `Result`, named product type 및 user `struct`/`enum`을 구분한다.
+
+Product-generated named type은 product schema type class에서 도출한 `abi_size`와
+`abi_alignment`를 가진다. Policy IR v1.1에서 product enum은 `4/4`, opaque handle,
+fact와 기타 value type은 `8/8` byte representation을 사용한다. User aggregate의
+layout은 shape table에서 resource analyzer가 계산하므로 이 두 필드는 zero다.
 
 Sum type tag는 다음과 같다.
 
@@ -125,6 +132,22 @@ TRAP    fail-closed internal/fault reason
 Indirect branch, indirect call, function pointer와 arbitrary address target은 없다.
 `CALL_DIRECT` target은 module function ID다. `CALL_HELPER` target은 selected product
 schema의 nonzero helper stable ID다.
+
+`for` back-edge는 별도 loop table row를 가져야 한다.
+
+```text
+function
+header block
+body entry block
+exit block
+latch block 또는 INVALID_ID
+trip count
+source map
+```
+
+Header는 body/exit로 직접 branch하고 그 instruction의 immediate는 trip count와
+같아야 한다. Latch가 존재하면 header로 직접 jump한다. Loop table에 포함되지 않은
+reachable CFG cycle은 resource closure failure다.
 
 ## Evaluation order
 
@@ -220,6 +243,7 @@ constants         4,096
 constant bytes    1 MiB
 functions         64
 blocks            4,096
+loops             1,024
 slots             16,384
 instructions      65,536
 operands          131,072
@@ -241,14 +265,15 @@ Validator는 최소한 다음을 거부한다.
 - aggregate shape와 다른 constructor
 - invalid sum tag/payload arity
 - helper instruction과 call-site table 불일치
+- loop row와 header/body/exit/latch CFG 불일치
 
 ## 증거 경계
 
 `make check-ribos-ir` 성공은 host typed-AST lowering, structural validation과
-deterministic dump 증거다. 다음을 증명하지 않는다.
+deterministic dump 증거다. `make check-ribos-resources`는 별도 resource-closure
+계약에 따른 host CFG와 bound 분석 증거다. 다음을 증명하지 않는다.
 
 - serialized/signed policy artifact
-- bytecode emitter 또는 exact VM instruction budget
 - adversarial artifact static verifier
 - Ribos VM execution과 helper dispatch
 - Ribon boot product integration

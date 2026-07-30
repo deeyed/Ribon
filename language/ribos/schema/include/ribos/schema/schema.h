@@ -134,6 +134,12 @@ RibosSchemaStatus ribos_schema_compute_identity(
     const RibosProductSchema *schema,
     uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES]);
 
+/** Source name과 일치하는 product-generated type을 반환한다. */
+const RibosSchemaType *ribos_schema_find_type(
+    const RibosProductSchema *schema,
+    const char *name,
+    size_t name_length);
+
 /** Source path와 일치하는 semantic helper를 반환한다. */
 const RibosSchemaHelper *ribos_schema_find_helper(
     const RibosProductSchema *schema,

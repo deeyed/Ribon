@@ -2,7 +2,7 @@
 doc_type: roadmap
 status: accepted
 authority: informative
-last_verified: 2026-07-30
+last_verified: 2026-07-31
 code_paths:
   - docs/
   - include/Ribon/
@@ -91,6 +91,7 @@ Normal boot product에는 recovery network와 update writer를 링크하지 않�
 - 독립 Ribos AST, type checker와 formatter
 - bounded collection과 acyclic call-graph 검사
 - semantic helper typestate와 capability/effect 검사
+- Policy IR CFG, frame/stack와 exact resource upper-bound closure
 - bounded bytecode, static verifier와 signed policy artifact
 - policy A/B와 immutable factory fallback
 - fixed-arena developer parser와 capability-restricted shell

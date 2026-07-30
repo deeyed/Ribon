@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-30
+last_verified: 2026-07-31
 code_paths:
   - language/ribos/frontend/grammar/parser.gram
   - language/ribos/frontend/grammar/Tokens
@@ -895,9 +895,10 @@ Map 규칙은 다음과 같다.
 - iteration order는 key의 stable total order다.
 - randomized hash, process seed와 allocation fallback을 허용하지 않는다.
 
-Implementation은 sorted array, deterministic open addressing 또는 compile-time perfect
-map을 사용할 수 있다. 동일 source와 input은 iteration order와 lookup result가
-동일해야 한다.
+Policy IR v1 runtime representation은 `u32` cardinality 뒤에 stable total order로
+정렬된 inline key/value entry를 두는 고정 용량 배열이다. Lookup은 capacity 이하의
+bounded linear search를 사용한다. Randomized hash, open-addressing probe variance,
+process seed와 allocation fallback은 허용하지 않는다.
 
 Heterogeneous map과 `Any`는 없다.
 
@@ -977,6 +978,8 @@ Function은 top-level에만 선언한다.
 - artifact에는 product limit 이하의 maximum call depth를 기록한다.
 - 모든 reachable control path는 declared return type의 값을 반환해야 한다.
 - Unreachable statement는 compile error다.
+- Policy IR resource closure가 계산한 instruction upper bound가
+  `instruction_budget`을 넘으면 compile error다.
 
 Policy entry는 정확히 하나의 `@policy` attribute를 가진 function이다. Helper function은
 attribute 없이 선언할 수 있지만 entry에서 reachable하고 effect 검사를 통과해야 한다.

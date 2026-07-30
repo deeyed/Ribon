@@ -1,0 +1,27 @@
+@policy(
+    capabilities=[
+        Capability.DEVICE,
+        Capability.BOOT,
+    ],
+    instruction_budget=4096,
+    helper_budget=7,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let devices: Array[Device, 2] = [
+        Device.UART0,
+        Device.STORAGE0,
+    ]
+    let profiles: Array[Profile, 3] = [
+        Profile.DEFAULT,
+        Profile.DEBUG,
+        Profile.ETH_PHY_A,
+    ]
+
+    for dev in devices {
+        for profile in profiles {
+            device.init(dev, profile)?
+        }
+    }
+
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

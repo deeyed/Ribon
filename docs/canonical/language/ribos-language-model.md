@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-30
+last_verified: 2026-07-31
 code_paths:
   - language/ribos/
   - language/ribos/frontend/include/ribos/frontend/compiler.h
@@ -152,6 +152,12 @@ Source-level checker는 bounded loop와 reachable call graph에서 helper-call u
 bound를 계산한다. Bytecode instruction upper bound는 Policy IR lowering 뒤에
 계산한다. AST node count를 VM instruction budget으로 해석하지 않는다.
 
+Policy IR resource analyzer는 parser나 typed AST를 사용하지 않고 reachable block,
+bounded loop, terminal path, direct call graph, type/slot layout, frame/stack byte와
+instruction/helper upper bound를 다시 계산한다. Compiler는 이 결과로 source의
+`instruction_budget`과 `helper_budget`을 집행한다. Artifact verifier와 VM은 같은
+계약을 독립적으로 재검사하고 runtime counter를 감소시켜야 한다.
+
 Policy IR은 function-owned typed virtual slot, explicit basic block, direct branch/call,
 phi-free explicit move, aggregate shape, source map과 helper call-site table을 가진다.
 Expression과 argument는 source의 left-to-right 순서로 낮춘다. Integer arithmetic은
@@ -239,6 +245,11 @@ operation의 effect가 모두 필요하다.
 failure다. 실행 input으로 인해 허용된 runtime capacity가 소진되면 typed error 또는
 fail-closed policy fault가 발생한다. Capacity를 늘리기 위한 hidden heap fallback은
 없다.
+
+VM value는 host C ABI를 사용하지 않는다. Scalar, product named value, inline
+aggregate와 tagged union은 Policy IR resource contract의 고정 layout을 사용한다.
+List는 length와 inline element array, Dict와 FrozenMap은 length와 stable-order
+key/value array를 사용한다. Dict lookup은 capacity-bounded linear search다.
 
 ## Effect와 capability
 

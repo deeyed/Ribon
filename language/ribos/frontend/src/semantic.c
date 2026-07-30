@@ -3492,6 +3492,7 @@ ribos_compile_parser_tree(
     FILE *dump,
     unsigned dump_flags)
 {
+    RibosIrModule *owned_ir_module = NULL;
     RibosSemanticContext context = {
         .parser = parser,
         .schema = schema,
@@ -3527,7 +3528,19 @@ ribos_compile_parser_tree(
     if (context.status == RIBOS_COMPILE_OK) {
         ribos_check_policy_effects(&context);
     }
-    if (context.status == RIBOS_COMPILE_OK && ir_module != NULL) {
+    if (context.status == RIBOS_COMPILE_OK && ir_module == NULL) {
+        owned_ir_module = ribos_ir_module_create();
+        if (owned_ir_module == NULL) {
+            context.status = RIBOS_COMPILE_NO_MEMORY;
+            context.diagnostic->code = RIBOS_E_RESOURCE_LIMIT;
+            (void)snprintf(
+                context.diagnostic->message,
+                sizeof(context.diagnostic->message),
+                "Policy IR validation module allocation failed");
+        }
+        ir_module = owned_ir_module;
+    }
+    if (context.status == RIBOS_COMPILE_OK) {
         context.status = ribos_lower_policy_ir(&context, ir_module);
     }
     summary->ast_node_count = ribos_count_reachable_ast(parser->root);
@@ -3542,5 +3555,6 @@ ribos_compile_parser_tree(
         (dump_flags & RIBOS_DUMP_SEMANTICS) != 0) {
         ribos_dump_semantic_model(&context, dump);
     }
+    ribos_ir_module_destroy(owned_ir_module);
     return context.status;
 }

@@ -1,5 +1,7 @@
 #include "parser_internal.h"
 
+#include "ribos/ir/analysis.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -54,6 +56,7 @@ main(int argc, char **argv)
     unsigned dump_flags = 0;
     int compile_mode = 0;
     int ir_mode = 0;
+    int resource_mode = 0;
 
     if (argc == 2) {
         path = argv[1];
@@ -62,7 +65,8 @@ main(int argc, char **argv)
          strcmp(argv[1], "--dump-tokens") == 0 ||
          strcmp(argv[1], "--dump-ast") == 0 ||
          strcmp(argv[1], "--dump-semantics") == 0 ||
-         strcmp(argv[1], "--dump-ir") == 0)) {
+         strcmp(argv[1], "--dump-ir") == 0 ||
+         strcmp(argv[1], "--dump-resources") == 0)) {
         compile_mode = 1;
         path = argv[2];
         if (strcmp(argv[1], "--dump-tokens") == 0) {
@@ -75,12 +79,15 @@ main(int argc, char **argv)
                 RIBOS_DUMP_SEMANTICS;
         } else if (strcmp(argv[1], "--dump-ir") == 0) {
             ir_mode = 1;
+        } else if (strcmp(argv[1], "--dump-resources") == 0) {
+            ir_mode = 1;
+            resource_mode = 1;
         }
     } else {
         (void)fprintf(
             stderr,
             "usage: %s [--check|--dump-tokens|--dump-ast|"
-            "--dump-semantics|--dump-ir] SOURCE.rbs\n",
+            "--dump-semantics|--dump-ir|--dump-resources] SOURCE.rbs\n",
             argv[0]);
         return 64;
     }
@@ -164,7 +171,7 @@ main(int argc, char **argv)
             }
             return 2;
         }
-        if (ir_mode &&
+        if (ir_mode && !resource_mode &&
             (ribos_ir_validate_v1(ir_module) != RIBOS_IR_OK ||
              ribos_ir_dump_v1(ir_module, stdout) != RIBOS_IR_OK)) {
             ribos_ir_module_destroy(ir_module);
@@ -175,12 +182,40 @@ main(int argc, char **argv)
                 path);
             return 2;
         }
+        if (resource_mode) {
+            RibosIrResourceClosure *resources =
+                ribos_ir_resource_closure_create();
+            RibosIrStatus resource_status =
+                resources == NULL ?
+                    RIBOS_IR_RESOURCE_EXCEEDED :
+                    ribos_ir_analyze_resources_v1(
+                        ir_module,
+                        resources);
+
+            if (resource_status == RIBOS_IR_OK) {
+                resource_status = ribos_ir_dump_resources_v1(
+                    resources,
+                    stdout);
+            }
+            ribos_ir_resource_closure_destroy(resources);
+            if (resource_status != RIBOS_IR_OK) {
+                ribos_ir_module_destroy(ir_module);
+                (void)fprintf(
+                    stderr,
+                    "RIBOS-COMPILER-FAIL status=ir-error "
+                    "code=E_IR_LOWERING file=%s\n",
+                    path);
+                return 2;
+            }
+        }
         ribos_ir_module_destroy(ir_module);
         (void)printf(
             "RIBOS-COMPILER-OK file=%s bytes=%zu tokens=%zu ast=%zu "
             "reductions=%zu arena=%zu transient-peak=%zu types=%zu "
             "functions=%zu helper-sites=%zu helper-upper=%llu "
-            "instruction-budget=%llu helper-budget=%llu "
+            "instruction-upper=%llu instruction-budget=%llu "
+            "helper-budget=%llu frame-bytes=%u aggregate-bytes=%u "
+            "stack-bytes=%llu reachable-blocks=%u loops=%u "
             "declared=0x%08x required=0x%08x scope-depth=%u "
             "call-depth=%u\n",
             path,
@@ -196,9 +231,17 @@ main(int argc, char **argv)
             (unsigned long long)
                 compile_summary.helper_call_upper_bound,
             (unsigned long long)
+                compile_summary.instruction_upper_bound,
+            (unsigned long long)
                 compile_summary.declared_instruction_budget,
             (unsigned long long)
                 compile_summary.declared_helper_budget,
+            compile_summary.frame_byte_upper_bound,
+            compile_summary.aggregate_storage_upper_bound,
+            (unsigned long long)
+                compile_summary.maximum_stack_bytes,
+            compile_summary.reachable_block_count,
+            compile_summary.bounded_loop_count,
             compile_summary.declared_capabilities,
             compile_summary.required_capabilities,
             compile_summary.max_scope_depth,
