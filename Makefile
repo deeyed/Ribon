@@ -93,6 +93,7 @@ RIBOS_ALLOCATOR_TEST := $(TEST_BUILD_DIR)/ribos_allocator_boundary_tests
 RIBOS_RUNTIME_CONTRACT_TEST := $(TEST_BUILD_DIR)/ribos_runtime_contract_tests
 RIBOS_PREPARED_PROGRAM_TEST := $(TEST_BUILD_DIR)/ribos_prepared_program_tests
 RIBOS_RUNTIME_STORAGE_TEST := $(TEST_BUILD_DIR)/ribos_runtime_storage_tests
+RIBOS_VM_SCALAR_TEST := $(TEST_BUILD_DIR)/ribos_vm_scalar_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
@@ -124,7 +125,8 @@ RIBOS_TARGET_CORE_OBJS := \
 	$(RIBOS_OBJECT_DIR)/target/artifact_codec.o \
 	$(RIBOS_OBJECT_DIR)/target/verifier.o \
 	$(RIBOS_OBJECT_DIR)/target/prepared.o \
-	$(RIBOS_OBJECT_DIR)/target/runtime_storage.o
+	$(RIBOS_OBJECT_DIR)/target/runtime_storage.o \
+	$(RIBOS_OBJECT_DIR)/target/runtime_interpreter.o
 RIBOS_HOST_SUPPORT_OBJS := \
 	$(RIBOS_OBJECT_DIR)/host-support/allocator.o \
 	$(RIBOS_OBJECT_DIR)/host-support/format.o \
@@ -163,8 +165,10 @@ RIBOS_HEADERS := \
 	language/ribos/vm/include/ribos/vm/runtime.h \
 	language/ribos/vm/include/ribos/vm/prepared.h \
 	language/ribos/vm/include/ribos/vm/storage.h \
+	language/ribos/vm/include/ribos/vm/interpreter.h \
 	language/ribos/vm/include/ribos/vm/verifier.h \
 	language/ribos/vm/src/prepared_internal.h \
+	language/ribos/vm/src/runtime/storage_internal.h \
 	language/ribos/frontend/src/parser_internal.h \
 	language/ribos/frontend/src/semantic_internal.h \
 	language/ribos/frontend/generated/tokens.h
@@ -454,7 +458,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-semantics check-ribos-schema check-ribos-ir \
 	check-ribos-resources check-ribos-artifact check-ribos-verifier \
 	check-ribos-runtime-contract check-ribos-prepared-program \
-	check-ribos-runtime-storage \
+	check-ribos-runtime-storage check-ribos-vm-scalar \
 	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
@@ -502,6 +506,7 @@ $(eval $(call RIBOS_TARGET_OBJECT,artifact_codec,language/ribos/artifact/src/cod
 $(eval $(call RIBOS_TARGET_OBJECT,verifier,language/ribos/vm/src/verifier.c))
 $(eval $(call RIBOS_TARGET_OBJECT,prepared,language/ribos/vm/src/prepared.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_storage,language/ribos/vm/src/runtime/storage.c))
+$(eval $(call RIBOS_TARGET_OBJECT,runtime_interpreter,language/ribos/vm/src/runtime/interpreter.c))
 
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,allocator,language/ribos/host/src/allocator.c))
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,format,language/ribos/host/src/format.c))
@@ -697,6 +702,25 @@ check-ribos-runtime-storage: check-ribos-prepared-program \
 			"$$tmp/runtime-storage.rba" \
 			language/ribos/vm/tests/runtime_storage.rbs; \
 		$(RIBOS_RUNTIME_STORAGE_TEST) "$$tmp/runtime-storage.rba"
+
+$(RIBOS_VM_SCALAR_TEST): \
+		language/ribos/vm/tests/scalar_interpreter_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		-Ilanguage/ribos/vm/src/runtime \
+		language/ribos/vm/tests/scalar_interpreter_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+check-ribos-vm-scalar: check-ribos-runtime-storage \
+		$(RIBOS_VM_SCALAR_TEST)
+	$(PYTHON) language/ribos/vm/tests/check_interpreter_boundary.py
+	@tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/scalar-interpreter.rba" \
+			language/ribos/vm/tests/scalar_interpreter.rbs; \
+		$(RIBOS_VM_SCALAR_TEST) "$$tmp/scalar-interpreter.rba"
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1408,6 +1432,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-ir check-ribos-resources check-ribos-artifact \
 	check-ribos-verifier check-ribos-runtime-contract \
 	check-ribos-prepared-program check-ribos-runtime-storage \
+	check-ribos-vm-scalar \
 	check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \

@@ -7,11 +7,13 @@ code_paths:
   - language/ribos/base/include/ribos/base/checked.h
   - language/ribos/base/src/checked.c
   - language/ribos/vm/include/ribos/vm/storage.h
+  - language/ribos/vm/src/runtime/storage_internal.h
   - language/ribos/vm/src/runtime/storage.c
   - language/ribos/vm/tests/runtime_storage_tests.c
   - Makefile
 tests:
   - make check-ribos-runtime-storage
+  - make check-ribos-vm-scalar
   - make check-ribos-prepared-program
   - make check-ribos-resources
   - make check-ribos-verifier
@@ -123,12 +125,17 @@ ordering과 aligned offset은 유지하고 count와 byte size는 zero다.
 Control region 앞부분은 magic, storage ABI, initialization flag, required byte,
 effective limit, entry function, Prepared binding digest와 12개 region descriptor를
 little-endian으로 기록한다. 뒤 고정 영역은 instruction/helper/operation/poll counter,
-stack cursor와 frame depth를 위한 공간이다. Native pointer와 C structure image는
+stack cursor, frame depth와 interpreter state를 위한 공간이다. Interpreter state에는
+current function/block/instruction ID, return slot, frame base, consumed count와 immutable
+context generation/type/digest가 들어간다. Native pointer와 C structure image는
 저장하지 않는다.
 
 Frame record, handle record, outcome와 trace의 v1 byte capacity는 interpreter가
-사용할 bounded storage reservation이다. Storage v1 API는 이 영역에서 opcode나
-handle transition을 실행하지 않는다.
+사용할 bounded storage reservation이다. Fault region의 첫 152 bytes는 stable receipt
+field와 artifact/trace digest이고 마지막 8 bytes는 seal과 recovery-notified state다.
+Public `RibosVmFaultReceipt`의 native padding이나 reserved word는 arena에 복사하지
+않는다. Storage v1 API는 이 영역에서 opcode, handle transition 또는 recovery callback을
+실행하지 않는다.
 
 ## Frame와 slot
 

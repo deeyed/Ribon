@@ -1,0 +1,101 @@
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=512,
+    helper_budget=2,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let u8_left: u8 = 10
+    let u8_right: u8 = 3
+    let u8_add = u8_left + u8_right
+    let u8_subtract = u8_left - u8_right
+    let u8_multiply = u8_left * u8_right
+    let u8_divide = u8_left / u8_right
+    let u8_remainder = u8_left % u8_right
+    let u8_left_shift = u8_left << u8_right
+    let u8_right_shift = u8_left >> u8_right
+    let u8_or = u8_left | u8_right
+    let u8_xor = u8_left ^ u8_right
+    let u8_and = u8_left & u8_right
+    let u8_inverted = ~u8_left
+
+    let u16_left: u16 = 1024
+    let u16_right: u16 = 2
+    let u16_value = u16_left + u16_right
+
+    let u32_left: u32 = 100000
+    let u32_right: u32 = 4
+    let u32_value = u32_left / u32_right
+
+    let u64_left: u64 = 4294967296
+    let u64_right: u64 = 2
+    let u64_value = u64_left * u64_right
+
+    let i8_magnitude: i8 = 7
+    let i8_left = -i8_magnitude
+    let i8_right: i8 = 2
+    let i8_value = i8_left + i8_right
+
+    let i16_magnitude: i16 = 1024
+    let i16_left = -i16_magnitude
+    let i16_right: i16 = 3
+    let i16_value = i16_left >> i16_right
+
+    let i32_magnitude: i32 = 100000
+    let i32_left = -i32_magnitude
+    let i32_right: i32 = 4
+    let i32_value = i32_left / i32_right
+
+    let i64_magnitude: i64 = 4294967296
+    let i64_left = -i64_magnitude
+    let i64_right: i64 = 2
+    let i64_value = i64_left * i64_right
+    let i64_divide = i64_left / i64_right
+    let i64_shift = i64_left << i64_right
+
+    let expected_i8_magnitude: i8 = 5
+    let expected_i8 = -expected_i8_magnitude
+    let expected_i16_magnitude: i16 = 128
+    let expected_i16 = -expected_i16_magnitude
+    let expected_i32_magnitude: i32 = 25000
+    let expected_i32 = -expected_i32_magnitude
+    let expected_i64_magnitude: i64 = 8589934592
+    let expected_i64 = -expected_i64_magnitude
+    let expected_i64_divide_magnitude: i64 = 2147483648
+    let expected_i64_divide = -expected_i64_divide_magnitude
+    let expected_i64_shift_magnitude: i64 = 17179869184
+    let expected_i64_shift = -expected_i64_shift_magnitude
+
+    let enabled = not False
+    let text = "ribos"
+    let reason = RecoveryReason.INVALID_IMAGE
+    let same_reason = reason == RecoveryReason.INVALID_IMAGE
+    let arithmetic_ok =
+        u8_add == 13
+        and u8_subtract == 7
+        and u8_multiply == 30
+        and u8_divide == 3
+        and u8_remainder == 1
+        and u8_left_shift == 80
+        and u8_right_shift == 1
+        and u8_or == 11
+        and u8_xor == 9
+        and u8_and == 2
+        and u8_inverted == 245
+        and u16_value == 1026
+        and u32_value == 25000
+        and u64_value == 8589934592
+        and i8_value == expected_i8
+        and i16_value == expected_i16
+        and i32_value == expected_i32
+        and i64_value == expected_i64
+        and i64_divide == expected_i64_divide
+        and i64_shift == expected_i64_shift
+
+    if enabled and same_reason and arithmetic_ok and text == "ribos" {
+        return Ok(boot.recovery(reason))
+    } else {
+        return Err(BootError.INVALID_IMAGE)
+    }
+}

@@ -1160,7 +1160,7 @@ ribos_verifier_validate_types(RibosVerifierContext *context)
             break;
         case RIBOS_BC_TYPE_STRING_LITERAL:
             kind_fields_valid = bits == 0 && first == 0 &&
-                second == 0 && bound == 0 && shape_count == 0 &&
+                second == 0 && shape_count == 0 &&
                 abi_size == 0 && abi_alignment == 0;
             break;
         case RIBOS_BC_TYPE_NAMED: {

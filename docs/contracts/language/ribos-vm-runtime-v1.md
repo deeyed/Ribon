@@ -7,8 +7,10 @@ code_paths:
   - language/ribos/vm/include/ribos/vm/runtime.h
   - language/ribos/vm/include/ribos/vm/prepared.h
   - language/ribos/vm/include/ribos/vm/storage.h
+  - language/ribos/vm/include/ribos/vm/interpreter.h
   - language/ribos/vm/src/prepared.c
   - language/ribos/vm/src/runtime/storage.c
+  - language/ribos/vm/src/runtime/interpreter.c
   - language/ribos/vm/tests/runtime_contract_tests.c
   - language/ribos/vm/tests/check_runtime_header.py
   - Makefile
@@ -16,6 +18,7 @@ tests:
   - make check-ribos-runtime-contract
   - make check-ribos-prepared-program
   - make check-ribos-runtime-storage
+  - make check-ribos-vm-scalar
   - make check-ribos-schema
   - make check-ribos-verifier
   - make check-ribos-host-boundary
@@ -154,6 +157,12 @@ Exact caller-owned arena layout, generic/product cap 교집합과 typed value st
 {doc}`ribos-runtime-storage-v1`이 소유한다. Runtime size query는 verifier가 재계산한
 stack/depth와 product handle/output/trace cap을 함께 닫고 required byte가 product
 arena cap을 넘으면 opcode dispatch 전에 거부한다.
+
+Single-frame scalar와 direct control-flow의 incremental 실행 의미는
+{doc}`ribos-scalar-interpreter-v1`이 소유한다. 이 engine의 `RETURNED`는 내부 함수
+반환이며 sealed `BootAction`이나 full-policy outcome이 아니다. Helper, aggregate,
+direct call과 recovery notification이 닫히기 전에는 production execute entry로
+사용하지 않는다.
 
 | Field | 집행 지점 |
 | --- | --- |

@@ -215,6 +215,9 @@ Name length는 최대 63이고 사용하지 않은 name/reserved bytes는 zero�
 
 Type와 storage 의미는 Policy IR v1.1 resource-closure 계약을 그대로 사용한다.
 List는 inline bounded array, Dict/FrozenMap은 stable-order fixed-capacity entry array다.
+String-literal type의 `bound`는 literal UTF-8 byte length이며 zero-length literal이면
+zero일 수 있다. Runtime value는 8-byte constant token이고 type `bound`를 inline
+payload capacity로 해석하지 않는다.
 
 ### Shape row
 

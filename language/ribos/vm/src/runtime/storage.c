@@ -1,6 +1,7 @@
 #include "ribos/vm/storage.h"
 
 #include "ribos/base/checked.h"
+#include "storage_internal.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -36,6 +37,37 @@
 #define RIBOS_VM_CONTROL_REMAINING_POLLS_OFFSET 408u
 #define RIBOS_VM_CONTROL_STACK_CURSOR_OFFSET 416u
 #define RIBOS_VM_CONTROL_FRAME_DEPTH_OFFSET 424u
+#define RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET 428u
+#define RIBOS_VM_CONTROL_CURRENT_FUNCTION_OFFSET 432u
+#define RIBOS_VM_CONTROL_CURRENT_BLOCK_OFFSET 436u
+#define RIBOS_VM_CONTROL_CURRENT_INSTRUCTION_OFFSET 440u
+#define RIBOS_VM_CONTROL_RETURN_SLOT_OFFSET 444u
+#define RIBOS_VM_CONTROL_CURRENT_FRAME_BASE_OFFSET 448u
+#define RIBOS_VM_CONTROL_CONSUMED_INSTRUCTIONS_OFFSET 456u
+#define RIBOS_VM_CONTROL_CONTEXT_GENERATION_OFFSET 464u
+#define RIBOS_VM_CONTROL_CONTEXT_TYPE_OFFSET 472u
+#define RIBOS_VM_CONTROL_EXECUTION_RESERVED_OFFSET 476u
+#define RIBOS_VM_CONTROL_CONTEXT_DIGEST_OFFSET 480u
+
+#define RIBOS_VM_FAULT_CODE_OFFSET 0u
+#define RIBOS_VM_FAULT_SUBJECT_OFFSET 4u
+#define RIBOS_VM_FAULT_FUNCTION_OFFSET 8u
+#define RIBOS_VM_FAULT_INSTRUCTION_OFFSET 12u
+#define RIBOS_VM_FAULT_HELPER_OFFSET 16u
+#define RIBOS_VM_FAULT_DETAIL_OFFSET 20u
+#define RIBOS_VM_FAULT_LAST_EFFECT_OFFSET 24u
+#define RIBOS_VM_FAULT_LAST_DURABILITY_OFFSET 28u
+#define RIBOS_VM_FAULT_CONSUMED_INSTRUCTIONS_OFFSET 32u
+#define RIBOS_VM_FAULT_CONSUMED_HELPERS_OFFSET 40u
+#define RIBOS_VM_FAULT_CONSUMED_INPUT_OFFSET 48u
+#define RIBOS_VM_FAULT_CONSUMED_OUTPUT_OFFSET 56u
+#define RIBOS_VM_FAULT_CONSUMED_OPERATIONS_OFFSET 64u
+#define RIBOS_VM_FAULT_CONSUMED_POLLS_OFFSET 72u
+#define RIBOS_VM_FAULT_ELAPSED_OFFSET 80u
+#define RIBOS_VM_FAULT_ARTIFACT_HASH_OFFSET 88u
+#define RIBOS_VM_FAULT_TRACE_DIGEST_OFFSET 120u
+#define RIBOS_VM_FAULT_SEALED_OFFSET 152u
+#define RIBOS_VM_FAULT_RECOVERY_NOTIFIED_OFFSET 156u
 
 typedef struct RibosVmSlotLocation {
     uint32_t type_id;
@@ -1700,5 +1732,485 @@ ribos_vm_storage_slot_load_bool_v1(
         return RIBOS_VM_STATUS_INVALID_STATE;
     }
     *value = byte;
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_execution_begin_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control)
+{
+    uint8_t *bytes;
+    RibosVmStatus status;
+
+    if (control == NULL || control->state != 1 ||
+        control->function_id == RIBOS_VM_INVALID_ID ||
+        control->block_id == RIBOS_VM_INVALID_ID ||
+        control->instruction_id == RIBOS_VM_INVALID_ID ||
+        control->return_slot_id != RIBOS_VM_INVALID_ID ||
+        control->frame_base != 0 ||
+        control->consumed_instructions != 0 ||
+        control->context_generation == 0 ||
+        control->context_type_id == RIBOS_VM_INVALID_ID ||
+        !ribos_vm_digest_is_nonzero(control->context_digest)) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    status = ribos_vm_storage_validate_v1(
+        prepared_program,
+        storage,
+        arena_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    bytes = ribos_vm_storage_mutable_bytes(storage);
+    if (ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET) != 0) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET,
+        control->state);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_FUNCTION_OFFSET,
+        control->function_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_BLOCK_OFFSET,
+        control->block_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_INSTRUCTION_OFFSET,
+        control->instruction_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_RETURN_SLOT_OFFSET,
+        control->return_slot_id);
+    ribos_vm_value_write_u64(
+        bytes + RIBOS_VM_CONTROL_CURRENT_FRAME_BASE_OFFSET,
+        control->frame_base);
+    ribos_vm_value_write_u64(
+        bytes + RIBOS_VM_CONTROL_CONSUMED_INSTRUCTIONS_OFFSET,
+        control->consumed_instructions);
+    ribos_vm_value_write_u64(
+        bytes + RIBOS_VM_CONTROL_CONTEXT_GENERATION_OFFSET,
+        control->context_generation);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_CONTEXT_TYPE_OFFSET,
+        control->context_type_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_EXECUTION_RESERVED_OFFSET,
+        0);
+    memcpy(
+        bytes + RIBOS_VM_CONTROL_CONTEXT_DIGEST_OFFSET,
+        control->context_digest,
+        RIBOS_VM_DIGEST_BYTES);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_execution_load_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    RibosVmStorageExecutionControl *control,
+    uint64_t *remaining_instructions)
+{
+    const uint8_t *bytes;
+    RibosVmStatus status;
+
+    if (control == NULL || remaining_instructions == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    memset(control, 0, sizeof(*control));
+    *remaining_instructions = 0;
+    status = ribos_vm_storage_validate_v1(
+        prepared_program,
+        storage,
+        arena_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    bytes = ribos_vm_storage_const_bytes(storage);
+    control->state = ribos_vm_value_read_u32(
+        bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET);
+    control->function_id = ribos_vm_value_read_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_FUNCTION_OFFSET);
+    control->block_id = ribos_vm_value_read_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_BLOCK_OFFSET);
+    control->instruction_id = ribos_vm_value_read_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_INSTRUCTION_OFFSET);
+    control->return_slot_id = ribos_vm_value_read_u32(
+        bytes + RIBOS_VM_CONTROL_RETURN_SLOT_OFFSET);
+    control->frame_base = ribos_vm_value_read_u64(
+        bytes + RIBOS_VM_CONTROL_CURRENT_FRAME_BASE_OFFSET);
+    control->consumed_instructions = ribos_vm_value_read_u64(
+        bytes + RIBOS_VM_CONTROL_CONSUMED_INSTRUCTIONS_OFFSET);
+    control->context_generation = ribos_vm_value_read_u64(
+        bytes + RIBOS_VM_CONTROL_CONTEXT_GENERATION_OFFSET);
+    control->context_type_id = ribos_vm_value_read_u32(
+        bytes + RIBOS_VM_CONTROL_CONTEXT_TYPE_OFFSET);
+    memcpy(
+        control->context_digest,
+        bytes + RIBOS_VM_CONTROL_CONTEXT_DIGEST_OFFSET,
+        RIBOS_VM_DIGEST_BYTES);
+    *remaining_instructions = ribos_vm_value_read_u64(
+        bytes +
+        RIBOS_VM_STORAGE_CONTROL_REMAINING_INSTRUCTIONS_OFFSET_V1);
+    if (control->state > 4 ||
+        ribos_vm_value_read_u32(
+            bytes + RIBOS_VM_CONTROL_EXECUTION_RESERVED_OFFSET) != 0 ||
+        (control->state != 0 &&
+         (control->function_id == RIBOS_VM_INVALID_ID ||
+          control->block_id == RIBOS_VM_INVALID_ID ||
+          control->instruction_id == RIBOS_VM_INVALID_ID ||
+          control->frame_base != 0 ||
+          control->context_generation == 0 ||
+          control->context_type_id == RIBOS_VM_INVALID_ID ||
+          !ribos_vm_digest_is_nonzero(control->context_digest) ||
+          ((control->state == 3) !=
+           (control->return_slot_id != RIBOS_VM_INVALID_ID))))) {
+        memset(control, 0, sizeof(*control));
+        *remaining_instructions = 0;
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_execution_store_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control)
+{
+    RibosVmStorageExecutionControl existing;
+    uint64_t remaining;
+    uint8_t *bytes;
+    RibosVmStatus status;
+
+    if (control == NULL || control->state < 1 || control->state > 4 ||
+        control->function_id == RIBOS_VM_INVALID_ID ||
+        control->block_id == RIBOS_VM_INVALID_ID ||
+        control->instruction_id == RIBOS_VM_INVALID_ID ||
+        control->context_generation == 0 ||
+        control->context_type_id == RIBOS_VM_INVALID_ID ||
+        !ribos_vm_digest_is_nonzero(control->context_digest) ||
+        ((control->state == 3) !=
+         (control->return_slot_id != RIBOS_VM_INVALID_ID))) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    status = ribos_vm_storage_execution_load_internal_v1(
+        prepared_program,
+        storage,
+        arena_size,
+        &existing,
+        &remaining);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)remaining;
+    if (existing.state == 0 || existing.state == 3 ||
+        existing.state == 4 || control->state == 1 ||
+        existing.function_id != control->function_id ||
+        existing.frame_base != control->frame_base ||
+        existing.context_generation != control->context_generation ||
+        existing.context_type_id != control->context_type_id ||
+        memcmp(
+            existing.context_digest,
+            control->context_digest,
+            RIBOS_VM_DIGEST_BYTES) != 0 ||
+        control->consumed_instructions !=
+            existing.consumed_instructions) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    bytes = ribos_vm_storage_mutable_bytes(storage);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_EXECUTION_STATE_OFFSET,
+        control->state);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_FUNCTION_OFFSET,
+        control->function_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_BLOCK_OFFSET,
+        control->block_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_CURRENT_INSTRUCTION_OFFSET,
+        control->instruction_id);
+    ribos_vm_value_write_u32(
+        bytes + RIBOS_VM_CONTROL_RETURN_SLOT_OFFSET,
+        control->return_slot_id);
+    ribos_vm_value_write_u64(
+        bytes + RIBOS_VM_CONTROL_CURRENT_FRAME_BASE_OFFSET,
+        control->frame_base);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_consume_instruction_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint64_t *remaining_instructions,
+    uint64_t *consumed_instructions)
+{
+    RibosVmStorageExecutionControl control;
+    uint64_t remaining;
+    uint8_t *bytes;
+    RibosVmStatus status;
+
+    if (remaining_instructions == NULL ||
+        consumed_instructions == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    *remaining_instructions = 0;
+    *consumed_instructions = 0;
+    status = ribos_vm_storage_execution_load_internal_v1(
+        prepared_program,
+        storage,
+        arena_size,
+        &control,
+        &remaining);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (remaining == 0) {
+        return RIBOS_VM_STATUS_LIMIT_EXCEEDED;
+    }
+    if (control.consumed_instructions == UINT64_MAX) {
+        return RIBOS_VM_STATUS_INTERNAL_ERROR;
+    }
+    --remaining;
+    ++control.consumed_instructions;
+    bytes = ribos_vm_storage_mutable_bytes(storage);
+    ribos_vm_value_write_u64(
+        bytes +
+        RIBOS_VM_STORAGE_CONTROL_REMAINING_INSTRUCTIONS_OFFSET_V1,
+        remaining);
+    ribos_vm_value_write_u64(
+        bytes + RIBOS_VM_CONTROL_CONSUMED_INSTRUCTIONS_OFFSET,
+        control.consumed_instructions);
+    *remaining_instructions = remaining;
+    *consumed_instructions = control.consumed_instructions;
+    return RIBOS_VM_STATUS_OK;
+}
+
+static RibosVmStatus
+ribos_vm_storage_fault_region(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const uint8_t **fault_bytes)
+{
+    RibosVmStoragePlan plan;
+    size_t required_size;
+    RibosVmStatus status;
+
+    if (fault_bytes == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    *fault_bytes = NULL;
+    status = ribos_vm_storage_validate_v1(
+        prepared_program,
+        storage,
+        arena_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    status = ribos_vm_runtime_size_v1(
+        prepared_program,
+        &plan,
+        &required_size);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    (void)required_size;
+    if (plan.regions[RIBOS_VM_STORAGE_REGION_FAULT].byte_size !=
+            RIBOS_VM_FAULT_RECORD_BYTES ||
+        plan.regions[RIBOS_VM_STORAGE_REGION_FAULT].offset >
+            SIZE_MAX) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    *fault_bytes = ribos_vm_storage_const_bytes(storage) +
+        (size_t)plan.regions[
+            RIBOS_VM_STORAGE_REGION_FAULT].offset;
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_seal_fault_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmFaultReceipt *receipt)
+{
+    const uint8_t *const_fault_bytes;
+    uint8_t *fault_bytes;
+    RibosVmStatus status;
+
+    if (receipt == NULL ||
+        receipt->fault_code < RIBOS_VM_FAULT_INTERNAL ||
+        receipt->fault_code > RIBOS_VM_FAULT_RECOVERY ||
+        receipt->subject < RIBOS_VM_FAULT_SUBJECT_RUNTIME ||
+        receipt->subject > RIBOS_VM_FAULT_SUBJECT_RECOVERY ||
+        receipt->last_effect > RIBOS_VM_HELPER_EFFECT_TERMINAL ||
+        receipt->last_durability >
+            RIBOS_VM_HELPER_DURABILITY_SEALED_INTENT ||
+        !ribos_vm_digest_is_nonzero(receipt->artifact_hash) ||
+        !ribos_vm_reserved_words_are_zero(receipt->reserved, 2)) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    status = ribos_vm_storage_fault_region(
+        prepared_program,
+        storage,
+        arena_size,
+        &const_fault_bytes);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (ribos_vm_value_read_u32(
+            const_fault_bytes + RIBOS_VM_FAULT_SEALED_OFFSET) != 0) {
+        return RIBOS_VM_STATUS_ALREADY_CONSUMED;
+    }
+    fault_bytes = (uint8_t *)(void *)const_fault_bytes;
+    memset(fault_bytes, 0, RIBOS_VM_FAULT_RECORD_BYTES);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_CODE_OFFSET,
+        receipt->fault_code);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_SUBJECT_OFFSET,
+        receipt->subject);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_FUNCTION_OFFSET,
+        receipt->function_id);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_INSTRUCTION_OFFSET,
+        receipt->instruction_id);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_HELPER_OFFSET,
+        receipt->helper_id);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_DETAIL_OFFSET,
+        receipt->detail);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_LAST_EFFECT_OFFSET,
+        receipt->last_effect);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_LAST_DURABILITY_OFFSET,
+        receipt->last_durability);
+    ribos_vm_value_write_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_INSTRUCTIONS_OFFSET,
+        receipt->consumed_instructions);
+    ribos_vm_value_write_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_HELPERS_OFFSET,
+        receipt->consumed_helper_calls);
+    ribos_vm_value_write_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_INPUT_OFFSET,
+        receipt->consumed_input_bytes);
+    ribos_vm_value_write_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_OUTPUT_OFFSET,
+        receipt->consumed_output_bytes);
+    ribos_vm_value_write_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_OPERATIONS_OFFSET,
+        receipt->consumed_operations);
+    ribos_vm_value_write_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_POLLS_OFFSET,
+        receipt->consumed_polls);
+    ribos_vm_value_write_u64(
+        fault_bytes + RIBOS_VM_FAULT_ELAPSED_OFFSET,
+        receipt->elapsed_ns);
+    memcpy(
+        fault_bytes + RIBOS_VM_FAULT_ARTIFACT_HASH_OFFSET,
+        receipt->artifact_hash,
+        RIBOS_VM_DIGEST_BYTES);
+    memcpy(
+        fault_bytes + RIBOS_VM_FAULT_TRACE_DIGEST_OFFSET,
+        receipt->trace_digest,
+        RIBOS_VM_DIGEST_BYTES);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_RECOVERY_NOTIFIED_OFFSET,
+        0);
+    ribos_vm_value_write_u32(
+        fault_bytes + RIBOS_VM_FAULT_SEALED_OFFSET,
+        1);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_read_fault_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    RibosVmFaultReceipt *receipt)
+{
+    const uint8_t *fault_bytes;
+    RibosVmStatus status;
+
+    if (receipt == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    memset(receipt, 0, sizeof(*receipt));
+    status = ribos_vm_storage_fault_region(
+        prepared_program,
+        storage,
+        arena_size,
+        &fault_bytes);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (ribos_vm_value_read_u32(
+            fault_bytes + RIBOS_VM_FAULT_SEALED_OFFSET) != 1 ||
+        ribos_vm_value_read_u32(
+            fault_bytes +
+            RIBOS_VM_FAULT_RECOVERY_NOTIFIED_OFFSET) != 0) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    receipt->fault_code = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_CODE_OFFSET);
+    receipt->subject = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_SUBJECT_OFFSET);
+    receipt->function_id = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_FUNCTION_OFFSET);
+    receipt->instruction_id = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_INSTRUCTION_OFFSET);
+    receipt->helper_id = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_HELPER_OFFSET);
+    receipt->detail = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_DETAIL_OFFSET);
+    receipt->last_effect = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_LAST_EFFECT_OFFSET);
+    receipt->last_durability = ribos_vm_value_read_u32(
+        fault_bytes + RIBOS_VM_FAULT_LAST_DURABILITY_OFFSET);
+    receipt->consumed_instructions = ribos_vm_value_read_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_INSTRUCTIONS_OFFSET);
+    receipt->consumed_helper_calls = ribos_vm_value_read_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_HELPERS_OFFSET);
+    receipt->consumed_input_bytes = ribos_vm_value_read_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_INPUT_OFFSET);
+    receipt->consumed_output_bytes = ribos_vm_value_read_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_OUTPUT_OFFSET);
+    receipt->consumed_operations = ribos_vm_value_read_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_OPERATIONS_OFFSET);
+    receipt->consumed_polls = ribos_vm_value_read_u64(
+        fault_bytes + RIBOS_VM_FAULT_CONSUMED_POLLS_OFFSET);
+    receipt->elapsed_ns = ribos_vm_value_read_u64(
+        fault_bytes + RIBOS_VM_FAULT_ELAPSED_OFFSET);
+    memcpy(
+        receipt->artifact_hash,
+        fault_bytes + RIBOS_VM_FAULT_ARTIFACT_HASH_OFFSET,
+        RIBOS_VM_DIGEST_BYTES);
+    memcpy(
+        receipt->trace_digest,
+        fault_bytes + RIBOS_VM_FAULT_TRACE_DIGEST_OFFSET,
+        RIBOS_VM_DIGEST_BYTES);
+    if (receipt->fault_code < RIBOS_VM_FAULT_INTERNAL ||
+        receipt->fault_code > RIBOS_VM_FAULT_RECOVERY ||
+        receipt->subject < RIBOS_VM_FAULT_SUBJECT_RUNTIME ||
+        receipt->subject > RIBOS_VM_FAULT_SUBJECT_RECOVERY ||
+        receipt->last_effect > RIBOS_VM_HELPER_EFFECT_TERMINAL ||
+        receipt->last_durability >
+            RIBOS_VM_HELPER_DURABILITY_SEALED_INTENT ||
+        !ribos_vm_digest_is_nonzero(receipt->artifact_hash)) {
+        memset(receipt, 0, sizeof(*receipt));
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
     return RIBOS_VM_STATUS_OK;
 }
