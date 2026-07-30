@@ -1,0 +1,15 @@
+@policy(
+    capabilities=[
+        Capability.INSPECT,
+        Capability.BOOT,
+    ],
+    helper_budget=5,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let target = slot.selected()
+    let candidate = slot.image(target)?
+    let verified = image.verify(candidate)?
+    let first = boot.slot(target, verified)
+    let second = boot.slot(target, verified)
+    return Ok(second)
+}

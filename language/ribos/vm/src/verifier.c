@@ -19,6 +19,31 @@ typedef struct RibosVerifierTypeLayout {
     uint32_t capacity;
 } RibosVerifierTypeLayout;
 
+typedef struct RibosVerifierPathBound {
+    uint64_t stop;
+    uint64_t returned;
+    uint64_t trapped;
+    uint8_t has_stop;
+    uint8_t has_return;
+    uint8_t has_trap;
+} RibosVerifierPathBound;
+
+typedef enum RibosVerifierMetric {
+    RIBOS_VERIFIER_METRIC_INSTRUCTION = 0,
+    RIBOS_VERIFIER_METRIC_HELPER_TOTAL,
+    RIBOS_VERIFIER_METRIC_HELPER_ID
+} RibosVerifierMetric;
+
+typedef struct RibosVerifierPathContext {
+    struct RibosVerifierContext *verifier;
+    uint32_t function_id;
+    uint32_t stop_block;
+    RibosVerifierMetric metric;
+    uint32_t helper_import;
+    uint32_t depth;
+    int failed;
+} RibosVerifierPathContext;
+
 typedef struct RibosVerifierContext {
     RibosArtifactView artifact;
     const RibosProductSchema *schema;
@@ -34,6 +59,7 @@ typedef struct RibosVerifierContext {
     const RibosArtifactSectionView *instructions;
     const RibosArtifactSectionView *operands;
     const RibosArtifactSectionView *helper_imports;
+    const RibosArtifactSectionView *helper_bounds;
     const RibosArtifactSectionView *source_maps;
     RibosVerifierTypeLayout *type_layouts;
     uint8_t *type_states;
@@ -52,6 +78,16 @@ typedef struct RibosVerifierContext {
     uint32_t *frame_bytes;
     uint32_t *terminal_masks;
     uint64_t *stack_bytes;
+    uint8_t *type_ownership;
+    uint8_t *resource_states;
+    uint32_t *reachable_capabilities;
+    uint64_t *instruction_bounds;
+    uint64_t *helper_total_bounds;
+    uint64_t *helper_matrix;
+    uint8_t *path_states;
+    RibosVerifierPathBound *path_memo;
+    uint8_t *action_masks;
+    size_t path_matrix_entries;
     size_t bit_matrix_words;
 } RibosVerifierContext;
 
@@ -112,6 +148,33 @@ ribos_verifier_add_u32(
         return 0;
     }
     *result = left + right;
+    return 1;
+}
+
+static int
+ribos_verifier_add_u64(
+    uint64_t left,
+    uint64_t right,
+    uint64_t *result)
+{
+    if (result == NULL || right > UINT64_MAX - left) {
+        return 0;
+    }
+    *result = left + right;
+    return 1;
+}
+
+static int
+ribos_verifier_multiply_u64(
+    uint64_t left,
+    uint64_t right,
+    uint64_t *result)
+{
+    if (result == NULL ||
+        (left != 0 && right > UINT64_MAX / left)) {
+        return 0;
+    }
+    *result = left * right;
     return 1;
 }
 
@@ -799,6 +862,106 @@ ribos_verifier_type_matches_spelling(
         name,
         name_length,
         spelling);
+}
+
+static const RibosSchemaType *
+ribos_verifier_schema_type(
+    RibosVerifierContext *context,
+    uint32_t type_id)
+{
+    const uint8_t *row = ribos_verifier_row(context->types, type_id);
+    const char *name;
+    size_t name_length;
+
+    if (row == NULL ||
+        ribos_verifier_u16(row + 4) != RIBOS_BC_TYPE_NAMED ||
+        !ribos_verifier_type_name(
+            context,
+            type_id,
+            &name,
+            &name_length)) {
+        return NULL;
+    }
+    return ribos_schema_find_type(
+        context->schema,
+        name,
+        name_length);
+}
+
+static int
+ribos_verifier_type_ownership(
+    RibosVerifierContext *context,
+    uint32_t type_id)
+{
+    const uint8_t *row = ribos_verifier_row(context->types, type_id);
+    uint32_t kind;
+    int ownership = RIBOS_SCHEMA_OWNERSHIP_COPY;
+
+    if (row == NULL) {
+        return -1;
+    }
+    if (context->type_ownership[type_id] == UINT8_MAX) {
+        return -1;
+    }
+    if (context->type_ownership[type_id] != 0) {
+        return context->type_ownership[type_id] - 1;
+    }
+    context->type_ownership[type_id] = UINT8_MAX;
+    kind = ribos_verifier_u16(row + 4);
+    if (kind == RIBOS_BC_TYPE_NAMED) {
+        const RibosSchemaType *type =
+            ribos_verifier_schema_type(context, type_id);
+
+        if (type == NULL) {
+            return -1;
+        }
+        ownership = type->ownership;
+    } else if (kind == RIBOS_BC_TYPE_ARRAY ||
+        kind == RIBOS_BC_TYPE_LIST ||
+        kind == RIBOS_BC_TYPE_OPTION) {
+        ownership = ribos_verifier_type_ownership(
+            context,
+            ribos_verifier_u32(row + 8));
+    } else if (kind == RIBOS_BC_TYPE_FROZEN_MAP ||
+        kind == RIBOS_BC_TYPE_DICT ||
+        kind == RIBOS_BC_TYPE_RESULT) {
+        int left = ribos_verifier_type_ownership(
+            context,
+            ribos_verifier_u32(row + 8));
+        int right = ribos_verifier_type_ownership(
+            context,
+            ribos_verifier_u32(row + 12));
+
+        ownership = left > right ? left : right;
+    } else if (kind == RIBOS_BC_TYPE_STRUCT ||
+        kind == RIBOS_BC_TYPE_ENUM) {
+        uint32_t start = ribos_verifier_u32(row + 20);
+        uint32_t count = ribos_verifier_u32(row + 24);
+        uint32_t index;
+
+        for (index = 0; index < count; ++index) {
+            const uint8_t *shape =
+                ribos_verifier_row(context->shapes, start + index);
+            uint32_t value_type = ribos_verifier_u32(shape + 20);
+            int nested;
+
+            if (value_type == RIBOS_ARTIFACT_INVALID_ID) {
+                continue;
+            }
+            nested = ribos_verifier_type_ownership(
+                context,
+                value_type);
+            if (nested > ownership) {
+                ownership = nested;
+            }
+        }
+    }
+    if (ownership < RIBOS_SCHEMA_OWNERSHIP_COPY ||
+        ownership > RIBOS_SCHEMA_OWNERSHIP_LINEAR) {
+        return -1;
+    }
+    context->type_ownership[type_id] = (uint8_t)ownership + 1;
+    return ownership;
 }
 
 static const RibosSchemaHelper *
@@ -3423,6 +3586,1534 @@ ribos_verifier_validate_call_resources(
     return RIBOS_VERIFIER_OK;
 }
 
+static uint64_t
+ribos_verifier_path_max(const RibosVerifierPathBound *bound)
+{
+    uint64_t result = 0;
+
+    if (bound->has_return && bound->returned > result) {
+        result = bound->returned;
+    }
+    if (bound->has_trap && bound->trapped > result) {
+        result = bound->trapped;
+    }
+    return result;
+}
+
+static void
+ribos_verifier_path_merge(
+    RibosVerifierPathBound *target,
+    const RibosVerifierPathBound *source)
+{
+    if (source->has_stop &&
+        (!target->has_stop || source->stop > target->stop)) {
+        target->stop = source->stop;
+        target->has_stop = 1;
+    }
+    if (source->has_return &&
+        (!target->has_return || source->returned > target->returned)) {
+        target->returned = source->returned;
+        target->has_return = 1;
+    }
+    if (source->has_trap &&
+        (!target->has_trap || source->trapped > target->trapped)) {
+        target->trapped = source->trapped;
+        target->has_trap = 1;
+    }
+}
+
+static int
+ribos_verifier_path_prepend(
+    RibosVerifierPathBound *bound,
+    uint64_t prefix)
+{
+    return
+        (!bound->has_stop ||
+         ribos_verifier_add_u64(prefix, bound->stop, &bound->stop)) &&
+        (!bound->has_return ||
+         ribos_verifier_add_u64(
+             prefix,
+             bound->returned,
+             &bound->returned)) &&
+        (!bound->has_trap ||
+         ribos_verifier_add_u64(
+             prefix,
+             bound->trapped,
+             &bound->trapped));
+}
+
+static const uint8_t *
+ribos_verifier_loop_for_header(
+    RibosVerifierContext *context,
+    uint32_t block_id)
+{
+    uint32_t index;
+
+    for (index = 0; index < context->loops->count; ++index) {
+        const uint8_t *loop =
+            ribos_verifier_row(context->loops, index);
+
+        if (ribos_verifier_u32(loop + 8) == block_id) {
+            return loop;
+        }
+    }
+    return NULL;
+}
+
+static uint32_t
+ribos_verifier_helper_import_index(
+    RibosVerifierContext *context,
+    uint32_t stable_id)
+{
+    uint32_t index;
+
+    for (index = 0; index < context->helper_imports->count; ++index) {
+        if (ribos_verifier_u32(
+                ribos_verifier_row(
+                    context->helper_imports,
+                    index)) == stable_id) {
+            return index;
+        }
+    }
+    return RIBOS_ARTIFACT_INVALID_ID;
+}
+
+static uint64_t
+ribos_verifier_block_weight(
+    RibosVerifierPathContext *path,
+    uint32_t block_id)
+{
+    RibosVerifierContext *context = path->verifier;
+    const uint8_t *block =
+        ribos_verifier_row(context->blocks, block_id);
+    uint32_t instruction_id = ribos_verifier_u32(block + 8);
+    uint32_t instruction_count = ribos_verifier_u32(block + 16);
+    uint64_t weight = 0;
+    uint32_t ordinal;
+
+    for (ordinal = 0; ordinal < instruction_count; ++ordinal) {
+        const uint8_t *instruction =
+            ribos_verifier_row(context->instructions, instruction_id);
+        uint64_t addition = 0;
+
+        if (path->metric == RIBOS_VERIFIER_METRIC_INSTRUCTION) {
+            addition = 1;
+            if (instruction[0] == RIBOS_BC_CALL_DIRECT &&
+                !ribos_verifier_add_u64(
+                    addition,
+                    context->instruction_bounds[
+                        ribos_verifier_u32(instruction + 20)
+                    ],
+                    &addition)) {
+                path->failed = 1;
+                return 0;
+            }
+        } else if (path->metric ==
+                RIBOS_VERIFIER_METRIC_HELPER_TOTAL) {
+            if (instruction[0] == RIBOS_BC_CALL_HELPER) {
+                addition = 1;
+            } else if (instruction[0] == RIBOS_BC_CALL_DIRECT) {
+                addition = context->helper_total_bounds[
+                    ribos_verifier_u32(instruction + 20)];
+            }
+        } else if (instruction[0] == RIBOS_BC_CALL_HELPER) {
+            addition = ribos_verifier_helper_import_index(
+                context,
+                ribos_verifier_u32(instruction + 20)) ==
+                    path->helper_import;
+        } else if (instruction[0] == RIBOS_BC_CALL_DIRECT) {
+            addition = context->helper_matrix[
+                (size_t)ribos_verifier_u32(instruction + 20) *
+                    context->helper_imports->count +
+                path->helper_import
+            ];
+        }
+        if (!ribos_verifier_add_u64(weight, addition, &weight)) {
+            path->failed = 1;
+            return 0;
+        }
+        instruction_id = ribos_verifier_u32(instruction + 32);
+    }
+    return weight;
+}
+
+static RibosVerifierPathBound
+ribos_verifier_analyze_node(
+    RibosVerifierPathContext *path,
+    uint32_t block_id);
+
+static RibosVerifierPathBound
+ribos_verifier_analyze_region(
+    RibosVerifierContext *context,
+    uint32_t function_id,
+    uint32_t start_block,
+    uint32_t stop_block,
+    RibosVerifierMetric metric,
+    uint32_t helper_import,
+    uint32_t depth,
+    int *failed)
+{
+    RibosVerifierPathContext path = {
+        .verifier = context,
+        .function_id = function_id,
+        .stop_block = stop_block,
+        .metric = metric,
+        .helper_import = helper_import,
+        .depth = depth,
+    };
+    RibosVerifierPathBound result = {0};
+    size_t offset = (size_t)depth * context->blocks->count;
+
+    if (depth > context->loops->count ||
+        offset > context->path_matrix_entries ||
+        context->blocks->count >
+            context->path_matrix_entries - offset) {
+        path.failed = 1;
+    } else {
+        memset(
+            context->path_states + offset,
+            0,
+            context->blocks->count);
+        memset(
+            context->path_memo + offset,
+            0,
+            (size_t)context->blocks->count *
+                sizeof(*context->path_memo));
+        result = ribos_verifier_analyze_node(&path, start_block);
+    }
+    if (failed != NULL && path.failed) {
+        *failed = 1;
+    }
+    return result;
+}
+
+static int
+ribos_verifier_mark_reachable(
+    RibosVerifierContext *context,
+    uint32_t function_id)
+{
+    const uint8_t *function =
+        ribos_verifier_row(context->functions, function_id);
+    uint32_t first_block = ribos_verifier_u32(function + 16);
+    uint32_t block_count = ribos_verifier_u32(function + 20);
+    uint32_t entry = ribos_verifier_u32(function + 12);
+    uint32_t head = 0;
+    uint32_t tail = 0;
+
+    memset(context->action_masks, 0, context->blocks->count);
+    context->predecessor_cursor[tail++] = entry;
+    context->action_masks[entry] = 1;
+    while (head < tail) {
+        uint32_t block_id = context->predecessor_cursor[head++];
+        uint32_t targets[2];
+        uint32_t count =
+            ribos_verifier_successors(context, block_id, targets);
+        uint32_t index;
+
+        for (index = 0; index < count; ++index) {
+            if (targets[index] < first_block ||
+                targets[index] - first_block >= block_count) {
+                return 0;
+            }
+            if (context->action_masks[targets[index]] == 0) {
+                context->action_masks[targets[index]] = 1;
+                context->predecessor_cursor[tail++] = targets[index];
+            }
+        }
+    }
+    return 1;
+}
+
+static RibosVerifierStatus
+ribos_verifier_close_stage2_resources(
+    RibosVerifierContext *context,
+    uint32_t function_id)
+{
+    const uint8_t *function =
+        ribos_verifier_row(context->functions, function_id);
+    uint32_t first_block = ribos_verifier_u32(function + 16);
+    uint32_t block_count = ribos_verifier_u32(function + 20);
+    uint32_t callee;
+    uint32_t capability = 0;
+    uint32_t local;
+    uint32_t helper;
+    int failed = 0;
+    RibosVerifierPathBound instructions;
+    RibosVerifierPathBound helpers;
+
+    if (context->resource_states[function_id] == 2) {
+        return RIBOS_VERIFIER_OK;
+    }
+    if (context->resource_states[function_id] == 1) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_RECURSIVE_CALL,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            function_id,
+            function_id);
+    }
+    context->resource_states[function_id] = 1;
+    for (callee = 0; callee < context->functions->count; ++callee) {
+        RibosVerifierStatus status;
+
+        if (context->call_edges[
+                (size_t)function_id *
+                    context->functions->count + callee] == 0) {
+            continue;
+        }
+        status = ribos_verifier_close_stage2_resources(
+            context,
+            callee);
+        if (status != RIBOS_VERIFIER_OK) {
+            return status;
+        }
+        capability |= context->reachable_capabilities[callee];
+    }
+    if (!ribos_verifier_mark_reachable(context, function_id)) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_INVALID_BLOCK,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            function_id,
+            0);
+    }
+    for (local = 0; local < block_count; ++local) {
+        uint32_t block_id = first_block + local;
+        const uint8_t *block;
+        uint32_t instruction_id;
+        uint32_t count;
+        uint32_t ordinal;
+
+        if (context->action_masks[block_id] == 0) {
+            continue;
+        }
+        block = ribos_verifier_row(context->blocks, block_id);
+        instruction_id = ribos_verifier_u32(block + 8);
+        count = ribos_verifier_u32(block + 16);
+        for (ordinal = 0; ordinal < count; ++ordinal) {
+            const uint8_t *instruction =
+                ribos_verifier_row(
+                    context->instructions,
+                    instruction_id);
+
+            if (instruction[0] == RIBOS_BC_CALL_HELPER) {
+                const RibosSchemaHelper *schema_helper =
+                    ribos_verifier_schema_helper(
+                        context->schema,
+                        ribos_verifier_u32(instruction + 20));
+
+                if (schema_helper == NULL) {
+                    return ribos_verifier_fail(
+                        context,
+                        RIBOS_VERIFIER_INVALID_TARGET,
+                        RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                        instruction_id,
+                        ribos_verifier_u32(instruction + 20));
+                }
+                capability |= schema_helper->capabilities;
+            }
+            instruction_id = ribos_verifier_u32(instruction + 32);
+        }
+    }
+    instructions = ribos_verifier_analyze_region(
+        context,
+        function_id,
+        ribos_verifier_u32(function + 12),
+        RIBOS_ARTIFACT_INVALID_ID,
+        RIBOS_VERIFIER_METRIC_INSTRUCTION,
+        0,
+        0,
+        &failed);
+    helpers = ribos_verifier_analyze_region(
+        context,
+        function_id,
+        ribos_verifier_u32(function + 12),
+        RIBOS_ARTIFACT_INVALID_ID,
+        RIBOS_VERIFIER_METRIC_HELPER_TOTAL,
+        0,
+        0,
+        &failed);
+    if (failed || instructions.has_stop || helpers.has_stop ||
+        (!instructions.has_return && !instructions.has_trap)) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_RESOURCE_MISMATCH,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            function_id,
+            0);
+    }
+    context->instruction_bounds[function_id] =
+        ribos_verifier_path_max(&instructions);
+    context->helper_total_bounds[function_id] =
+        ribos_verifier_path_max(&helpers);
+    context->reachable_capabilities[function_id] = capability;
+    for (helper = 0;
+         helper < context->helper_imports->count;
+         ++helper) {
+        RibosVerifierPathBound one = ribos_verifier_analyze_region(
+            context,
+            function_id,
+            ribos_verifier_u32(function + 12),
+            RIBOS_ARTIFACT_INVALID_ID,
+            RIBOS_VERIFIER_METRIC_HELPER_ID,
+            helper,
+            0,
+            &failed);
+
+        if (failed || one.has_stop) {
+            return ribos_verifier_fail(
+                context,
+                RIBOS_VERIFIER_RESOURCE_MISMATCH,
+                RIBOS_VERIFIER_SUBJECT_FUNCTION,
+                function_id,
+                helper);
+        }
+        context->helper_matrix[
+            (size_t)function_id *
+                context->helper_imports->count + helper] =
+            ribos_verifier_path_max(&one);
+    }
+    if (ribos_verifier_u32(function + 44) != capability ||
+        (capability & ~ribos_verifier_u32(function + 40)) != 0) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_CAPABILITY_MISMATCH,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            function_id,
+            capability);
+    }
+    if (ribos_verifier_u64(function + 56) !=
+            context->instruction_bounds[function_id] ||
+        ribos_verifier_u64(function + 72) !=
+            context->helper_total_bounds[function_id]) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_RESOURCE_MISMATCH,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            function_id,
+            0);
+    }
+    if (context->instruction_bounds[function_id] >
+            ribos_verifier_u64(function + 48) ||
+        context->helper_total_bounds[function_id] >
+            ribos_verifier_u64(function + 64)) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_BUDGET_EXCEEDED,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            function_id,
+            0);
+    }
+    context->resource_states[function_id] = 2;
+    return RIBOS_VERIFIER_OK;
+}
+
+static RibosVerifierStatus
+ribos_verifier_validate_helper_bounds(
+    RibosVerifierContext *context)
+{
+    uint32_t row_id = 0;
+    uint32_t function_id;
+
+    for (function_id = 0;
+         function_id < context->functions->count;
+         ++function_id) {
+        uint32_t helper;
+
+        for (helper = 0;
+             helper < context->helper_imports->count;
+             ++helper) {
+            uint64_t bound = context->helper_matrix[
+                (size_t)function_id *
+                    context->helper_imports->count + helper];
+
+            if (bound != 0) {
+                const uint8_t *row =
+                    ribos_verifier_row(context->helper_bounds, row_id);
+                uint32_t stable_id = ribos_verifier_u32(
+                    ribos_verifier_row(
+                        context->helper_imports,
+                        helper));
+
+                if (row == NULL ||
+                    ribos_verifier_u32(row) != function_id ||
+                    ribos_verifier_u32(row + 4) != stable_id ||
+                    ribos_verifier_u64(row + 8) != bound) {
+                    return ribos_verifier_fail(
+                        context,
+                        RIBOS_VERIFIER_RESOURCE_MISMATCH,
+                        RIBOS_VERIFIER_SUBJECT_FUNCTION,
+                        function_id,
+                        stable_id);
+                }
+                ++row_id;
+            }
+        }
+    }
+    if (row_id != context->helper_bounds->count) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_RESOURCE_MISMATCH,
+            RIBOS_VERIFIER_SUBJECT_ARTIFACT,
+            RIBOS_ARTIFACT_SECTION_HELPER_BOUNDS,
+            row_id);
+    }
+    return RIBOS_VERIFIER_OK;
+}
+
+static int
+ribos_verifier_operand_is_consumed(
+    RibosVerifierContext *context,
+    uint32_t instruction_id,
+    uint32_t ordinal)
+{
+    const uint8_t *instruction =
+        ribos_verifier_row(context->instructions, instruction_id);
+    uint32_t opcode = instruction[0];
+    uint32_t result = ribos_verifier_u32(instruction + 12);
+    int result_ownership = result == RIBOS_ARTIFACT_INVALID_ID ?
+        RIBOS_SCHEMA_OWNERSHIP_COPY :
+        ribos_verifier_type_ownership(
+            context,
+            ribos_verifier_slot_type(context, result));
+
+    if (opcode == RIBOS_BC_CALL_HELPER) {
+        const RibosSchemaHelper *helper =
+            ribos_verifier_schema_helper(
+                context->schema,
+                ribos_verifier_u32(instruction + 20));
+
+        return helper != NULL &&
+            ordinal < helper->parameter_count &&
+            helper->parameters[ordinal].mode ==
+                RIBOS_SCHEMA_PARAMETER_CONSUME;
+    }
+    if (opcode == RIBOS_BC_MOVE ||
+        opcode == RIBOS_BC_BUILD_LIST ||
+        opcode == RIBOS_BC_BUILD_MAP ||
+        opcode == RIBOS_BC_BUILD_STRUCT ||
+        opcode == RIBOS_BC_BUILD_VARIANT ||
+        opcode == RIBOS_BC_CALL_DIRECT ||
+        opcode == RIBOS_BC_RETURN) {
+        return 1;
+    }
+    if (ordinal == 0 &&
+        (opcode == RIBOS_BC_MEMBER ||
+         opcode == RIBOS_BC_INDEX ||
+         opcode == RIBOS_BC_VARIANT_PAYLOAD) &&
+        result_ownership > RIBOS_SCHEMA_OWNERSHIP_COPY) {
+        return 1;
+    }
+    return 0;
+}
+
+static void
+ribos_verifier_bits_clear(uint64_t *bits, uint32_t index)
+{
+    bits[index / 64] &=
+        ~(UINT64_C(1) << (index % 64));
+}
+
+static RibosVerifierStatus
+ribos_verifier_transfer_ownership_block(
+    RibosVerifierContext *context,
+    uint32_t block_id,
+    uint32_t first_slot,
+    uint64_t *available,
+    int validate)
+{
+    const uint8_t *block =
+        ribos_verifier_row(context->blocks, block_id);
+    uint32_t instruction_id = ribos_verifier_u32(block + 8);
+    uint32_t count = ribos_verifier_u32(block + 16);
+    uint32_t ordinal;
+
+    for (ordinal = 0; ordinal < count; ++ordinal) {
+        const uint8_t *instruction =
+            ribos_verifier_row(context->instructions, instruction_id);
+        uint32_t operand_count =
+            ribos_verifier_u16(instruction + 2);
+        uint32_t operand;
+        uint32_t result =
+            ribos_verifier_u32(instruction + 12);
+
+        for (operand = 0; operand < operand_count; ++operand) {
+            uint32_t slot = ribos_verifier_operand_slot(
+                context,
+                instruction_id,
+                operand);
+            int ownership = ribos_verifier_type_ownership(
+                context,
+                ribos_verifier_slot_type(context, slot));
+
+            if (ownership < 0) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_TYPESTATE_VIOLATION,
+                    RIBOS_VERIFIER_SUBJECT_TYPE,
+                    ribos_verifier_slot_type(context, slot),
+                    slot);
+            }
+            if (ownership == RIBOS_SCHEMA_OWNERSHIP_COPY) {
+                continue;
+            }
+            if (validate &&
+                !ribos_verifier_bits_test(
+                    available,
+                    slot - first_slot)) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_OWNERSHIP_VIOLATION,
+                    RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                    instruction_id,
+                    slot);
+            }
+        }
+        for (operand = 0; operand < operand_count; ++operand) {
+            uint32_t slot = ribos_verifier_operand_slot(
+                context,
+                instruction_id,
+                operand);
+
+            if (ribos_verifier_type_ownership(
+                    context,
+                    ribos_verifier_slot_type(context, slot)) >
+                    RIBOS_SCHEMA_OWNERSHIP_COPY &&
+                ribos_verifier_operand_is_consumed(
+                    context,
+                    instruction_id,
+                    operand)) {
+                ribos_verifier_bits_clear(
+                    available,
+                    slot - first_slot);
+            }
+        }
+        if (result != RIBOS_ARTIFACT_INVALID_ID &&
+            ribos_verifier_type_ownership(
+                context,
+                ribos_verifier_slot_type(context, result)) >
+                RIBOS_SCHEMA_OWNERSHIP_COPY) {
+            ribos_verifier_bits_set(
+                available,
+                result - first_slot);
+        }
+        instruction_id = ribos_verifier_u32(instruction + 32);
+    }
+    return RIBOS_VERIFIER_OK;
+}
+
+static RibosVerifierStatus
+ribos_verifier_validate_function_ownership(
+    RibosVerifierContext *context,
+    uint32_t function_id)
+{
+    const uint8_t *function =
+        ribos_verifier_row(context->functions, function_id);
+    uint32_t first_block = ribos_verifier_u32(function + 16);
+    uint32_t block_count = ribos_verifier_u32(function + 20);
+    uint32_t first_slot = ribos_verifier_u32(function + 24);
+    uint32_t slot_count = ribos_verifier_u32(function + 28);
+    uint32_t entry =
+        ribos_verifier_u32(function + 12) - first_block;
+    size_t words = (slot_count + 63u) / 64u;
+    uint32_t iteration;
+    uint32_t local;
+    int changed = 0;
+    RibosVerifierStatus status =
+        ribos_verifier_validate_function_cfg(context, function_id);
+
+    if (status != RIBOS_VERIFIER_OK) {
+        return status;
+    }
+    memset(
+        context->out_bits,
+        0,
+        (size_t)block_count * words * sizeof(*context->out_bits));
+    for (local = 0; local < block_count; ++local) {
+        uint64_t *out = ribos_verifier_block_bits(
+            context->out_bits,
+            local,
+            words);
+
+        if (local != entry) {
+            memset(out, 0xff, words * sizeof(*out));
+            if (slot_count % 64 != 0) {
+                out[words - 1] &=
+                    (UINT64_C(1) << (slot_count % 64)) - 1;
+            }
+        }
+    }
+    for (iteration = 0; iteration <= block_count; ++iteration) {
+        changed = 0;
+        for (local = 0; local < block_count; ++local) {
+            uint64_t *out = ribos_verifier_block_bits(
+                context->out_bits,
+                local,
+                words);
+            uint32_t predecessor;
+
+            if (context->block_reachable[local] == 0) {
+                continue;
+            }
+            if (local == entry) {
+                memset(
+                    context->temporary_bits,
+                    0,
+                    words * sizeof(*context->temporary_bits));
+            } else {
+                int has_predecessor = 0;
+
+                memset(
+                    context->temporary_bits,
+                    0xff,
+                    words * sizeof(*context->temporary_bits));
+                for (predecessor = 0;
+                     predecessor <
+                        context->predecessor_counts[local];
+                     ++predecessor) {
+                    uint32_t source = context->predecessors[
+                        context->predecessor_starts[local] +
+                            predecessor];
+
+                    if (context->block_reachable[source] == 0) {
+                        continue;
+                    }
+                    ribos_verifier_bits_intersect(
+                        context->temporary_bits,
+                        ribos_verifier_block_bits(
+                            context->out_bits,
+                            source,
+                            words),
+                        words);
+                    has_predecessor = 1;
+                }
+                if (!has_predecessor) {
+                    memset(
+                        context->temporary_bits,
+                        0,
+                        words * sizeof(*context->temporary_bits));
+                }
+            }
+            status = ribos_verifier_transfer_ownership_block(
+                context,
+                first_block + local,
+                first_slot,
+                context->temporary_bits,
+                0);
+            if (status != RIBOS_VERIFIER_OK) {
+                return status;
+            }
+            if (!ribos_verifier_bits_equal(
+                    out,
+                    context->temporary_bits,
+                    words)) {
+                ribos_verifier_bits_copy(
+                    out,
+                    context->temporary_bits,
+                    words);
+                changed = 1;
+            }
+        }
+        if (!changed) {
+            break;
+        }
+    }
+    if (changed) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_OWNERSHIP_VIOLATION,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            function_id,
+            block_count);
+    }
+    for (local = 0; local < block_count; ++local) {
+        uint32_t predecessor;
+
+        if (context->block_reachable[local] == 0) {
+            continue;
+        }
+        if (local == entry) {
+            memset(
+                context->temporary_bits,
+                0,
+                words * sizeof(*context->temporary_bits));
+        } else {
+            int has_predecessor = 0;
+
+            memset(
+                context->temporary_bits,
+                0xff,
+                words * sizeof(*context->temporary_bits));
+            for (predecessor = 0;
+                 predecessor < context->predecessor_counts[local];
+                 ++predecessor) {
+                uint32_t source = context->predecessors[
+                    context->predecessor_starts[local] + predecessor];
+
+                if (context->block_reachable[source] == 0) {
+                    continue;
+                }
+                ribos_verifier_bits_intersect(
+                    context->temporary_bits,
+                    ribos_verifier_block_bits(
+                        context->out_bits,
+                        source,
+                        words),
+                    words);
+                has_predecessor = 1;
+            }
+            if (!has_predecessor) {
+                memset(
+                    context->temporary_bits,
+                    0,
+                    words * sizeof(*context->temporary_bits));
+            }
+        }
+        status = ribos_verifier_transfer_ownership_block(
+            context,
+            first_block + local,
+            first_slot,
+            context->temporary_bits,
+            1);
+        if (status != RIBOS_VERIFIER_OK) {
+            return status;
+        }
+    }
+    return RIBOS_VERIFIER_OK;
+}
+
+static RibosVerifierStatus
+ribos_verifier_validate_schema_semantics(
+    RibosVerifierContext *context)
+{
+    const uint8_t *entry = ribos_verifier_row(
+        context->functions,
+        context->artifact.entry_function);
+    uint32_t parameter_start = ribos_verifier_u32(entry + 32);
+    uint32_t return_type = ribos_verifier_u32(entry + 8);
+    const uint8_t *return_row =
+        ribos_verifier_row(context->types, return_type);
+    uint32_t type_id;
+    uint32_t instruction_id;
+
+    if (ribos_verifier_u32(entry + 36) != 1 ||
+        !ribos_verifier_type_matches_spelling(
+            context,
+            ribos_verifier_slot_type(context, parameter_start),
+            context->schema->policy_context_type) ||
+        return_row == NULL ||
+        ribos_verifier_u16(return_row + 4) !=
+            RIBOS_BC_TYPE_RESULT ||
+        !ribos_verifier_type_matches_spelling(
+            context,
+            ribos_verifier_u32(return_row + 8),
+            context->schema->policy_action_type) ||
+        !ribos_verifier_type_matches_spelling(
+            context,
+            ribos_verifier_u32(return_row + 12),
+            context->schema->policy_error_type)) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_TYPESTATE_VIOLATION,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            context->artifact.entry_function,
+            return_type);
+    }
+    for (type_id = 0; type_id < context->types->count; ++type_id) {
+        if (ribos_verifier_type_ownership(context, type_id) < 0) {
+            return ribos_verifier_fail(
+                context,
+                RIBOS_VERIFIER_TYPESTATE_VIOLATION,
+                RIBOS_VERIFIER_SUBJECT_TYPE,
+                type_id,
+                0);
+        }
+    }
+    for (instruction_id = 0;
+         instruction_id < context->instructions->count;
+         ++instruction_id) {
+        const uint8_t *instruction =
+            ribos_verifier_row(context->instructions, instruction_id);
+        uint32_t result = ribos_verifier_u32(instruction + 12);
+        const RibosSchemaType *result_schema = result ==
+                RIBOS_ARTIFACT_INVALID_ID ?
+            NULL :
+            ribos_verifier_schema_type(
+                context,
+                ribos_verifier_slot_type(context, result));
+
+        if (instruction[0] == RIBOS_BC_CONST_SYMBOL &&
+            result_schema != NULL &&
+            (result_schema->type_class ==
+                RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE ||
+             result_schema->type_class == RIBOS_SCHEMA_TYPE_FACT ||
+             result_schema->ownership !=
+                RIBOS_SCHEMA_OWNERSHIP_COPY)) {
+            return ribos_verifier_fail(
+                context,
+                RIBOS_VERIFIER_OPAQUE_FORGERY,
+                RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                instruction_id,
+                result_schema->stable_id);
+        }
+        if (result_schema != NULL &&
+            result_schema->type_class ==
+                RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE &&
+            instruction[0] != RIBOS_BC_PARAMETER &&
+            instruction[0] != RIBOS_BC_CALL_HELPER &&
+            instruction[0] != RIBOS_BC_CALL_DIRECT &&
+            instruction[0] != RIBOS_BC_MOVE &&
+            instruction[0] != RIBOS_BC_MEMBER &&
+            instruction[0] != RIBOS_BC_INDEX &&
+            instruction[0] != RIBOS_BC_VARIANT_PAYLOAD) {
+            return ribos_verifier_fail(
+                context,
+                RIBOS_VERIFIER_OPAQUE_FORGERY,
+                RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                instruction_id,
+                result_schema->stable_id);
+        }
+        if (instruction[0] == RIBOS_BC_CALL_HELPER) {
+            const RibosSchemaHelper *helper =
+                ribos_verifier_schema_helper(
+                    context->schema,
+                    ribos_verifier_u32(instruction + 20));
+
+            if (helper == NULL) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_INVALID_TARGET,
+                    RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                    instruction_id,
+                    ribos_verifier_u32(instruction + 20));
+            }
+            if ((helper->flags &
+                 RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION) != 0) {
+                uint32_t operand = ribos_verifier_operand_slot(
+                    context,
+                    instruction_id,
+                    helper->transition_parameter);
+                uint32_t input_type =
+                    ribos_verifier_slot_type(context, operand);
+                uint32_t output_type =
+                    ribos_verifier_slot_type(context, result);
+                const uint8_t *output_row =
+                    ribos_verifier_row(context->types, output_type);
+                int input_ownership = ribos_verifier_type_ownership(
+                    context,
+                    input_type);
+                int output_ownership;
+
+                if (helper->error_type != NULL &&
+                    output_row != NULL &&
+                    ribos_verifier_u16(output_row + 4) ==
+                        RIBOS_BC_TYPE_RESULT) {
+                    output_type = ribos_verifier_u32(output_row + 8);
+                }
+                output_ownership = ribos_verifier_type_ownership(
+                    context,
+                    output_type);
+                if (input_ownership <=
+                        RIBOS_SCHEMA_OWNERSHIP_COPY ||
+                    helper->parameters[
+                        helper->transition_parameter
+                    ].mode != RIBOS_SCHEMA_PARAMETER_CONSUME ||
+                    (output_ownership <=
+                        RIBOS_SCHEMA_OWNERSHIP_COPY &&
+                     !ribos_verifier_type_matches_spelling(
+                         context,
+                         output_type,
+                         "Unit")) ||
+                    output_type == input_type) {
+                    return ribos_verifier_fail(
+                        context,
+                        RIBOS_VERIFIER_TYPESTATE_VIOLATION,
+                        RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                        instruction_id,
+                        helper->transition_parameter);
+                }
+            }
+            if ((helper->flags &
+                 RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION) != 0 &&
+                ((helper->capabilities &
+                  RIBOS_CAPABILITY_BOOT) == 0 ||
+                 helper->error_type != NULL ||
+                 !ribos_verifier_type_matches_spelling(
+                     context,
+                     ribos_verifier_slot_type(context, result),
+                     context->schema->policy_action_type))) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_TYPESTATE_VIOLATION,
+                    RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                    instruction_id,
+                    helper->stable_id);
+            }
+        }
+    }
+    return RIBOS_VERIFIER_OK;
+}
+
+static int
+ribos_verifier_return_variant(
+    RibosVerifierContext *context,
+    uint32_t block_id,
+    uint32_t slot_id,
+    uint32_t *tag)
+{
+    const uint8_t *block =
+        ribos_verifier_row(context->blocks, block_id);
+    uint32_t count = ribos_verifier_u32(block + 16);
+    uint32_t hop;
+
+    for (hop = 0; hop < count; ++hop) {
+        uint32_t instruction_id = ribos_verifier_u32(block + 8);
+        uint32_t definition = RIBOS_ARTIFACT_INVALID_ID;
+        uint32_t ordinal;
+        const uint8_t *instruction;
+
+        for (ordinal = 0; ordinal < count; ++ordinal) {
+            const uint8_t *candidate =
+                ribos_verifier_row(
+                    context->instructions,
+                    instruction_id);
+
+            if (ribos_verifier_u32(candidate + 12) == slot_id) {
+                definition = instruction_id;
+            }
+            instruction_id =
+                ribos_verifier_u32(candidate + 32);
+        }
+        if (definition == RIBOS_ARTIFACT_INVALID_ID) {
+            return 0;
+        }
+        instruction = ribos_verifier_row(
+            context->instructions,
+            definition);
+
+        if (instruction[0] == RIBOS_BC_BUILD_VARIANT) {
+            *tag = ribos_verifier_u32(instruction + 20);
+            return 1;
+        }
+        if (instruction[0] != RIBOS_BC_MOVE) {
+            return 0;
+        }
+        slot_id = ribos_verifier_operand_slot(
+            context,
+            definition,
+            0);
+    }
+    return 0;
+}
+
+static RibosVerifierPathBound
+ribos_verifier_analyze_loop(
+    RibosVerifierPathContext *path,
+    const uint8_t *loop)
+{
+    RibosVerifierContext *context = path->verifier;
+    RibosVerifierPathBound result = {0};
+    RibosVerifierPathBound body;
+    RibosVerifierPathBound exit;
+    uint32_t header = ribos_verifier_u32(loop + 8);
+    uint32_t trip_count = ribos_verifier_u32(loop + 24);
+    uint64_t header_weight =
+        ribos_verifier_block_weight(path, header);
+    uint64_t cycle = 0;
+    uint64_t repeat_prefix = 0;
+    int failed = 0;
+
+    body = ribos_verifier_analyze_region(
+        context,
+        path->function_id,
+        ribos_verifier_u32(loop + 12),
+        header,
+        path->metric,
+        path->helper_import,
+        path->depth + 1,
+        &failed);
+    exit = ribos_verifier_analyze_node(
+        path,
+        ribos_verifier_u32(loop + 16));
+    if (failed || path->failed) {
+        path->failed = 1;
+        return result;
+    }
+    if (body.has_stop) {
+        RibosVerifierPathBound normal = exit;
+        uint64_t repeated;
+
+        if (!ribos_verifier_add_u64(
+                header_weight,
+                body.stop,
+                &cycle) ||
+            !ribos_verifier_multiply_u64(
+                cycle,
+                trip_count,
+                &repeated) ||
+            !ribos_verifier_add_u64(
+                repeated,
+                header_weight,
+                &repeated) ||
+            !ribos_verifier_path_prepend(&normal, repeated)) {
+            path->failed = 1;
+            return result;
+        }
+        ribos_verifier_path_merge(&result, &normal);
+        if (trip_count > 0 &&
+            !ribos_verifier_multiply_u64(
+                cycle,
+                trip_count - 1,
+                &repeat_prefix)) {
+            path->failed = 1;
+            return result;
+        }
+    } else {
+        RibosVerifierPathBound zero_iteration = exit;
+
+        if (!ribos_verifier_path_prepend(
+                &zero_iteration,
+                header_weight)) {
+            path->failed = 1;
+            return result;
+        }
+        ribos_verifier_path_merge(&result, &zero_iteration);
+    }
+    if (body.has_return) {
+        RibosVerifierPathBound terminal = {
+            .returned = body.returned,
+            .has_return = 1,
+        };
+        uint64_t prefix;
+
+        if (!ribos_verifier_add_u64(
+                repeat_prefix,
+                header_weight,
+                &prefix) ||
+            !ribos_verifier_path_prepend(&terminal, prefix)) {
+            path->failed = 1;
+            return result;
+        }
+        ribos_verifier_path_merge(&result, &terminal);
+    }
+    if (body.has_trap) {
+        RibosVerifierPathBound terminal = {
+            .trapped = body.trapped,
+            .has_trap = 1,
+        };
+        uint64_t prefix;
+
+        if (!ribos_verifier_add_u64(
+                repeat_prefix,
+                header_weight,
+                &prefix) ||
+            !ribos_verifier_path_prepend(&terminal, prefix)) {
+            path->failed = 1;
+            return result;
+        }
+        ribos_verifier_path_merge(&result, &terminal);
+    }
+    return result;
+}
+
+static RibosVerifierPathBound
+ribos_verifier_analyze_node(
+    RibosVerifierPathContext *path,
+    uint32_t block_id)
+{
+    RibosVerifierContext *context = path->verifier;
+    RibosVerifierPathBound result = {0};
+    const uint8_t *block;
+    const uint8_t *terminal;
+    const uint8_t *loop;
+    uint64_t weight;
+    size_t index;
+
+    if (block_id == path->stop_block) {
+        result.has_stop = 1;
+        return result;
+    }
+    block = ribos_verifier_row(context->blocks, block_id);
+    if (block == NULL ||
+        ribos_verifier_u32(block + 4) != path->function_id) {
+        path->failed = 1;
+        return result;
+    }
+    index = (size_t)path->depth * context->blocks->count + block_id;
+    if (context->path_states[index] == 2) {
+        return context->path_memo[index];
+    }
+    if (context->path_states[index] == 1) {
+        path->failed = 1;
+        return result;
+    }
+    context->path_states[index] = 1;
+    loop = ribos_verifier_loop_for_header(context, block_id);
+    if (loop != NULL) {
+        result = ribos_verifier_analyze_loop(path, loop);
+    } else {
+        terminal = ribos_verifier_row(
+            context->instructions,
+            ribos_verifier_u32(block + 12));
+        weight = ribos_verifier_block_weight(path, block_id);
+        if (terminal[0] == RIBOS_BC_RETURN) {
+            result.has_return = 1;
+            result.returned = weight;
+        } else if (terminal[0] == RIBOS_BC_TRAP) {
+            result.has_trap = 1;
+            result.trapped = weight;
+        } else if (terminal[0] == RIBOS_BC_JUMP) {
+            result = ribos_verifier_analyze_node(
+                path,
+                ribos_verifier_u32(terminal + 20));
+            if (!ribos_verifier_path_prepend(&result, weight)) {
+                path->failed = 1;
+            }
+        } else if (terminal[0] == RIBOS_BC_BRANCH) {
+            RibosVerifierPathBound left =
+                ribos_verifier_analyze_node(
+                    path,
+                    ribos_verifier_u32(terminal + 20));
+            RibosVerifierPathBound right =
+                ribos_verifier_analyze_node(
+                    path,
+                    ribos_verifier_u32(terminal + 24));
+
+            ribos_verifier_path_merge(&result, &left);
+            ribos_verifier_path_merge(&result, &right);
+            if (!ribos_verifier_path_prepend(&result, weight)) {
+                path->failed = 1;
+            }
+        } else {
+            path->failed = 1;
+        }
+    }
+    context->path_states[index] = path->failed ? 0 : 2;
+    if (!path->failed) {
+        context->path_memo[index] = result;
+    }
+    return result;
+}
+
+static uint8_t
+ribos_verifier_action_shift(uint8_t mask)
+{
+    return (uint8_t)(((mask & 1u) << 1) |
+        ((mask & 2u) << 1) |
+        (mask & 4u));
+}
+
+static uint8_t
+ribos_verifier_block_action_mask(
+    RibosVerifierContext *context,
+    uint32_t block_id,
+    uint8_t incoming,
+    RibosVerifierStatus *status)
+{
+    const uint8_t *block =
+        ribos_verifier_row(context->blocks, block_id);
+    uint32_t instruction_id = ribos_verifier_u32(block + 8);
+    uint32_t count = ribos_verifier_u32(block + 16);
+    uint32_t ordinal;
+    int after_terminal = 0;
+
+    for (ordinal = 0; ordinal < count; ++ordinal) {
+        const uint8_t *instruction =
+            ribos_verifier_row(context->instructions, instruction_id);
+        int terminal_helper = 0;
+
+        if (instruction[0] == RIBOS_BC_CALL_HELPER) {
+            const RibosSchemaHelper *helper =
+                ribos_verifier_schema_helper(
+                    context->schema,
+                    ribos_verifier_u32(instruction + 20));
+
+            terminal_helper = helper != NULL &&
+                (helper->flags &
+                 RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION) != 0;
+        }
+        if (terminal_helper) {
+            incoming = ribos_verifier_action_shift(incoming);
+            after_terminal = 1;
+        } else if (after_terminal &&
+            (instruction[0] == RIBOS_BC_CALL_DIRECT ||
+             instruction[0] == RIBOS_BC_JUMP ||
+             instruction[0] == RIBOS_BC_BRANCH ||
+             instruction[0] == RIBOS_BC_TRAP)) {
+            *status = ribos_verifier_fail(
+                context,
+                RIBOS_VERIFIER_TERMINAL_ACTION_VIOLATION,
+                RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                instruction_id,
+                instruction[0]);
+            return 0;
+        }
+        instruction_id = ribos_verifier_u32(instruction + 32);
+    }
+    return incoming;
+}
+
+static RibosVerifierStatus
+ribos_verifier_validate_terminal_actions(
+    RibosVerifierContext *context)
+{
+    uint32_t entry_id = context->artifact.entry_function;
+    const uint8_t *function =
+        ribos_verifier_row(context->functions, entry_id);
+    uint32_t first_block = ribos_verifier_u32(function + 16);
+    uint32_t block_count = ribos_verifier_u32(function + 20);
+    uint32_t entry = ribos_verifier_u32(function + 12);
+    uint32_t function_id;
+    uint32_t iteration;
+    int changed = 0;
+    int success_seen = 0;
+
+    for (function_id = 0;
+         function_id < context->functions->count;
+         ++function_id) {
+        const uint8_t *candidate =
+            ribos_verifier_row(context->functions, function_id);
+        uint32_t local;
+
+        for (local = 0;
+             local < ribos_verifier_u32(candidate + 20);
+             ++local) {
+            const uint8_t *block = ribos_verifier_row(
+                context->blocks,
+                ribos_verifier_u32(candidate + 16) + local);
+            uint32_t instruction_id =
+                ribos_verifier_u32(block + 8);
+            uint32_t count = ribos_verifier_u32(block + 16);
+            uint32_t ordinal;
+
+            for (ordinal = 0; ordinal < count; ++ordinal) {
+                const uint8_t *instruction =
+                    ribos_verifier_row(
+                        context->instructions,
+                        instruction_id);
+
+                if (instruction[0] == RIBOS_BC_CALL_HELPER) {
+                    const RibosSchemaHelper *helper =
+                        ribos_verifier_schema_helper(
+                            context->schema,
+                            ribos_verifier_u32(instruction + 20));
+
+                    if (helper != NULL &&
+                        (helper->flags &
+                         RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION) !=
+                            0 &&
+                        function_id != entry_id) {
+                        return ribos_verifier_fail(
+                            context,
+                            RIBOS_VERIFIER_TERMINAL_ACTION_VIOLATION,
+                            RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                            instruction_id,
+                            function_id);
+                    }
+                }
+                instruction_id =
+                    ribos_verifier_u32(instruction + 32);
+            }
+        }
+    }
+    memset(context->action_masks, 0, context->blocks->count);
+    context->action_masks[entry] = 1;
+    for (iteration = 0; iteration <= block_count * 3u; ++iteration) {
+        uint32_t local;
+
+        changed = 0;
+        for (local = 0; local < block_count; ++local) {
+            uint32_t block_id = first_block + local;
+            uint32_t targets[2];
+            uint32_t target_count;
+            uint32_t target;
+            RibosVerifierStatus status = RIBOS_VERIFIER_OK;
+            uint8_t outgoing;
+
+            if (context->action_masks[block_id] == 0) {
+                continue;
+            }
+            outgoing = ribos_verifier_block_action_mask(
+                context,
+                block_id,
+                context->action_masks[block_id],
+                &status);
+            if (status != RIBOS_VERIFIER_OK) {
+                return status;
+            }
+            target_count = ribos_verifier_successors(
+                context,
+                block_id,
+                targets);
+            for (target = 0; target < target_count; ++target) {
+                uint8_t merged =
+                    context->action_masks[targets[target]] | outgoing;
+
+                if (merged != context->action_masks[targets[target]]) {
+                    context->action_masks[targets[target]] = merged;
+                    changed = 1;
+                }
+            }
+        }
+        if (!changed) {
+            break;
+        }
+    }
+    if (changed) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_TERMINAL_ACTION_VIOLATION,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            entry_id,
+            block_count);
+    }
+    for (iteration = 0; iteration < block_count; ++iteration) {
+        uint32_t block_id = first_block + iteration;
+        const uint8_t *block;
+        const uint8_t *terminal;
+        RibosVerifierStatus status = RIBOS_VERIFIER_OK;
+        uint8_t outgoing;
+
+        if (context->action_masks[block_id] == 0) {
+            continue;
+        }
+        block = ribos_verifier_row(context->blocks, block_id);
+        terminal = ribos_verifier_row(
+            context->instructions,
+            ribos_verifier_u32(block + 12));
+        outgoing = ribos_verifier_block_action_mask(
+            context,
+            block_id,
+            context->action_masks[block_id],
+            &status);
+        if (status != RIBOS_VERIFIER_OK) {
+            return status;
+        }
+        if (terminal[0] == RIBOS_BC_TRAP) {
+            if (outgoing != 1u) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_FAIL_CLOSED_VIOLATION,
+                    RIBOS_VERIFIER_SUBJECT_BLOCK,
+                    block_id,
+                    outgoing);
+            }
+        } else if (terminal[0] == RIBOS_BC_RETURN) {
+            uint32_t tag;
+            uint32_t result = ribos_verifier_operand_slot(
+                context,
+                ribos_verifier_u32(terminal + 4),
+                0);
+
+            if (!ribos_verifier_return_variant(
+                    context,
+                    block_id,
+                    result,
+                    &tag) ||
+                tag > 1) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_FAIL_CLOSED_VIOLATION,
+                    RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                    ribos_verifier_u32(terminal + 4),
+                    result);
+            }
+            if (tag == 0) {
+                if (outgoing != 2u) {
+                    return ribos_verifier_fail(
+                        context,
+                        RIBOS_VERIFIER_TERMINAL_ACTION_VIOLATION,
+                        RIBOS_VERIFIER_SUBJECT_BLOCK,
+                        block_id,
+                        outgoing);
+                }
+                success_seen = 1;
+            } else if (outgoing != 1u) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_FAIL_CLOSED_VIOLATION,
+                    RIBOS_VERIFIER_SUBJECT_BLOCK,
+                    block_id,
+                    outgoing);
+            }
+        }
+    }
+    if (!success_seen) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_TERMINAL_ACTION_VIOLATION,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            entry_id,
+            0);
+    }
+    return RIBOS_VERIFIER_OK;
+}
+
+static RibosVerifierStatus
+ribos_verifier_validate_stage2(RibosVerifierContext *context)
+{
+    uint32_t function_id;
+    uint32_t entry = context->artifact.entry_function;
+    RibosVerifierStatus status =
+        ribos_verifier_validate_schema_semantics(context);
+
+    if (status != RIBOS_VERIFIER_OK) {
+        return status;
+    }
+    for (function_id = 0;
+         function_id < context->functions->count;
+         ++function_id) {
+        status = ribos_verifier_validate_function_ownership(
+            context,
+            function_id);
+        if (status != RIBOS_VERIFIER_OK) {
+            return status;
+        }
+    }
+    memset(
+        context->resource_states,
+        0,
+        context->functions->count);
+    for (function_id = 0;
+         function_id < context->functions->count;
+         ++function_id) {
+        status = ribos_verifier_close_stage2_resources(
+            context,
+            function_id);
+        if (status != RIBOS_VERIFIER_OK) {
+            return status;
+        }
+    }
+    status = ribos_verifier_validate_helper_bounds(context);
+    if (status != RIBOS_VERIFIER_OK) {
+        return status;
+    }
+    if (context->artifact.required_capabilities !=
+            context->reachable_capabilities[entry] ||
+        context->artifact.instruction_upper_bound !=
+            context->instruction_bounds[entry] ||
+        context->artifact.helper_upper_bound !=
+            context->helper_total_bounds[entry]) {
+        return ribos_verifier_fail(
+            context,
+            RIBOS_VERIFIER_RESOURCE_MISMATCH,
+            RIBOS_VERIFIER_SUBJECT_FUNCTION,
+            entry,
+            0);
+    }
+    status = ribos_verifier_validate_terminal_actions(context);
+    if (status != RIBOS_VERIFIER_OK) {
+        return status;
+    }
+    context->report->recomputed_reachable_capabilities =
+        context->reachable_capabilities[entry];
+    context->report->recomputed_instruction_upper_bound =
+        context->instruction_bounds[entry];
+    context->report->recomputed_helper_upper_bound =
+        context->helper_total_bounds[entry];
+    return RIBOS_VERIFIER_OK;
+}
+
 static RibosVerifierStatus
 ribos_verifier_open(
     const uint8_t *artifact,
@@ -3469,6 +5160,10 @@ ribos_verifier_measure_workspace(
         ribos_artifact_find_section(
             view,
             RIBOS_ARTIFACT_SECTION_BLOCKS);
+    const RibosArtifactSectionView *loops =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_LOOPS);
     const RibosArtifactSectionView *slots =
         ribos_artifact_find_section(
             view,
@@ -3477,13 +5172,20 @@ ribos_verifier_measure_workspace(
         ribos_artifact_find_section(
             view,
             RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+    const RibosArtifactSectionView *helper_imports =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_HELPER_IMPORTS);
     size_t maximum_matrix = 0;
     size_t function_square;
+    size_t function_helpers;
+    size_t path_matrix;
     size_t size = 7;
     uint32_t index;
 
     if (types == NULL || functions == NULL || blocks == NULL ||
-        slots == NULL || instructions == NULL ||
+        loops == NULL ||
+        slots == NULL || instructions == NULL || helper_imports == NULL ||
         functions->count == 0) {
         return 0;
     }
@@ -3511,6 +5213,14 @@ ribos_verifier_measure_workspace(
             functions->count,
             functions->count,
             &function_square) ||
+        !ribos_verifier_size_multiply(
+            functions->count,
+            helper_imports->count,
+            &function_helpers) ||
+        !ribos_verifier_size_multiply(
+            blocks->count,
+            (size_t)loops->count + 1u,
+            &path_matrix) ||
         !ribos_verifier_workspace_add(
             &size,
             _Alignof(RibosVerifierTypeLayout),
@@ -3580,7 +5290,40 @@ ribos_verifier_measure_workspace(
             &size,
             _Alignof(uint64_t),
             functions->count,
-            sizeof(uint64_t))) {
+            sizeof(uint64_t)) ||
+        !ribos_verifier_workspace_add(
+            &size, 1, types->count, sizeof(uint8_t)) ||
+        !ribos_verifier_workspace_add(
+            &size, 1, functions->count, sizeof(uint8_t)) ||
+        !ribos_verifier_workspace_add(
+            &size,
+            _Alignof(uint32_t),
+            functions->count,
+            sizeof(uint32_t)) ||
+        !ribos_verifier_workspace_add(
+            &size,
+            _Alignof(uint64_t),
+            functions->count,
+            sizeof(uint64_t)) ||
+        !ribos_verifier_workspace_add(
+            &size,
+            _Alignof(uint64_t),
+            functions->count,
+            sizeof(uint64_t)) ||
+        !ribos_verifier_workspace_add(
+            &size,
+            _Alignof(uint64_t),
+            function_helpers,
+            sizeof(uint64_t)) ||
+        !ribos_verifier_workspace_add(
+            &size, 1, path_matrix, sizeof(uint8_t)) ||
+        !ribos_verifier_workspace_add(
+            &size,
+            _Alignof(RibosVerifierPathBound),
+            path_matrix,
+            sizeof(RibosVerifierPathBound)) ||
+        !ribos_verifier_workspace_add(
+            &size, 1, blocks->count, sizeof(uint8_t))) {
         return 0;
     }
     *required_size = size;
@@ -3618,6 +5361,9 @@ ribos_verifier_bind_sections(RibosVerifierContext *context)
         helper_imports,
         RIBOS_ARTIFACT_SECTION_HELPER_IMPORTS);
     RIBOS_BIND(
+        helper_bounds,
+        RIBOS_ARTIFACT_SECTION_HELPER_BOUNDS);
+    RIBOS_BIND(
         source_maps,
         RIBOS_ARTIFACT_SECTION_SOURCE_MAPS);
 #undef RIBOS_BIND
@@ -3633,6 +5379,9 @@ ribos_verifier_allocate_workspace(
     size_t function_square =
         (size_t)context->functions->count *
         context->functions->count;
+    size_t path_matrix =
+        (size_t)context->blocks->count *
+        ((size_t)context->loops->count + 1u);
 
     context->type_layouts = ribos_verifier_arena_take(
         arena,
@@ -3713,6 +5462,53 @@ ribos_verifier_allocate_workspace(
         _Alignof(uint64_t),
         context->functions->count,
         sizeof(*context->stack_bytes));
+    context->type_ownership = ribos_verifier_arena_take(
+        arena,
+        1,
+        context->types->count,
+        sizeof(*context->type_ownership));
+    context->resource_states = ribos_verifier_arena_take(
+        arena,
+        1,
+        context->functions->count,
+        sizeof(*context->resource_states));
+    context->reachable_capabilities = ribos_verifier_arena_take(
+        arena,
+        _Alignof(uint32_t),
+        context->functions->count,
+        sizeof(*context->reachable_capabilities));
+    context->instruction_bounds = ribos_verifier_arena_take(
+        arena,
+        _Alignof(uint64_t),
+        context->functions->count,
+        sizeof(*context->instruction_bounds));
+    context->helper_total_bounds = ribos_verifier_arena_take(
+        arena,
+        _Alignof(uint64_t),
+        context->functions->count,
+        sizeof(*context->helper_total_bounds));
+    context->helper_matrix = ribos_verifier_arena_take(
+        arena,
+        _Alignof(uint64_t),
+        (size_t)context->functions->count *
+            context->helper_imports->count,
+        sizeof(*context->helper_matrix));
+    context->path_states = ribos_verifier_arena_take(
+        arena,
+        1,
+        path_matrix,
+        sizeof(*context->path_states));
+    context->path_memo = ribos_verifier_arena_take(
+        arena,
+        _Alignof(RibosVerifierPathBound),
+        path_matrix,
+        sizeof(*context->path_memo));
+    context->action_masks = ribos_verifier_arena_take(
+        arena,
+        1,
+        context->blocks->count,
+        sizeof(*context->action_masks));
+    context->path_matrix_entries = path_matrix;
     context->bit_matrix_words = maximum_bit_words;
     return !arena->failed;
 }
@@ -3757,14 +5553,15 @@ ribos_verifier_workspace_size_v1(
     return RIBOS_VERIFIER_OK;
 }
 
-RibosVerifierStatus
-ribos_verify_artifact_stage1_v1(
+static RibosVerifierStatus
+ribos_verify_artifact_v1(
     const uint8_t *artifact,
     size_t artifact_size,
     const RibosProductSchema *schema,
     void *workspace,
     size_t workspace_size,
-    RibosVerifierReport *report)
+    RibosVerifierReport *report,
+    int stage2)
 {
     RibosVerifierContext context;
     RibosVerifierArena arena;
@@ -3902,8 +5699,49 @@ ribos_verify_artifact_stage1_v1(
                 0);
         }
     }
+    if (status == RIBOS_VERIFIER_OK && stage2) {
+        status = ribos_verifier_validate_stage2(&context);
+    }
     report->status = status;
     return status;
+}
+
+RibosVerifierStatus
+ribos_verify_artifact_stage1_v1(
+    const uint8_t *artifact,
+    size_t artifact_size,
+    const RibosProductSchema *schema,
+    void *workspace,
+    size_t workspace_size,
+    RibosVerifierReport *report)
+{
+    return ribos_verify_artifact_v1(
+        artifact,
+        artifact_size,
+        schema,
+        workspace,
+        workspace_size,
+        report,
+        0);
+}
+
+RibosVerifierStatus
+ribos_verify_artifact_stage2_v1(
+    const uint8_t *artifact,
+    size_t artifact_size,
+    const RibosProductSchema *schema,
+    void *workspace,
+    size_t workspace_size,
+    RibosVerifierReport *report)
+{
+    return ribos_verify_artifact_v1(
+        artifact,
+        artifact_size,
+        schema,
+        workspace,
+        workspace_size,
+        report,
+        1);
 }
 
 const char *
@@ -3944,6 +5782,20 @@ ribos_verifier_status_name(RibosVerifierStatus status)
         return "recursive-call";
     case RIBOS_VERIFIER_RESOURCE_MISMATCH:
         return "resource-mismatch";
+    case RIBOS_VERIFIER_CAPABILITY_MISMATCH:
+        return "capability-mismatch";
+    case RIBOS_VERIFIER_OPAQUE_FORGERY:
+        return "opaque-forgery";
+    case RIBOS_VERIFIER_TYPESTATE_VIOLATION:
+        return "typestate-violation";
+    case RIBOS_VERIFIER_OWNERSHIP_VIOLATION:
+        return "ownership-violation";
+    case RIBOS_VERIFIER_BUDGET_EXCEEDED:
+        return "budget-exceeded";
+    case RIBOS_VERIFIER_TERMINAL_ACTION_VIOLATION:
+        return "terminal-action-violation";
+    case RIBOS_VERIFIER_FAIL_CLOSED_VIOLATION:
+        return "fail-closed-violation";
     default:
         return "unknown";
     }

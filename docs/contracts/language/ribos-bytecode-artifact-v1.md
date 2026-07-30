@@ -356,9 +356,10 @@ u32 stable helper ID
 u64 worst-path call upper bound
 ```
 
-Verifier는 selected product schema에서 helper ID, signature와 capability를 resolve하고,
+Verifier는 selected product schema에서 helper ID, signature, capability,
+parameter borrow/consume mode, typestate와 terminal-action flag를 resolve하고,
 instruction call-site count와 helper-bound/resource closure를 독립적으로 검사해야
-한다.
+한다. Schema format 1.1 canonical digest는 이 의미를 모두 봉인한다.
 
 ## Optional source map
 
@@ -403,8 +404,10 @@ Allocation-free v1 reader는 다음만 보장한다.
 
 `language/ribos/vm` Stage-1은 table ID/reference, type/slot/frame, instruction ownership,
 direct CFG/call, reachable terminal, definite initialization, opcode type와 stack/call
-depth를 구현한다. Exact instruction/helper worst-case upper bound와 runtime counter는
-후속 verifier/VM gate이며 Stage-1 report는 실행 certificate가 아니다.
+depth를 구현한다. Stage-2는 exact instruction/helper worst-case upper bound,
+helper-specific bound, reachable capability, opaque provenance, ownership/typestate와
+terminal/fault closure를 구현한다. Runtime counter는 VM gate이며 Stage-2 report도
+signature와 rollback을 포함한 실행 certificate가 아니다.
 
 Production verifier는 그 뒤 signature와 rollback/product policy를 확인한다. Structural
 reader 성공, host emitter 성공 또는 valid signature 중 어느 하나만으로 artifact를

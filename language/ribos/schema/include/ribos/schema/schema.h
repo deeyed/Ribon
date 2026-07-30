@@ -16,7 +16,7 @@ extern "C" {
 #define RIBOS_SCHEMA_DIGEST_BYTES 32u
 #define RIBOS_SCHEMA_MAX_PARAMETERS 4u
 #define RIBOS_SCHEMA_V1_MAJOR 1u
-#define RIBOS_SCHEMA_V1_MINOR 0u
+#define RIBOS_SCHEMA_V1_MINOR 1u
 
 /** Product descriptor와 policy artifact가 공유하는 capability 비트다. */
 typedef enum RibosCapability {
@@ -38,11 +38,19 @@ typedef enum RibosSchemaTypeClass {
     RIBOS_SCHEMA_TYPE_ENUM
 } RibosSchemaTypeClass;
 
+/** Named value가 VM에서 따르는 ownership discipline이다. */
+typedef enum RibosSchemaOwnership {
+    RIBOS_SCHEMA_OWNERSHIP_COPY = 0,
+    RIBOS_SCHEMA_OWNERSHIP_AFFINE,
+    RIBOS_SCHEMA_OWNERSHIP_LINEAR
+} RibosSchemaOwnership;
+
 /** Product가 source name으로 공개하는 한 named type이다. */
 typedef struct RibosSchemaType {
     uint32_t stable_id;
     RibosSchemaTypeClass type_class;
     const char *name;
+    RibosSchemaOwnership ownership;
 } RibosSchemaType;
 
 /** Product fact 또는 typed struct member 하나의 schema다. */
@@ -55,11 +63,24 @@ typedef struct RibosSchemaMember {
     uint32_t collection_bound;
 } RibosSchemaMember;
 
-/** Semantic helper parameter 하나의 name과 type이다. */
+/** Helper가 ownership-bearing argument를 읽거나 이전하는 방식이다. */
+typedef enum RibosSchemaParameterMode {
+    RIBOS_SCHEMA_PARAMETER_BORROW = 0,
+    RIBOS_SCHEMA_PARAMETER_CONSUME
+} RibosSchemaParameterMode;
+
+/** Semantic helper parameter 하나의 name, type과 ownership mode다. */
 typedef struct RibosSchemaParameter {
     const char *name;
     const char *type;
+    RibosSchemaParameterMode mode;
 } RibosSchemaParameter;
+
+/** Helper 호출이 갖는 verifier-visible 의미 비트다. */
+typedef enum RibosSchemaHelperFlags {
+    RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION = 1u << 0,
+    RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION = 1u << 1
+} RibosSchemaHelperFlags;
 
 /**
  * Semantic helper 하나의 source ABI다.
@@ -75,6 +96,8 @@ typedef struct RibosSchemaHelper {
     const char *error_type;
     RibosSchemaParameter parameters[RIBOS_SCHEMA_MAX_PARAMETERS];
     size_t parameter_count;
+    uint32_t flags;
+    uint32_t transition_parameter;
 } RibosSchemaHelper;
 
 /** Typed handoff key 하나와 그 value type이다. */
@@ -94,6 +117,9 @@ typedef struct RibosProductSchema {
     uint16_t format_major;
     uint16_t format_minor;
     const char *product_id;
+    const char *policy_context_type;
+    const char *policy_action_type;
+    const char *policy_error_type;
     const RibosSchemaType *types;
     size_t type_count;
     const RibosSchemaMember *members;

@@ -23,32 +23,92 @@ struct RibosSha256 {
 };
 
 static const RibosSchemaType ribos_reference_types[] = {
-    {1, RIBOS_SCHEMA_TYPE_FACT, "BootContext"},
-    {2, RIBOS_SCHEMA_TYPE_VALUE, "BootAction"},
-    {3, RIBOS_SCHEMA_TYPE_ENUM, "BootError"},
-    {4, RIBOS_SCHEMA_TYPE_ENUM, "BoardRevision"},
-    {5, RIBOS_SCHEMA_TYPE_ENUM, "Profile"},
-    {6, RIBOS_SCHEMA_TYPE_ENUM, "Device"},
-    {7, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "Slot"},
-    {8, RIBOS_SCHEMA_TYPE_ENUM, "Channel"},
-    {9, RIBOS_SCHEMA_TYPE_ENUM, "Core"},
-    {10, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "Image"},
-    {11, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "VerifiedImage"},
-    {12, RIBOS_SCHEMA_TYPE_ENUM, "RecoveryReason"},
-    {13, RIBOS_SCHEMA_TYPE_ENUM, "Diagnostic"},
-    {14, RIBOS_SCHEMA_TYPE_ENUM, "HandoffKey"},
-    {15, RIBOS_SCHEMA_TYPE_VALUE, "ImageId"},
-    {16, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "UpdateReceipt"},
-    {17, RIBOS_SCHEMA_TYPE_ENUM, "Capability"},
-    {18, RIBOS_SCHEMA_TYPE_ENUM, "DeviceError"},
-    {19, RIBOS_SCHEMA_TYPE_ENUM, "NetworkError"},
-    {20, RIBOS_SCHEMA_TYPE_ENUM, "UpdateError"},
-    {21, RIBOS_SCHEMA_TYPE_ENUM, "VerifyError"},
-    {22, RIBOS_SCHEMA_TYPE_FACT, "BoardFacts"},
-    {23, RIBOS_SCHEMA_TYPE_FACT, "PowerFacts"},
-    {24, RIBOS_SCHEMA_TYPE_FACT, "SystemFacts"},
-    {25, RIBOS_SCHEMA_TYPE_VALUE, "DeviceSet"},
-    {26, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "Manifest"},
+    {
+        1, RIBOS_SCHEMA_TYPE_FACT, "BootContext",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        2, RIBOS_SCHEMA_TYPE_VALUE, "BootAction",
+        RIBOS_SCHEMA_OWNERSHIP_LINEAR,
+    },
+    {3, RIBOS_SCHEMA_TYPE_ENUM, "BootError", RIBOS_SCHEMA_OWNERSHIP_COPY},
+    {
+        4, RIBOS_SCHEMA_TYPE_ENUM, "BoardRevision",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {5, RIBOS_SCHEMA_TYPE_ENUM, "Profile", RIBOS_SCHEMA_OWNERSHIP_COPY},
+    {6, RIBOS_SCHEMA_TYPE_ENUM, "Device", RIBOS_SCHEMA_OWNERSHIP_COPY},
+    {
+        7, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "Slot",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {8, RIBOS_SCHEMA_TYPE_ENUM, "Channel", RIBOS_SCHEMA_OWNERSHIP_COPY},
+    {9, RIBOS_SCHEMA_TYPE_ENUM, "Core", RIBOS_SCHEMA_OWNERSHIP_COPY},
+    {
+        10, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "Image",
+        RIBOS_SCHEMA_OWNERSHIP_AFFINE,
+    },
+    {
+        11, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "VerifiedImage",
+        RIBOS_SCHEMA_OWNERSHIP_AFFINE,
+    },
+    {
+        12, RIBOS_SCHEMA_TYPE_ENUM, "RecoveryReason",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        13, RIBOS_SCHEMA_TYPE_ENUM, "Diagnostic",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        14, RIBOS_SCHEMA_TYPE_ENUM, "HandoffKey",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {15, RIBOS_SCHEMA_TYPE_VALUE, "ImageId", RIBOS_SCHEMA_OWNERSHIP_COPY},
+    {
+        16, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "UpdateReceipt",
+        RIBOS_SCHEMA_OWNERSHIP_AFFINE,
+    },
+    {
+        17, RIBOS_SCHEMA_TYPE_ENUM, "Capability",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        18, RIBOS_SCHEMA_TYPE_ENUM, "DeviceError",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        19, RIBOS_SCHEMA_TYPE_ENUM, "NetworkError",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        20, RIBOS_SCHEMA_TYPE_ENUM, "UpdateError",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        21, RIBOS_SCHEMA_TYPE_ENUM, "VerifyError",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        22, RIBOS_SCHEMA_TYPE_FACT, "BoardFacts",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        23, RIBOS_SCHEMA_TYPE_FACT, "PowerFacts",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        24, RIBOS_SCHEMA_TYPE_FACT, "SystemFacts",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        25, RIBOS_SCHEMA_TYPE_VALUE, "DeviceSet",
+        RIBOS_SCHEMA_OWNERSHIP_COPY,
+    },
+    {
+        26, RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE, "Manifest",
+        RIBOS_SCHEMA_OWNERSHIP_AFFINE,
+    },
 };
 
 static const RibosSchemaMember ribos_reference_members[] = {
@@ -62,103 +122,149 @@ static const RibosSchemaMember ribos_reference_members[] = {
     {8, "SystemFacts", "on_ground", "bool", NULL, 0},
 };
 
+#define RIBOS_BORROW(name_value, type_value) \
+    { (name_value), (type_value), RIBOS_SCHEMA_PARAMETER_BORROW }
+#define RIBOS_NO_PARAMETERS \
+    { RIBOS_BORROW(NULL, NULL) }
+
 static const RibosSchemaHelper ribos_reference_helpers[] = {
     {
         1, "device.init", RIBOS_CAPABILITY_DEVICE, "Unit", "BootError",
-        {{"device", "Device"}, {"profile", "Profile"}}, 2,
+        {
+            RIBOS_BORROW("device", "Device"),
+            RIBOS_BORROW("profile", "Profile"),
+        },
+        2, 0, 0,
     },
     {
         2, "slot.selected", RIBOS_CAPABILITY_INSPECT, "Slot", NULL,
-        {{NULL, NULL}}, 0,
+        RIBOS_NO_PARAMETERS, 0, 0, 0,
     },
     {
         3, "slot.active", RIBOS_CAPABILITY_INSPECT, "Slot", NULL,
-        {{NULL, NULL}}, 0,
+        RIBOS_NO_PARAMETERS, 0, 0, 0,
     },
     {
         4, "slot.inactive", RIBOS_CAPABILITY_INSPECT, "Slot", NULL,
-        {{NULL, NULL}}, 0,
+        RIBOS_NO_PARAMETERS, 0, 0, 0,
     },
     {
         5, "slot.failures", RIBOS_CAPABILITY_INSPECT, "u32", NULL,
-        {{"slot", "Slot"}}, 1,
+        {RIBOS_BORROW("slot", "Slot")}, 1, 0, 0,
     },
     {
         6, "slot.previous_good", RIBOS_CAPABILITY_STATE, "Slot", "BootError",
-        {{NULL, NULL}}, 0,
+        RIBOS_NO_PARAMETERS, 0, 0, 0,
     },
     {
         7, "slot.mark_bad", RIBOS_CAPABILITY_STATE, "Unit", "BootError",
-        {{"slot", "Slot"}}, 1,
+        {RIBOS_BORROW("slot", "Slot")}, 1, 0, 0,
     },
     {
         8, "slot.image", RIBOS_CAPABILITY_INSPECT, "Image", "BootError",
-        {{"slot", "Slot"}}, 1,
+        {RIBOS_BORROW("slot", "Slot")}, 1, 0, 0,
     },
     {
         9, "slot.mark_trial", RIBOS_CAPABILITY_STATE, "Unit", "BootError",
         {
-            {"receipt", "UpdateReceipt"},
-            {"attempts", "u32"},
-            {"commit", "bool"},
-        }, 3,
+            {
+                "receipt", "UpdateReceipt",
+                RIBOS_SCHEMA_PARAMETER_CONSUME,
+            },
+            RIBOS_BORROW("attempts", "u32"),
+            RIBOS_BORROW("commit", "bool"),
+        }, 3, RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION, 0,
     },
     {
         10, "image.require", RIBOS_CAPABILITY_INSPECT, "Image", "BootError",
-        {{"id", "ImageId"}}, 1,
+        {RIBOS_BORROW("id", "ImageId")}, 1, 0, 0,
     },
     {
         11, "image.verify", RIBOS_CAPABILITY_INSPECT, "VerifiedImage",
-        "BootError", {{"image", "Image"}}, 1,
+        "BootError",
+        {
+            {
+                "image", "Image",
+                RIBOS_SCHEMA_PARAMETER_CONSUME,
+            },
+        },
+        1, RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION, 0,
     },
     {
         12, "core.start", RIBOS_CAPABILITY_DEVICE, "Unit", "BootError",
-        {{"core", "Core"}, {"image", "VerifiedImage"}}, 2,
+        {
+            RIBOS_BORROW("core", "Core"),
+            RIBOS_BORROW("image", "VerifiedImage"),
+        },
+        2, 0, 0,
     },
     {
         13, "handoff.set", RIBOS_CAPABILITY_HANDOFF, "Unit", "BootError",
-        {{"key", "HandoffKey"}, {"value", "*"}}, 2,
+        {
+            RIBOS_BORROW("key", "HandoffKey"),
+            RIBOS_BORROW("value", "*"),
+        },
+        2, 0, 0,
     },
     {
         14, "ota.available", RIBOS_CAPABILITY_NETWORK, "bool", NULL,
-        {{"channel", "Channel"}}, 1,
+        {RIBOS_BORROW("channel", "Channel")}, 1, 0, 0,
     },
     {
         15, "ota.install",
         RIBOS_CAPABILITY_NETWORK | RIBOS_CAPABILITY_FLASH,
         "UpdateReceipt", "BootError",
-        {{"channel", "Channel"}, {"slot", "Slot"}}, 2,
+        {
+            RIBOS_BORROW("channel", "Channel"),
+            RIBOS_BORROW("slot", "Slot"),
+        },
+        2, 0, 0,
     },
     {
         16, "network.ready", RIBOS_CAPABILITY_NETWORK, "bool", NULL,
-        {{NULL, NULL}}, 0,
+        RIBOS_NO_PARAMETERS, 0, 0, 0,
     },
     {
         17, "network.fetch_signed_manifest", RIBOS_CAPABILITY_NETWORK,
-        "Manifest", "BootError", {{"channel", "Channel"}}, 1,
+        "Manifest", "BootError",
+        {RIBOS_BORROW("channel", "Channel")}, 1, 0, 0,
     },
     {
         18, "power.safe", RIBOS_CAPABILITY_INSPECT, "bool", NULL,
-        {{NULL, NULL}}, 0,
+        RIBOS_NO_PARAMETERS, 0, 0, 0,
     },
     {
         19, "diagnostic.note", RIBOS_CAPABILITY_DIAGNOSTIC, "Unit",
-        "BootError", {{"message", "*"}}, 1,
+        "BootError", {RIBOS_BORROW("message", "*")}, 1, 0, 0,
     },
     {
         20, "diagnostic.record_verify_error",
         RIBOS_CAPABILITY_DIAGNOSTIC, "Unit", "BootError",
-        {{"error", "*"}}, 1,
+        {RIBOS_BORROW("error", "*")}, 1, 0, 0,
     },
     {
         21, "boot.slot", RIBOS_CAPABILITY_BOOT, "BootAction", NULL,
-        {{"slot", "Slot"}, {"image", "VerifiedImage"}}, 2,
+        {
+            RIBOS_BORROW("slot", "Slot"),
+            {
+                "image", "VerifiedImage",
+                RIBOS_SCHEMA_PARAMETER_CONSUME,
+            },
+        },
+        2,
+        RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION |
+            RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION,
+        1,
     },
     {
         22, "boot.recovery", RIBOS_CAPABILITY_BOOT, "BootAction", NULL,
-        {{"reason", "RecoveryReason"}}, 1,
+        {RIBOS_BORROW("reason", "RecoveryReason")}, 1,
+        RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION, 0,
     },
 };
+
+#undef RIBOS_NO_PARAMETERS
+#undef RIBOS_BORROW
 
 static const RibosSchemaHandoffField ribos_reference_handoff[] = {
     {1, "BOARD_REVISION", "BoardRevision"},
@@ -170,6 +276,9 @@ static const RibosProductSchema ribos_reference_schema = {
     .format_major = RIBOS_SCHEMA_V1_MAJOR,
     .format_minor = RIBOS_SCHEMA_V1_MINOR,
     .product_id = "ribon.generic.reference.v1",
+    .policy_context_type = "BootContext",
+    .policy_action_type = "BootAction",
+    .policy_error_type = "BootError",
     .types = ribos_reference_types,
     .type_count =
         sizeof(ribos_reference_types) / sizeof(ribos_reference_types[0]),
@@ -422,6 +531,9 @@ ribos_schema_encode_into(
     ribos_schema_write_u16(writer, schema->format_major);
     ribos_schema_write_u16(writer, schema->format_minor);
     ribos_schema_write_string(writer, schema->product_id);
+    ribos_schema_write_string(writer, schema->policy_context_type);
+    ribos_schema_write_string(writer, schema->policy_action_type);
+    ribos_schema_write_string(writer, schema->policy_error_type);
     ribos_schema_write_u32(writer, (uint32_t)schema->type_count);
     for (index = 0; index < schema->type_count; ++index) {
         const RibosSchemaType *type = &schema->types[index];
@@ -429,6 +541,7 @@ ribos_schema_encode_into(
         ribos_schema_write_u32(writer, type->stable_id);
         ribos_schema_write_u32(writer, (uint32_t)type->type_class);
         ribos_schema_write_string(writer, type->name);
+        ribos_schema_write_u32(writer, (uint32_t)type->ownership);
     }
     ribos_schema_write_u32(writer, (uint32_t)schema->member_count);
     for (index = 0; index < schema->member_count; ++index) {
@@ -463,7 +576,12 @@ ribos_schema_encode_into(
             ribos_schema_write_string(
                 writer,
                 helper->parameters[parameter].type);
+            ribos_schema_write_u32(
+                writer,
+                (uint32_t)helper->parameters[parameter].mode);
         }
+        ribos_schema_write_u32(writer, helper->flags);
+        ribos_schema_write_u32(writer, helper->transition_parameter);
     }
     ribos_schema_write_u32(writer, (uint32_t)schema->handoff_field_count);
     for (index = 0; index < schema->handoff_field_count; ++index) {
@@ -540,6 +658,9 @@ ribos_schema_validate(const RibosProductSchema *schema)
         schema->format_major != RIBOS_SCHEMA_V1_MAJOR ||
         schema->format_minor != RIBOS_SCHEMA_V1_MINOR ||
         !ribos_schema_text_is_present(schema->product_id) ||
+        !ribos_schema_text_is_present(schema->policy_context_type) ||
+        !ribos_schema_text_is_present(schema->policy_action_type) ||
+        !ribos_schema_text_is_present(schema->policy_error_type) ||
         schema->types == NULL ||
         schema->type_count == 0 ||
         (schema->member_count != 0 && schema->members == NULL) ||
@@ -558,7 +679,12 @@ ribos_schema_validate(const RibosProductSchema *schema)
         size_t duplicate;
 
         if (!ribos_schema_id_is_next(previous, type->stable_id) ||
-            !ribos_schema_text_is_present(type->name)) {
+            !ribos_schema_text_is_present(type->name) ||
+            type->type_class > RIBOS_SCHEMA_TYPE_ENUM ||
+            type->ownership > RIBOS_SCHEMA_OWNERSHIP_LINEAR ||
+            (type->ownership != RIBOS_SCHEMA_OWNERSHIP_COPY &&
+             type->type_class != RIBOS_SCHEMA_TYPE_VALUE &&
+             type->type_class != RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE)) {
             return RIBOS_SCHEMA_INVALID_DESCRIPTOR;
         }
         for (duplicate = 0; duplicate < index; ++duplicate) {
@@ -567,6 +693,46 @@ ribos_schema_validate(const RibosProductSchema *schema)
             }
         }
         previous = type->stable_id;
+    }
+    if (!ribos_schema_type_reference_is_valid(
+            schema,
+            schema->policy_context_type,
+            0) ||
+        !ribos_schema_type_reference_is_valid(
+            schema,
+            schema->policy_action_type,
+            0) ||
+        !ribos_schema_type_reference_is_valid(
+            schema,
+            schema->policy_error_type,
+            0)) {
+        return RIBOS_SCHEMA_INVALID_DESCRIPTOR;
+    }
+    {
+        const RibosSchemaType *context_type =
+            ribos_schema_find_type(
+                schema,
+                schema->policy_context_type,
+                strlen(schema->policy_context_type));
+        const RibosSchemaType *action_type =
+            ribos_schema_find_type(
+                schema,
+                schema->policy_action_type,
+                strlen(schema->policy_action_type));
+        const RibosSchemaType *error_type =
+            ribos_schema_find_type(
+                schema,
+                schema->policy_error_type,
+                strlen(schema->policy_error_type));
+
+        if (context_type == NULL ||
+            context_type->type_class != RIBOS_SCHEMA_TYPE_FACT ||
+            action_type == NULL ||
+            action_type->ownership != RIBOS_SCHEMA_OWNERSHIP_LINEAR ||
+            error_type == NULL ||
+            error_type->type_class != RIBOS_SCHEMA_TYPE_ENUM) {
+            return RIBOS_SCHEMA_INVALID_DESCRIPTOR;
+        }
     }
     previous = 0;
     for (index = 0; index < schema->member_count; ++index) {
@@ -626,6 +792,13 @@ ribos_schema_validate(const RibosProductSchema *schema)
                  helper->error_type,
                  0)) ||
             helper->parameter_count > RIBOS_SCHEMA_MAX_PARAMETERS ||
+            (helper->flags &
+             ~(RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION |
+               RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION)) != 0 ||
+            (((helper->flags &
+               RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION) != 0) ?
+                helper->transition_parameter >= helper->parameter_count :
+                helper->transition_parameter != 0) ||
             (helper->capabilities &
              ~(RIBOS_CAPABILITY_INSPECT |
                RIBOS_CAPABILITY_DEVICE |
@@ -656,9 +829,30 @@ ribos_schema_validate(const RibosProductSchema *schema)
                 !ribos_schema_type_reference_is_valid(
                     schema,
                     helper->parameters[parameter].type,
-                    1)) {
+                    1) ||
+                helper->parameters[parameter].mode >
+                    RIBOS_SCHEMA_PARAMETER_CONSUME ||
+                (strcmp(helper->parameters[parameter].type, "*") == 0 &&
+                 helper->parameters[parameter].mode !=
+                    RIBOS_SCHEMA_PARAMETER_BORROW)) {
                 return RIBOS_SCHEMA_INVALID_DESCRIPTOR;
             }
+        }
+        if ((helper->flags &
+             RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION) != 0 &&
+            helper->parameters[
+                helper->transition_parameter
+            ].mode != RIBOS_SCHEMA_PARAMETER_CONSUME) {
+            return RIBOS_SCHEMA_INVALID_DESCRIPTOR;
+        }
+        if ((helper->flags &
+             RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION) != 0 &&
+            ((helper->capabilities & RIBOS_CAPABILITY_BOOT) == 0 ||
+             helper->error_type != NULL ||
+             strcmp(
+                 helper->result_type,
+                 schema->policy_action_type) != 0)) {
+            return RIBOS_SCHEMA_INVALID_DESCRIPTOR;
         }
         previous = helper->stable_id;
     }

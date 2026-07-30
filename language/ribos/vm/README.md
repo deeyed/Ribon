@@ -4,7 +4,7 @@
 `language/ribos/artifact`는 VM ABI 1.0/ISA 1.0 emitter와 allocation-free structural
 reader를 제공하지만 VM implementation이나 semantic verification을 소유하지 않는다.
 
-현재 구현된 Stage-1 verifier는 다음 파일에 있다.
+구현된 two-stage verifier는 다음 파일에 있다.
 
 ```text
 include/ribos/vm/verifier.h
@@ -13,9 +13,12 @@ tools/verify.c
 tests/verifier_tests.py
 ```
 
-Verifier는 caller-owned workspace를 사용하며 frontend나 Policy IR을 링크하지 않고
-type/constant, instruction boundary, direct CFG/call, definite slot initialization,
-operand/result type와 frame/stack closure를 artifact byte에서 다시 계산한다.
+Verifier는 caller-owned workspace를 사용하며 frontend나 Policy IR을 링크하지 않는다.
+Stage-1은 type/constant, instruction boundary, direct CFG/call, definite slot
+initialization, operand/result type와 frame/stack closure를 다시 계산한다. Stage-2는
+helper ABI와 schema digest, reachable capability, opaque provenance, affine/linear
+ownership, typestate transition, exact instruction/helper bound, helper별 bound와
+terminal/fault closure를 artifact byte에서 다시 계산한다.
 
 ```sh
 make check-ribos-verifier
@@ -38,10 +41,10 @@ VM 계층은 다음 규칙을 지켜야 한다.
   raw MMIO, raw flash와 arbitrary jump를 policy에 노출하지 않는다.
 
 Structural reader가 envelope, payload hash와 section range를 통과시킨 artifact도 이
-계층의 independent verifier가 type, CFG와 storage closure를 재증명하기 전에는
-dispatch할 수 없다. Stage-1 성공도 execution certificate가 아니다. Exact
-instruction/helper upper bound, runtime counter, Ed25519 signature와 product key
-policy가 실행 허가 전에 별도로 통과해야 한다.
+계층의 independent verifier 두 단계를 통과하기 전에는 dispatch할 수 없다. Stage-2는
+좁은 의미의 compiler/verifier semantic closure이지만 execution certificate는
+아니다. Runtime counter, Ed25519 signature, rollback과 product key policy가 실행
+허가 전에 별도로 통과해야 한다.
 
 이 README와 host gate는 VM dispatch, boot product linkage, QEMU 또는 hardware policy
 실행 증거가 아니다.

@@ -57,8 +57,8 @@ table을 포함한다. Pointer, padding, host endian과 link address는 포함�
 Reference host schema identity는 다음 값이다.
 
 ```text
-da48c96b07390ecbadb6eef06ab6cdfbd
-07b9a6de1bb1aa8e876e19f24378f52
+237898e5b4b7fd5f8cccf9edcf5da50f
+b6699f24b869e878638f27885091a4a8
 ```
 
 이 값은 generic product의 영구 schema라는 뜻이 아니라 reference corpus의 drift

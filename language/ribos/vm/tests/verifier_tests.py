@@ -15,6 +15,7 @@ from typing import Callable
 
 RIBOS = Path(__file__).resolve().parents[2]
 CORPUS = RIBOS / "frontend" / "tests" / "semantic" / "positive"
+HOSTILE_SOURCE = RIBOS / "vm" / "tests" / "hostile"
 INVALID = 0xFFFFFFFF
 
 
@@ -136,6 +137,18 @@ def slot_type(artifact: Artifact, slot: int) -> int:
     """Read one slot type ID."""
 
     return u32(artifact.data, artifact.row(8, slot) + 8)
+
+
+def type_id_named(artifact: Artifact, spelling: str) -> int:
+    """Resolve a type-table row by its canonical name bytes."""
+
+    expected = spelling.encode("utf-8")
+    for index in range(artifact.count(1)):
+        row = artifact.row(1, index)
+        length = u32(artifact.data, row + 56)
+        if bytes(artifact.data[row + 60 : row + 60 + length]) == expected:
+            return index
+    raise AssertionError(f"type {spelling} absent")
 
 
 def mutate_invalid_opcode(artifact: Artifact) -> None:
@@ -297,6 +310,90 @@ def mutate_struct_member_ordinal(artifact: Artifact) -> None:
     raise AssertionError("user struct MEMBER absent")
 
 
+def mutate_reachable_capability(artifact: Artifact) -> None:
+    """Make header/function capability metadata omit one reachable helper."""
+
+    entry = u32(artifact.data, artifact.payload + 28)
+    function = artifact.row(5, entry)
+    required = u32(artifact.data, function + 44)
+    reduced = required & (required - 1)
+
+    if required == 0 or reduced == required:
+        raise AssertionError("entry has no removable capability")
+    p32(artifact.data, function + 44, reduced)
+    p32(artifact.data, artifact.payload + 44, reduced)
+
+
+def mutate_instruction_upper_bound(artifact: Artifact) -> None:
+    """Make compiler/header instruction closure agree on a false bound."""
+
+    entry = u32(artifact.data, artifact.payload + 28)
+    function = artifact.row(5, entry)
+    claimed = u64(artifact.data, function + 56) + 1
+
+    if claimed > u64(artifact.data, function + 48):
+        raise AssertionError("no instruction budget headroom")
+    p64(artifact.data, function + 56, claimed)
+    p64(artifact.data, artifact.payload + 56, claimed)
+
+
+def mutate_helper_upper_bound(artifact: Artifact) -> None:
+    """Make compiler/header helper closure agree on a false bound."""
+
+    entry = u32(artifact.data, artifact.payload + 28)
+    function = artifact.row(5, entry)
+    claimed = u64(artifact.data, function + 72) + 1
+
+    if claimed > u64(artifact.data, function + 64):
+        raise AssertionError("no helper budget headroom")
+    p64(artifact.data, function + 72, claimed)
+    p64(artifact.data, artifact.payload + 72, claimed)
+
+
+def mutate_helper_specific_bound(artifact: Artifact) -> None:
+    """Corrupt one helper-specific worst-path closure row."""
+
+    if artifact.count(12) == 0:
+        raise AssertionError("helper bound row absent")
+    row = artifact.row(12, 0)
+    p64(artifact.data, row + 8, u64(artifact.data, row + 8) + 1)
+
+
+def mutate_opaque_forgery(artifact: Artifact) -> None:
+    """Retype an unused ImageId symbol as an equally sized Image handle."""
+
+    image_id = type_id_named(artifact, "ImageId")
+    image = type_id_named(artifact, "Image")
+
+    for index in range(artifact.count(9)):
+        row = artifact.row(9, index)
+        result = u32(artifact.data, row + 12)
+        if (
+            artifact.data[row] == 0x06
+            and result != INVALID
+            and slot_type(artifact, result) == image_id
+        ):
+            p32(artifact.data, artifact.row(8, result) + 8, image)
+            for candidate in range(artifact.count(9)):
+                move = artifact.row(9, candidate)
+                if artifact.data[move] != 0x07:
+                    continue
+                operand_start = u32(artifact.data, move + 16)
+                operand = u32(
+                    artifact.data,
+                    artifact.row(10, operand_start),
+                )
+                if operand == result:
+                    moved = u32(artifact.data, move + 12)
+                    p32(
+                        artifact.data,
+                        artifact.row(8, moved) + 8,
+                        image,
+                    )
+            return
+    raise AssertionError("unused ImageId symbol absent")
+
+
 Mutation = tuple[str, Callable[[Artifact], None], str]
 
 
@@ -315,6 +412,29 @@ MUTATIONS: tuple[Mutation, ...] = (
     ("stack-metadata", mutate_stack_metadata, "resource-mismatch"),
     ("schema-digest", mutate_schema_digest, "schema-mismatch"),
     ("section-bounds", mutate_section_bounds, "structural-error"),
+    (
+        "reachable-capability",
+        mutate_reachable_capability,
+        "capability-mismatch",
+    ),
+    (
+        "instruction-upper",
+        mutate_instruction_upper_bound,
+        "resource-mismatch",
+    ),
+    ("helper-upper", mutate_helper_upper_bound, "resource-mismatch"),
+    (
+        "helper-specific-bound",
+        mutate_helper_specific_bound,
+        "resource-mismatch",
+    ),
+)
+
+
+SOURCE_HOSTILES: tuple[tuple[str, str], ...] = (
+    ("duplicate_verified_image.rbs", "ownership-violation"),
+    ("fault_after_boot_action.rbs", "fail-closed-violation"),
+    ("no_success_action.rbs", "terminal-action-violation"),
 )
 
 
@@ -344,7 +464,7 @@ def main(argv: list[str]) -> int:
             checked = verify(args.verifier, output)
             if (
                 checked.returncode != 0
-                or "RIBOS-VERIFIER-STAGE1-OK" not in checked.stdout
+                or "RIBOS-VERIFIER-STAGE2-OK" not in checked.stdout
             ):
                 failures.append(
                     f"{fixture.name}: verifier rejected positive artifact\n"
@@ -447,13 +567,67 @@ def main(argv: list[str]) -> int:
             else:
                 hostile += 1
 
+        for source_name, expected in SOURCE_HOSTILES:
+            source = HOSTILE_SOURCE / source_name
+            output = root / f"source-hostile-{source.stem}.rba"
+            compiled = emit(args.compiler, source, output)
+            if compiled.returncode != 0:
+                failures.append(
+                    f"{source_name}: hostile source emission failed\n"
+                    f"{compiled.stdout}{compiled.stderr}"
+                )
+                continue
+            checked = verify(args.verifier, output)
+            combined = checked.stdout + checked.stderr
+            if (
+                checked.returncode == 0
+                or f"status={expected}" not in combined
+            ):
+                failures.append(
+                    f"{source_name}: expected {expected}, got\n{combined}"
+                )
+            else:
+                hostile += 1
+
+        opaque_source = HOSTILE_SOURCE / "opaque_forgery_seed.rbs"
+        opaque_output = root / "opaque-forgery-seed.rba"
+        compiled = emit(args.compiler, opaque_source, opaque_output)
+        if compiled.returncode != 0:
+            failures.append(
+                "opaque-forgery: seed emission failed\n"
+                f"{compiled.stdout}{compiled.stderr}"
+            )
+        else:
+            opaque = Artifact(opaque_output.read_bytes())
+            try:
+                mutate_opaque_forgery(opaque)
+            except AssertionError as error:
+                failures.append(
+                    f"opaque-forgery: mutation unavailable: {error}"
+                )
+            else:
+                output = root / "hostile-opaque-forgery.rba"
+                output.write_bytes(opaque.seal())
+                checked = verify(args.verifier, output)
+                combined = checked.stdout + checked.stderr
+                if (
+                    checked.returncode == 0
+                    or "status=opaque-forgery" not in combined
+                ):
+                    failures.append(
+                        "opaque-forgery: expected opaque-forgery, "
+                        f"got\n{combined}"
+                    )
+                else:
+                    hostile += 1
+
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1
     print(
         "RIBOS-VERIFIER-CORPUS-OK "
         f"positive={positive} hostile={hostile} "
-        "compiler-trusted=0 workspace=caller-owned stage=1"
+        "compiler-trusted=0 workspace=caller-owned stage=2"
     )
     return 0
 

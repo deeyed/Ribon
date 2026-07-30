@@ -1,0 +1,10 @@
+@policy(
+    capabilities=[
+        Capability.INSPECT,
+    ],
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let target = slot.selected()
+    return Err(BootError.FAILED)
+}

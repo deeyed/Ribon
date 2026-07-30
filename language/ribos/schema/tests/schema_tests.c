@@ -5,10 +5,10 @@
 #include <string.h>
 
 static const uint8_t expected_reference_identity[RIBOS_SCHEMA_DIGEST_BYTES] = {
-    0xda, 0x48, 0xc9, 0x6b, 0x07, 0x39, 0x0e, 0xcb,
-    0xad, 0xb6, 0xee, 0xf0, 0x6a, 0xb6, 0xcd, 0xfb,
-    0xd0, 0x7b, 0x9a, 0x6d, 0xe1, 0xbb, 0x1a, 0xa8,
-    0xe8, 0x76, 0xe1, 0x9f, 0x24, 0x37, 0x8f, 0x52,
+    0x23, 0x78, 0x98, 0xe5, 0xb4, 0xb7, 0xfd, 0x5f,
+    0x8c, 0xcc, 0xf9, 0xed, 0xcf, 0x5d, 0xa5, 0x0f,
+    0xb6, 0x69, 0x9f, 0x24, 0xb8, 0x69, 0xe8, 0x78,
+    0x63, 0x8f, 0x27, 0x88, 0x50, 0x91, 0xa4, 0xa8,
 };
 
 static int
@@ -65,28 +65,51 @@ test_descriptor_and_lookup_rules(void)
 {
     const RibosProductSchema *schema = ribos_schema_reference_v1();
     const RibosSchemaType invalid_types[] = {
-        {1, RIBOS_SCHEMA_TYPE_VALUE, "First"},
-        {1, RIBOS_SCHEMA_TYPE_VALUE, "Duplicate"},
+        {
+            1, RIBOS_SCHEMA_TYPE_VALUE, "First",
+            RIBOS_SCHEMA_OWNERSHIP_COPY,
+        },
+        {
+            1, RIBOS_SCHEMA_TYPE_VALUE, "Duplicate",
+            RIBOS_SCHEMA_OWNERSHIP_COPY,
+        },
     };
     const RibosProductSchema invalid = {
         .format_major = 1,
+        .format_minor = RIBOS_SCHEMA_V1_MINOR,
         .product_id = "invalid.duplicate-ids",
+        .policy_context_type = "First",
+        .policy_action_type = "First",
+        .policy_error_type = "First",
         .types = invalid_types,
         .type_count = sizeof(invalid_types) / sizeof(invalid_types[0]),
     };
     const RibosSchemaType one_type[] = {
-        {1, RIBOS_SCHEMA_TYPE_VALUE, "OnlyType"},
+        {
+            1, RIBOS_SCHEMA_TYPE_VALUE, "OnlyType",
+            RIBOS_SCHEMA_OWNERSHIP_COPY,
+        },
     };
     const RibosSchemaHelper unknown_result[] = {
         {
             1, "invalid.helper", RIBOS_CAPABILITY_INSPECT,
-            "MissingType", NULL, {{NULL, NULL}}, 0,
+            "MissingType", NULL,
+            {
+                {
+                    NULL, NULL,
+                    RIBOS_SCHEMA_PARAMETER_BORROW,
+                },
+            },
+            0, 0, 0,
         },
     };
     const RibosProductSchema invalid_reference = {
         .format_major = RIBOS_SCHEMA_V1_MAJOR,
         .format_minor = RIBOS_SCHEMA_V1_MINOR,
         .product_id = "invalid.unknown-type",
+        .policy_context_type = "OnlyType",
+        .policy_action_type = "OnlyType",
+        .policy_error_type = "OnlyType",
         .types = one_type,
         .type_count = sizeof(one_type) / sizeof(one_type[0]),
         .helpers = unknown_result,
@@ -96,11 +119,21 @@ test_descriptor_and_lookup_rules(void)
     RibosProductSchema unsupported_version = *schema;
     const RibosSchemaHelper *helper =
         ribos_schema_find_helper(schema, "boot.slot", strlen("boot.slot"));
+    const RibosSchemaHelper *verify_helper =
+        ribos_schema_find_helper(
+            schema,
+            "image.verify",
+            strlen("image.verify"));
     const RibosSchemaType *type =
         ribos_schema_find_type(
             schema,
             "BootContext",
             strlen("BootContext"));
+    const RibosSchemaType *action_type =
+        ribos_schema_find_type(
+            schema,
+            "BootAction",
+            strlen("BootAction"));
     const RibosSchemaMember *member = ribos_schema_find_member(
         schema,
         "BootContext",
@@ -123,6 +156,16 @@ test_descriptor_and_lookup_rules(void)
         type != NULL && type->stable_id == 1 &&
         type->type_class == RIBOS_SCHEMA_TYPE_FACT &&
         helper != NULL && helper->stable_id == 21 &&
+        helper->flags ==
+            (RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION |
+             RIBOS_SCHEMA_HELPER_TERMINAL_BOOT_ACTION) &&
+        helper->parameters[1].mode == RIBOS_SCHEMA_PARAMETER_CONSUME &&
+        verify_helper != NULL &&
+        verify_helper->flags == RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION &&
+        verify_helper->parameters[0].mode ==
+            RIBOS_SCHEMA_PARAMETER_CONSUME &&
+        action_type != NULL &&
+        action_type->ownership == RIBOS_SCHEMA_OWNERSHIP_LINEAR &&
         member != NULL && member->stable_id == 1 &&
         field != NULL && field->stable_id == 3;
 }
@@ -136,8 +179,8 @@ main(void)
         return 1;
     }
     (void)printf(
-        "RIBOS-SCHEMA-TEST-OK format=1.0 identity="
-        "da48c96b07390ecbadb6eef06ab6cdfbd"
-        "07b9a6de1bb1aa8e876e19f24378f52\n");
+        "RIBOS-SCHEMA-TEST-OK format=1.1 identity="
+        "237898e5b4b7fd5f8cccf9edcf5da50f"
+        "b6699f24b869e878638f27885091a4a8\n");
     return 0;
 }

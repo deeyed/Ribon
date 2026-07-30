@@ -13,8 +13,8 @@ from pathlib import Path
 RIBOS = Path(__file__).resolve().parents[2]
 CORPUS = RIBOS / "frontend" / "tests" / "semantic" / "positive"
 EXPECTED_SCHEMA = (
-    "da48c96b07390ecbadb6eef06ab6cdfbd"
-    "07b9a6de1bb1aa8e876e19f24378f52"
+    "237898e5b4b7fd5f8cccf9edcf5da50f"
+    "b6699f24b869e878638f27885091a4a8"
 )
 REQUIRED_OPCODES = {
     "branch",

@@ -97,7 +97,7 @@ main(int argc, char **argv)
     }
     workspace = (uint8_t *)workspace_storage + 1;
     if (self_test_workspace) {
-        status = ribos_verify_artifact_stage1_v1(
+        status = ribos_verify_artifact_stage2_v1(
             artifact,
             artifact_size,
             ribos_schema_reference_v1(),
@@ -116,7 +116,7 @@ main(int argc, char **argv)
             return 2;
         }
     }
-    status = ribos_verify_artifact_stage1_v1(
+    status = ribos_verify_artifact_stage2_v1(
         artifact,
         artifact_size,
         ribos_schema_reference_v1(),
@@ -138,9 +138,10 @@ main(int argc, char **argv)
         return 2;
     }
     (void)printf(
-        "RIBOS-VERIFIER-STAGE1-OK types=%u functions=%u blocks=%u "
+        "RIBOS-VERIFIER-STAGE2-OK types=%u functions=%u blocks=%u "
         "instructions=%u entry-frame=%u entry-stack=%llu "
-        "call-depth=%u workspace=%zu file=%s\n",
+        "call-depth=%u capabilities=0x%08x instruction-upper=%llu "
+        "helper-upper=%llu workspace=%zu file=%s\n",
         report.verified_type_count,
         report.verified_function_count,
         report.verified_block_count,
@@ -148,6 +149,11 @@ main(int argc, char **argv)
         report.recomputed_frame_bytes,
         (unsigned long long)report.recomputed_stack_bytes,
         report.recomputed_call_depth,
+        report.recomputed_reachable_capabilities,
+        (unsigned long long)
+            report.recomputed_instruction_upper_bound,
+        (unsigned long long)
+            report.recomputed_helper_upper_bound,
         workspace_size,
         path);
     if (self_test_workspace) {

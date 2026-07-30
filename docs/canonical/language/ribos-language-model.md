@@ -115,7 +115,7 @@ canonical VM ABI 1.0/ISA 1.0 artifact
         +--> little-endian section table, payload SHA-256와 signature envelope
         |
         v
-Ribon structural reader와 compiler-independent Stage-1 verifier
+Ribon structural reader와 compiler-independent two-stage verifier
         |
         v
 Ribos VM
@@ -138,7 +138,7 @@ language/ribos/frontend  source, token/trivia, AST, type/effect와 IR lowering
 language/ribos/schema    product-generated type/helper/handoff schema identity
 language/ribos/ir        VM 독립 typed CFG와 structural validator
 language/ribos/artifact  VM ABI/ISA와 canonical signed wire envelope
-language/ribos/vm        Stage-1 bytecode verifier와 runtime ownership
+language/ribos/vm        two-stage bytecode verifier와 runtime ownership
 ```
 
 Frontend private AST와 Pegen runtime은 VM dependency가 아니다. VM backend는 Policy IR
@@ -156,10 +156,11 @@ bound를 계산한다. Bytecode instruction upper bound는 Policy IR lowering �
 Policy IR resource analyzer는 parser나 typed AST를 사용하지 않고 reachable block,
 bounded loop, terminal path, direct call graph, type/slot layout, frame/stack byte와
 instruction/helper upper bound를 다시 계산한다. Compiler는 이 결과로 source의
-`instruction_budget`과 `helper_budget`을 집행한다. Stage-1 artifact verifier는 type,
-direct CFG, definite initialization과 frame/stack을 독립적으로 재검사한다. 후속
-resource verifier와 VM은 exact instruction/helper upper bound를 다시 닫고 runtime
-counter를 감소시켜야 한다.
+`instruction_budget`과 `helper_budget`을 집행한다. Artifact verifier Stage-1은
+type, direct CFG, definite initialization과 frame/stack을 독립적으로 재검사한다.
+Stage-2는 reachable helper와 direct call에서 capability, instruction/helper
+worst-case bound, helper별 bound, ownership, typestate와 terminal/fault closure를
+다시 도출한다. VM은 검증된 upper bound로 runtime counter를 초기화하고 감소시킨다.
 
 Policy IR은 function-owned typed virtual slot, explicit basic block, direct branch/call,
 phi-free explicit move, aggregate shape, source map과 helper call-site table을 가진다.
@@ -178,10 +179,11 @@ canonical signing message와 product key ID를 결합한다. Structural reader�
 signature의 암호학적 유효성이나 bytecode semantics를 주장하지 않으며, product key
 policy와 hostile-byte verifier가 실행 전에 각각 독립적으로 통과해야 한다.
 
-Product type, member, helper signature/capability와 handoff field는 frontend C table의
-고정 의미가 아니다. Product/plugin graph가 생성하는 versioned schema artifact가
-compiler와 verifier의 공동 입력이다. Policy IR은 canonical schema bytes의 SHA-256을
-봉인한다.
+Product type, member, helper signature/capability, ownership, parameter
+borrow/consume mode, typestate transition, terminal boot action과 handoff field는
+frontend C table의 고정 의미가 아니다. Product/plugin graph가 생성하는 versioned
+schema artifact가 compiler와 verifier의 공동 입력이다. Policy IR은 canonical
+schema bytes의 SHA-256을 봉인한다.
 
 Pegen grammar는 source syntax의 machine-readable 정본이다. EBNF contract는 사람이
 검토하는 규범 표현이고 Pegen generation 및 syntax corpus가 두 표현의 동등성을

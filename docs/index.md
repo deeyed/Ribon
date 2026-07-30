@@ -97,6 +97,7 @@ adr/0019-ribos-policy-ir-and-product-schema
 adr/0020-ribos-cfg-resource-closure
 adr/0021-ribos-bytecode-artifact
 adr/0022-ribos-independent-bytecode-verifier
+adr/0023-ribos-stage2-policy-verifier
 ```
 
 ```{toctree}
@@ -157,4 +158,5 @@ log/2026-07-30-ribos-policy-ir-v1
 log/2026-07-31-ribos-cfg-resource-closure
 log/2026-07-31-ribos-bytecode-artifact
 log/2026-07-31-ribos-bytecode-verifier-stage1
+log/2026-07-31-ribos-bytecode-verifier-stage2
 ```
