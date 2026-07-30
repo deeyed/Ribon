@@ -4,13 +4,14 @@ status: accepted
 authority: normative
 last_verified: 2026-07-30
 code_paths:
-  - language/ribos/include/ribos/compiler.h
-  - language/ribos/src/ast.c
-  - language/ribos/src/compiler.c
-  - language/ribos/src/dump.c
-  - language/ribos/src/lexer.c
-  - language/ribos/src/semantic.c
-  - language/ribos/grammar/parser.gram
+  - language/ribos/frontend/include/ribos/frontend/compiler.h
+  - language/ribos/frontend/src/ast.c
+  - language/ribos/frontend/src/compiler.c
+  - language/ribos/frontend/src/dump.c
+  - language/ribos/frontend/src/lexer.c
+  - language/ribos/frontend/src/semantic.c
+  - language/ribos/frontend/grammar/parser.gram
+  - language/ribos/schema/
 tests:
   - make check-ribos-parser-pilot
   - make check-ribos-semantics
@@ -82,6 +83,9 @@ transient gather     <= 8 MiB live bytes
 semantic types      <= 256
 functions           <= 64
 parameters/function <= 16
+struct fields       <= 64
+enum variants       <= 63
+payloads/variant    <= 64
 locals/function     <= 256
 scope depth         <= 64
 ```

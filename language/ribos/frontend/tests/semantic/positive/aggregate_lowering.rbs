@@ -1,0 +1,62 @@
+struct UpdateWindow {
+    minimum_battery: u8
+    attempts: u32
+}
+
+enum Decision {
+    Normal
+    Recovery(u32)
+}
+
+@pure
+def maybe_attempts(enabled: bool, attempts: u32) -> Option[u32] {
+    if enabled {
+        return Some(attempts)
+    }
+    return None
+}
+
+@pure
+def checked_attempts(enabled: bool) -> Option[u32] {
+    let attempts = maybe_attempts(enabled, 3)?
+    return Some(attempts + 1)
+}
+
+@pure
+def select_decision(enabled: bool) -> Decision {
+    let window = UpdateWindow(
+        minimum_battery=60,
+        attempts=3,
+    )
+    if enabled {
+        return Decision.Normal
+    }
+    return Decision.Recovery(window.attempts)
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=1024,
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let attempts = checked_attempts(True)
+    match attempts {
+        Option.Some(value) => {
+            let decision = select_decision(value >= 3)
+            match decision {
+                Decision.Normal => {
+                    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+                }
+                Decision.Recovery(reason) => {
+                    return Err(BootError.POLICY_REJECTED)
+                }
+            }
+        }
+        None => {
+            return Ok(boot.recovery(RecoveryReason.INVALID_IMAGE))
+        }
+    }
+}

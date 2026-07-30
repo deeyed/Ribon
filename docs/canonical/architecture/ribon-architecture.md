@@ -170,13 +170,17 @@ language다. Ribos program은 driver와 firmware mechanism을 구현하지 않�
 raw flash address, native pointer와 arbitrary transfer를 다루지 않는다.
 
 Policy plugin은 host에서 compile되고 검증된 artifact로 product graph에 들어간다.
-Production boot product는 `.ribos` source parser나 CPython runtime을 요구하지 않는다.
+Production boot product는 `.rbs` source parser나 CPython runtime을 요구하지 않는다.
 Source parser와 interactive shell은 별도 product selection이며 firmware에 포함될 때
 fixed token, AST와 memo budget을 가진다.
 
 Ribos의 type, capability, bounded collection과 syntax 의미는
 `canonical/language/ribos-language-model` 및
-`contracts/language/ribos-source-language`가 정의한다. OS별 handoff key와 board fact
+`contracts/language/ribos-source-language`가 정의한다. Typed frontend와 향후
+bytecode/VM backend 사이 경계는
+`contracts/language/ribos-policy-ir-v1`이 정의한다. Product/plugin graph가 생성한
+versioned type/helper/handoff schema를 compiler와 verifier가 함께 소비하며, frontend
+private AST가 VM product에 링크되지 않는다. OS별 handoff key와 board fact
 type은 selected protocol 또는 port package가 제공하며 Core Language에 Parus, Linux,
 FreeBSD, RPi5 또는 QEMU 이름을 추가하지 않는다.
 

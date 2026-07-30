@@ -4,14 +4,16 @@ status: accepted
 authority: normative
 last_verified: 2026-07-30
 code_paths:
-  - language/ribos/grammar/parser.gram
-  - language/ribos/grammar/Tokens
-  - language/ribos/include/ribos/compiler.h
-  - language/ribos/src/ast.c
-  - language/ribos/src/compiler.c
-  - language/ribos/src/dump.c
-  - language/ribos/src/semantic.c
-  - language/ribos/tools/
+  - language/ribos/frontend/grammar/parser.gram
+  - language/ribos/frontend/grammar/Tokens
+  - language/ribos/frontend/include/ribos/frontend/compiler.h
+  - language/ribos/frontend/src/ast.c
+  - language/ribos/frontend/src/compiler.c
+  - language/ribos/frontend/src/dump.c
+  - language/ribos/frontend/src/semantic.c
+  - language/ribos/schema/
+  - language/ribos/ir/
+  - language/ribos/frontend/tools/
   - src/policy/
 tests:
   - ribos-grammar-generation
@@ -32,8 +34,12 @@ supersedes:
 
 # Ribos source language 계약
 
-이 계약은 `.ribos` source의 lexical token, grammar, static semantic, evaluation order,
+이 계약은 `.rbs` source의 lexical token, grammar, static semantic, evaluation order,
 bounded execution과 diagnostic 의무를 정의한다.
+
+Typed AST 이후의 VM 독립 lowering, product schema identity와 checked operator 의미는
+`ribos-policy-ir-v1` 계약이 정의한다. `.ribos` extension은 유효한 Ribos source
+artifact 이름이 아니며 compatibility alias도 제공하지 않는다.
 
 ## 규범 용어
 
@@ -53,7 +59,7 @@ EBNF와 static semantic을 먼저 고치고 같은 변경에서 Pegen grammar와
 
 ## Source unit
 
-Ribos source file의 확장자는 `.ribos`다. 한 source file은 다음 declaration만 가진다.
+Ribos source file의 확장자는 `.rbs`다. 한 source file은 다음 declaration만 가진다.
 
 - top-level decorator
 - top-level function
@@ -104,6 +110,9 @@ transient gather     8 MiB live bytes
 semantic types      256
 functions           64
 parameters/function 16
+struct fields       64
+enum variants       63
+payloads/variant    64
 locals/function     256
 scope depth         64
 ```

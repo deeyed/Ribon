@@ -6,8 +6,7 @@ last_verified: 2026-07-30
 code_paths:
   - docs/canonical/language/
   - docs/contracts/language/
-  - language/
-  - tools/ribosc/
+  - language/ribos/
 tests:
   - ribos-grammar-generation
   - ribos-parser-conformance

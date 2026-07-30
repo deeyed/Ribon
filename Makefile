@@ -85,22 +85,33 @@ TEST_BUILD_DIR := $(BUILD_ROOT)/tests
 TARGET_BUILD_ROOT := $(BUILD_ROOT)/targets
 RESULTS_DIR := $(BUILD_ROOT)/results
 RIBOS_PARSER_PILOT := $(BUILD_ROOT)/tools/ribos-parse
+RIBOS_SCHEMA_TEST := $(TEST_BUILD_DIR)/ribos_schema_tests
+RIBOS_IR_MODULE_TEST := $(TEST_BUILD_DIR)/ribos_ir_module_tests
 RIBOS_PEGEN_ROOT ?=
 RIBOS_PARSER_SRCS := \
-	language/ribos/src/lexer.c \
-	language/ribos/src/runtime.c \
-	language/ribos/src/ast.c \
-	language/ribos/src/parser.c \
-	language/ribos/src/compiler.c \
-	language/ribos/src/semantic.c \
-	language/ribos/src/dump.c \
-	language/ribos/generated/parser.c \
-	language/ribos/tools/parse.c
+	language/ribos/schema/src/schema.c \
+	language/ribos/ir/src/module.c \
+	language/ribos/ir/src/dump.c \
+	language/ribos/frontend/src/lexer.c \
+	language/ribos/frontend/src/runtime.c \
+	language/ribos/frontend/src/ast.c \
+	language/ribos/frontend/src/parser.c \
+	language/ribos/frontend/src/compiler.c \
+	language/ribos/frontend/src/semantic.c \
+	language/ribos/frontend/src/lower.c \
+	language/ribos/frontend/src/dump.c \
+	language/ribos/frontend/generated/parser.c \
+	language/ribos/frontend/tools/parse.c
 RIBOS_PARSER_HEADERS := \
-	language/ribos/include/ribos/compiler.h \
-	language/ribos/include/ribos/parser.h \
-	language/ribos/src/parser_internal.h \
-	language/ribos/generated/tokens.h
+	language/ribos/frontend/include/ribos/frontend/compiler.h \
+	language/ribos/frontend/include/ribos/frontend/parser.h \
+	language/ribos/schema/include/ribos/schema/schema.h \
+	language/ribos/ir/include/ribos/ir/ir.h \
+	language/ribos/ir/include/ribos/ir/builder.h \
+	language/ribos/ir/src/ir_internal.h \
+	language/ribos/frontend/src/parser_internal.h \
+	language/ribos/frontend/src/semantic_internal.h \
+	language/ribos/frontend/generated/tokens.h
 
 # Header ABI hard cuts must rebuild every previously emitted object on the next make run.
 -include $(shell find "$(BUILD_ROOT)" -type f -name '*.d' -print 2>/dev/null)
@@ -384,7 +395,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
 	ribos-parser-pilot check-ribos-parser-snapshot check-ribos-parser-pilot \
-	check-ribos-semantics \
+	check-ribos-semantics check-ribos-schema check-ribos-ir \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
@@ -405,37 +416,72 @@ host-reference: $(HOST_REFERENCE)
 $(RIBOS_PARSER_PILOT): $(RIBOS_PARSER_SRCS) $(RIBOS_PARSER_HEADERS) Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/ribos/include -Ilanguage/ribos/src \
-		-Ilanguage/ribos/generated \
+		-Ilanguage/ribos/frontend/include \
+		-Ilanguage/ribos/frontend/src \
+		-Ilanguage/ribos/frontend/generated \
+		-Ilanguage/ribos/schema/include \
+		-Ilanguage/ribos/ir/include \
+		-Ilanguage/ribos/ir/src \
 		$(RIBOS_PARSER_SRCS) -o $@
 
 ribos-parser-pilot: $(RIBOS_PARSER_PILOT)
 
 check-ribos-parser-snapshot:
-	$(PYTHON) language/ribos/tools/check_parser_snapshot.py
+	$(PYTHON) language/ribos/frontend/tools/check_parser_snapshot.py
 
 check-ribos-parser-pilot: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
-	$(PYTHON) language/ribos/tests/parser_pilot_tests.py \
+	$(PYTHON) language/ribos/frontend/tests/parser_pilot_tests.py \
 		--parser $(RIBOS_PARSER_PILOT)
 	$(RIBOS_PARSER_PILOT) \
-		language/ribos/tests/positive/full_boot_policy.ribos
+		language/ribos/frontend/tests/positive/full_boot_policy.rbs
 
 check-ribos-semantics: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
-	$(PYTHON) language/ribos/tests/semantic_tests.py \
+	$(PYTHON) language/ribos/frontend/tests/semantic_tests.py \
 		--parser $(RIBOS_PARSER_PILOT)
+
+$(RIBOS_SCHEMA_TEST): language/ribos/schema/src/schema.c \
+		language/ribos/schema/include/ribos/schema/schema.h \
+		language/ribos/schema/tests/schema_tests.c Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		-Ilanguage/ribos/schema/include \
+		language/ribos/schema/src/schema.c \
+		language/ribos/schema/tests/schema_tests.c -o $@
+
+check-ribos-schema: $(RIBOS_SCHEMA_TEST)
+	$(RIBOS_SCHEMA_TEST)
+
+$(RIBOS_IR_MODULE_TEST): language/ribos/ir/src/module.c \
+		language/ribos/ir/src/ir_internal.h \
+		language/ribos/ir/include/ribos/ir/ir.h \
+		language/ribos/ir/include/ribos/ir/builder.h \
+		language/ribos/ir/tests/module_tests.c Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		-Ilanguage/ribos/schema/include \
+		-Ilanguage/ribos/ir/include \
+		-Ilanguage/ribos/ir/src \
+		language/ribos/ir/src/module.c \
+		language/ribos/ir/tests/module_tests.c -o $@
+
+check-ribos-ir: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT) \
+		$(RIBOS_IR_MODULE_TEST)
+	$(RIBOS_IR_MODULE_TEST)
+	$(PYTHON) language/ribos/ir/tests/ir_tests.py \
+		--compiler $(RIBOS_PARSER_PILOT)
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
 ribos-parser-generate:
 	@test -n "$(RIBOS_PEGEN_ROOT)" || \
 		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
-	$(PYTHON) language/ribos/tools/generate_parser.py \
+	$(PYTHON) language/ribos/frontend/tools/generate_parser.py \
 		--pegen-root $(RIBOS_PEGEN_ROOT)
 
 ribos-parser-regenerate-check:
 	@test -n "$(RIBOS_PEGEN_ROOT)" || \
 		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
-	$(PYTHON) language/ribos/tools/generate_parser.py \
+	$(PYTHON) language/ribos/frontend/tools/generate_parser.py \
 		--pegen-root $(RIBOS_PEGEN_ROOT) --check
 
 $(BUILD_DIR)/obj/%.o: %.c
@@ -1130,7 +1176,8 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
 check: legacy-hard-cut check-public-api check-frontends check-loader \
-	check-ribos-parser-pilot check-ribos-semantics \
+	check-ribos-parser-pilot check-ribos-semantics check-ribos-schema \
+	check-ribos-ir \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

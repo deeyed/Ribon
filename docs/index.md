@@ -57,6 +57,7 @@ contracts/firmware/firmware-personality-plugin
 contracts/firmware/reference-provider-products
 contracts/sdk/sdk-install-and-package
 contracts/language/ribos-source-language
+contracts/language/ribos-policy-ir-v1
 api/public-c-api
 ```
 
@@ -88,8 +89,8 @@ adr/0013-generic-entry-port-protocol-hard-cut
 adr/0014-riscv64-bootstrap-hart-authority
 adr/0015-ribos-bounded-policy-language
 adr/0016-tracked-ribos-pegen-snapshot
-adr/0017-ribos-language-project-hierarchy
 adr/0018-ribos-bounded-typed-front-end
+adr/0019-ribos-policy-ir-and-product-schema
 ```
 
 ```{toctree}
@@ -104,6 +105,7 @@ adr/0005-split-ota-authority
 adr/0006-reboot-time-overseer
 adr/0007-bounded-recovery-network
 adr/0008-bios-riscv-support-tiers
+adr/0017-ribos-language-project-hierarchy
 ```
 
 ```{toctree}
@@ -145,4 +147,5 @@ log/2026-07-29-w3-riscv64-rph1-fixture
 log/2026-07-30-ribos-parser-pilot
 log/2026-07-30-ribos-project-hierarchy
 log/2026-07-30-ribos-typed-front-end
+log/2026-07-30-ribos-policy-ir-v1
 ```

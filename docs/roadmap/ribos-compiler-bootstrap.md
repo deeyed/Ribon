@@ -4,12 +4,12 @@ status: accepted
 authority: informative
 last_verified: 2026-07-30
 code_paths:
-  - language/ribos/grammar/
-  - language/ribos/generated/
-  - language/ribos/include/ribos/
-  - language/ribos/src/
-  - language/ribos/tools/
-  - language/ribos/tests/
+  - language/ribos/frontend/grammar/
+  - language/ribos/frontend/generated/
+  - language/ribos/frontend/include/ribos/frontend/
+  - language/ribos/frontend/src/
+  - language/ribos/frontend/tools/
+  - language/ribos/frontend/tests/
   - build/generated/ribos/
   - build/results/
 tests:
@@ -37,8 +37,8 @@ firmware integration의 증거를 대신하지 않는다.
 정본 EBNF를 다음 source로 변환한다.
 
 ```text
-language/ribos/grammar/parser.gram
-language/ribos/grammar/Tokens
+language/ribos/frontend/grammar/parser.gram
+language/ribos/frontend/grammar/Tokens
 language/ribos/README.md
 ```
 
@@ -65,7 +65,7 @@ ownership을 기록한다.
 Host parser lane은 CPython Pegen의 grammar reader와 C generator를 사용한다.
 
 ```text
-.ribos source
+.rbs source
   -> Ribos lexer token stream
   -> Pegen-generated C parser
   -> Ribos bounded AST builder
@@ -74,9 +74,9 @@ Host parser lane은 CPython Pegen의 grammar reader와 C generator를 사용한�
 Generated C source와 token number header는 다음 tracked operational snapshot이다.
 
 ```text
-language/ribos/generated/parser.c
-language/ribos/generated/parser.receipt.json
-language/ribos/generated/tokens.h
+language/ribos/frontend/generated/parser.c
+language/ribos/frontend/generated/parser.receipt.json
+language/ribos/frontend/generated/tokens.h
 ```
 
 Generated source를 repository syntax authority로 취급하지 않는다. 일반 build는 이
@@ -187,25 +187,58 @@ Type stage는 다음 순서로 닫는다.
 Worst-path helper bound는 sequential composition, branch maximum, bounded loop multiplier와
 reachable user call graph를 포함한다. Recursive call graph는 거부한다.
 
-## G5: Policy IR 준비 경계
+## G5: Policy IR v1
 
-Typed AST가 Policy IR로 내려가기 전에 다음 입력이 봉인된다.
+Typed AST는 frontend와 VM backend 사이의 public Policy IR로 내려간다.
 
 ```text
-resolved type ID
-required capability union
+typed virtual slot
+explicit basic block
+direct branch와 direct user-function/helper call
+phi-free explicit move
+left-to-right evaluation
+checked operator
+Option/Result/enum/struct lowering
+aggregate shape table
+source-map table
 helper call-site table
-helper-call upper bound
-maximum call depth
-declared instruction/helper budget
-source map
-selected helper/type/handoff schema identity
+product schema identity
 ```
 
-AST node 수는 VM instruction 수가 아니다. Exact instruction budget, basic block,
-control-flow target과 stack slot은 Policy IR lowering이 소유한다.
+Product helper/type/handoff schema는 semantic implementation에서 분리한다.
+Product/plugin graph가 versioned canonical schema artifact를 생성하고 compiler와
+artifact verifier가 같은 bytes를 소비한다.
 
-## G6: Standalone fixed parser backend
+AST node 수는 VM instruction 수가 아니다. Exact bytecode instruction budget과 runtime
+stack/register allocation은 다음 backend가 소유한다.
+
+## G6: Bytecode와 artifact verifier
+
+Policy IR을 bounded bytecode와 signed artifact로 내린다.
+
+```text
+Policy IR validation
+  -> deterministic bytecode selection
+  -> exact instruction/call/stack bound
+  -> schema digest와 capability manifest
+  -> source/helper map
+  -> canonical artifact serialization
+  -> signature와 rollback metadata
+```
+
+Artifact verifier는 compiler를 신뢰하지 않고 control flow, register/stack type,
+helper signature/capability, loop/call bound와 terminal action을 다시 증명한다.
+
+## G7: VM과 semantic helper dispatch
+
+VM은 verified artifact만 실행한다. Runtime은 instruction, call depth, stack, helper와
+output budget을 재강제한다. Checked arithmetic, invalid tag, deadline과 helper failure는
+exception unwind가 아니라 typed result 또는 fail-closed policy fault다.
+
+Helper stable ID는 product-generated dispatch table로 해석한다. Policy가 native
+function pointer, raw address, raw MMIO 또는 raw flash primitive를 만들 수 없다.
+
+## G8: 선택적 standalone fixed parser backend
 
 Firmware parser를 선택하는 product는 Pegen grammar를 공유하되 CPython C runtime을
 사용하지 않는다. Ribon C backend는 다음 storage를 caller-owned context에 둔다.
@@ -233,9 +266,13 @@ immutable source byte span
 Grammar의 repetition과 gather는 product limit를 넘어갈 때
 `RIBOS_PARSE_LIMIT_EXCEEDED`로 종료한다. Heap fallback은 없다.
 
-## G7: Front-end acceptance gate
+Production product가 signed artifact만 설치한다면 G8 parser를 firmware에 포함하지
+않는다. Interactive development shell 또는 on-device source provisioning product만
+이 lane을 선택한다.
 
-Parser slice의 acceptance는 다음을 모두 요구한다.
+## G9: Compiler/runtime acceptance gate
+
+전체 language/runtime acceptance는 다음을 서로 다른 evidence lane으로 요구한다.
 
 ```text
 Pegen grammar validation pass
@@ -248,11 +285,16 @@ deterministic token/trivia와 typed AST dump
 type, mutation와 collection negative corpus
 match, propagation와 typestate corpus
 capability, pure-effect, recursion과 budget negative corpus
+canonical product schema identity와 mismatch rejection
+deterministic Policy IR와 structural negative corpus
+bytecode reproducibility와 adversarial verifier corpus
+VM instruction/helper/stack budget fault corpus
+factory recovery fault injection
 repository documentation lint pass
 Sphinx warnings-as-errors pass
 ```
 
-이 gate는 다음을 주장하지 않는다.
+Host frontend와 Policy IR gate만으로 다음을 주장하지 않는다.
 
 - standalone no-heap firmware parser
 - bytecode generation
@@ -263,9 +305,9 @@ Sphinx warnings-as-errors pass
 
 ## Remaining compiler/runtime closure
 
-G5 뒤의 독립 작업은 Policy IR, bytecode emission, static artifact verifier와 VM
-execution이다. G6 fixed-storage parser는 source를 firmware에서 받아야 하는 product만
-선택한다.
+Policy IR 뒤의 독립 작업은 bytecode emission, signed artifact format, adversarial
+static verifier, VM execution과 Ribon helper integration이다. Fixed-storage parser는
+source를 firmware에서 받아야 하는 product만 선택한다.
 
 Host compiler 성공을 firmware-ready parser, artifact verifier 또는 VM execution으로
 표현하지 않는다.

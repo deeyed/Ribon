@@ -5,7 +5,9 @@ authority: normative
 last_verified: 2026-07-30
 code_paths:
   - language/ribos/
-  - language/ribos/include/ribos/compiler.h
+  - language/ribos/frontend/include/ribos/frontend/compiler.h
+  - language/ribos/schema/include/ribos/schema/schema.h
+  - language/ribos/ir/include/ribos/ir/
   - include/Ribon/plugin/
   - src/core/
   - src/plugins/
@@ -16,6 +18,8 @@ tests:
   - ribos-type-negative
   - ribos-capability-negative
   - ribos-deterministic-semantic-dump
+  - ribos-product-schema-identity
+  - ribos-policy-ir-v1
   - ribos-bytecode-verifier
   - ribon-docs
 hardware:
@@ -46,7 +50,7 @@ Ribos
 Ribos program은 hardware mechanism을 구현하지 않고 이미 검증된 helper와 handle의
 구성 순서 및 조건을 표현한다.
 
-공식 언어 표기는 `Ribos`, source 확장자는 `.ribos`, compiler 이름은 `ribosc`다.
+공식 언어 표기는 `Ribos`, source 확장자는 `.rbs`, compiler 이름은 `ribosc`다.
 대문자 `OS`를 분리한 `RibOS` 표기는 운영체제로 오해될 수 있으므로 사용하지 않는다.
 
 ## 책임
@@ -82,7 +86,7 @@ Security 또는 Firmware Personality plugin이 소유한다.
 Ribos의 권위 흐름은 다음과 같다.
 
 ```text
-UTF-8 .ribos source
+UTF-8 .rbs source
         |
         v
 Pegen-generated host parser
@@ -100,7 +104,7 @@ name, type, mutation, effect, capability와 source bound 검사
         v
 Ribos policy IR
         |
-        +--> control-flow와 exact instruction/helper bound
+        +--> typed slot, explicit CFG, helper call-site와 product schema identity
         |
         v
 bounded bytecode
@@ -124,8 +128,20 @@ Ribon service/plugin mechanism
 ```
 
 Source parser, AST와 source diagnostic은 host compiler의 권한이다. Boot product는
-signed policy artifact를 검증하고 실행하는 데 `.ribos` source나 CPython runtime을
+signed policy artifact를 검증하고 실행하는 데 `.rbs` source나 CPython runtime을
 요구하지 않는다.
+
+Language implementation은 하나의 monolithic runtime이 아니다.
+
+```text
+language/ribos/frontend  source, token/trivia, AST, type/effect와 IR lowering
+language/ribos/schema    product-generated type/helper/handoff schema identity
+language/ribos/ir        VM 독립 typed CFG와 structural validator
+language/ribos/vm        bytecode verifier와 runtime의 후속 ownership
+```
+
+Frontend private AST와 Pegen runtime은 VM dependency가 아니다. VM backend는 Policy IR
+또는 그 검증된 serialized artifact만 소비한다.
 
 Token model은 parser token과 formatter/debug source mapping을 위한 trivia를
 분리한다. Token과 trivia는 immutable source span을 참조하고 stable byte range를
@@ -135,6 +151,17 @@ Token model은 parser token과 formatter/debug source mapping을 위한 trivia�
 Source-level checker는 bounded loop와 reachable call graph에서 helper-call upper
 bound를 계산한다. Bytecode instruction upper bound는 Policy IR lowering 뒤에
 계산한다. AST node count를 VM instruction budget으로 해석하지 않는다.
+
+Policy IR은 function-owned typed virtual slot, explicit basic block, direct branch/call,
+phi-free explicit move, aggregate shape, source map과 helper call-site table을 가진다.
+Expression과 argument는 source의 left-to-right 순서로 낮춘다. Integer arithmetic은
+wraparound가 아니라 checked operator로 기록하며 runtime overflow는 catchable
+exception이 아닌 policy fault다.
+
+Product type, member, helper signature/capability와 handoff field는 frontend C table의
+고정 의미가 아니다. Product/plugin graph가 생성하는 versioned schema artifact가
+compiler와 verifier의 공동 입력이다. Policy IR은 canonical schema bytes의 SHA-256을
+봉인한다.
 
 Pegen grammar는 source syntax의 machine-readable 정본이다. EBNF contract는 사람이
 검토하는 규범 표현이고 Pegen generation 및 syntax corpus가 두 표현의 동등성을

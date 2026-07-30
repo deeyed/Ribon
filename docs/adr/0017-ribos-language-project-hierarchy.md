@@ -1,7 +1,7 @@
 ---
 doc_type: adr
-status: accepted
-authority: normative
+status: superseded
+authority: historical
 last_verified: 2026-07-30
 code_paths:
   - language/ribos/
@@ -16,6 +16,8 @@ hardware:
   - none
 supersedes:
   - ADR 0016 path layout
+superseded_by:
+  - 0019-ribos-policy-ir-and-product-schema
 ---
 
 # ADR 0017: Ribos language project hierarchy

@@ -40,6 +40,8 @@ make check-firmware-personalities
 make host-reference
 make check-ribos-parser-pilot
 make check-ribos-semantics
+make check-ribos-schema
+make check-ribos-ir
 make check
 make check-target-builds
 make qemu-aarch64-virt-raw-fdt-smoke
@@ -49,11 +51,13 @@ make qstar-check
 make docs
 ```
 
-Ribos language project는 `language/ribos/` 아래에서 grammar, generated snapshot,
-host compiler front-end, tools와 corpus를 함께 소유한다. Pegen action은 bounded
-Ribos AST를 생성하고 semantic gate는 type, mutation, match, capability와 helper-call
-upper bound를 검사한다. 일반 build는
-`language/ribos/generated/`의 추적되는 C parser snapshot을 직접 컴파일하며
+Ribos language project는 `language/ribos/` 아래에서 `frontend`, versioned product
+`schema`, VM 독립 Policy `ir`와 향후 `vm` 계층을 분리한다. 공식 source 확장자는
+`.rbs`이며 legacy alias는 없다. Pegen action은 bounded Ribos AST를 생성하고 semantic
+gate는 type, mutation, match, capability와 helper-call upper bound를 검사한다. Policy
+IR gate는 typed virtual slot, explicit CFG, direct call/branch, aggregate shape,
+source map, helper call-site와 product schema identity를 검사한다. 일반 build는
+`language/ribos/frontend/generated/`의 추적되는 C parser snapshot을 직접 컴파일하며
 `make check`도 Pegen을 실행하지 않는다. 문법이나 generator integration을 바꿀 때만
 다음 explicit gate를 사용한다.
 
@@ -63,9 +67,9 @@ make ribos-parser-regenerate-check RIBOS_PEGEN_ROOT=/path/to/cpython/Tools/peg_g
 ```
 
 `make check`는 public API layout, legacy ABI hard cut, plugin graph negative tests,
-protocol-free embed, Ribos parser와 semantic corpus, SDK install reproducibility, external
-package, firmware reference provider, host-reference plan, architecture matrix와 object
-graph를 검사한다.
+protocol-free embed, Ribos parser·semantic·schema·Policy IR corpus, SDK install
+reproducibility, external package, firmware reference provider, host-reference plan,
+architecture matrix와 object graph를 검사한다.
 QEMU smoke는 x86_64 UEFI consumer와 AArch64 raw-FDT target의 runtime evidence다.
 RISC-V RPH1 fixture smoke는 OpenSBI, Ribon lifecycle, RPH1 `BOOT_CPU`와
 S-mode/MMU-off entry를 잇는 Ribon 소유 계약 증거이며 실제 Parus kernel boot가 아니다.
