@@ -14,12 +14,13 @@ extern "C" {
  * @file interpreter.h
  * @brief PreparedProgram만 실행하는 architecture-neutral Ribos interpreter v1.
  *
- * v1.1 API는 scalar/control-flow와 bounded direct call/loop engine이다. Full policy
- * success나 BootAction을 만들지 않으며 지원 범위 밖 opcode는 fail closed한다.
+ * v1.2 API는 scalar/control-flow, bounded direct call/loop와 heap-free bounded
+ * aggregate engine이다. Full policy success나 BootAction을 만들지 않으며 지원 범위
+ * 밖 opcode는 fail closed한다.
  */
 
 #define RIBOS_VM_INTERPRETER_V1_MAJOR 1u
-#define RIBOS_VM_INTERPRETER_V1_MINOR 1u
+#define RIBOS_VM_INTERPRETER_V1_MINOR 2u
 
 /** Caller가 관찰할 수 있는 bounded interpreter 상태다. */
 typedef enum RibosVmInterpreterState {
@@ -86,8 +87,8 @@ RibosVmStatus ribos_vm_interpreter_step_v1(
  * Entry `RETURNED` 또는 `FAULTED`까지 bounded instruction loop를 실행한다.
  *
  * Direct call은 arena frame stack만 사용하고 loop는 verified row별 trip counter를
- * 집행한다. 이 함수는 helper callback, aggregate 또는 boot transfer를 실행하지
- * 않는다.
+ * 집행한다. Aggregate는 verified inline layout 안에서만 실행한다. 이 함수는 helper
+ * callback 또는 boot transfer를 실행하지 않는다.
  */
 RibosVmStatus ribos_vm_interpreter_run_v1(
     const RibosPreparedProgram *prepared_program,

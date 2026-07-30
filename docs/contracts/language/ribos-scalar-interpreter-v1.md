@@ -48,9 +48,10 @@ PreparedProgram + immutable context + initialized arena
 
 이 경계의 `RETURNED`는 내부 함수 반환이고 sealed `BootAction`이 아니다. `FAULTED`는
 arena에 fixed receipt를 봉인하지만 factory recovery callback을 호출하지 않는다.
-Helper callback, aggregate·collection 실행과 public full-policy outcome은 후속 runtime
-계층의 책임이다. 따라서 이 계약의 host gate는 firmware, QEMU, 실제 boot transfer
-또는 physical hardware 실행 증거가 아니다.
+Helper callback과 public full-policy outcome은 후속 runtime 계층의 책임이다.
+Aggregate·collection의 추가 의미는
+{doc}`ribos-bounded-aggregate-runtime-v1`이 소유한다. 따라서 이 계약의 host gate는
+firmware, QEMU, 실제 boot transfer 또는 physical hardware 실행 증거가 아니다.
 
 ## Public incremental API
 
@@ -155,12 +156,12 @@ opaque symbol은 같은 ID와 length 쌍이다. 이 값은 source spelling이나
 semantic object 자체가 아니며 후속 helper/aggregate resolver가 constant table과
 expected type을 다시 검사해야 한다.
 
-`CALL_DIRECT`의 scalar argument/result, explicit frame stack과 loop bound는
-{doc}`ribos-bounded-calls-loops-v1`에 따라 실행한다. `CALL_HELPER`, aggregate,
-member/index, variant와 collection opcode는 유효 artifact에 존재해도 이 incremental
-engine에서 성공하지 않는다. 도달하면 `VmFault(INVALID_STATE)`를 봉인한다. Partial
-opcode engine을 production policy executor로 해석하거나 boot transfer에 연결할 수
-없다.
+`CALL_DIRECT`의 explicit frame stack과 loop bound는
+{doc}`ribos-bounded-calls-loops-v1`에 따라 실행한다. Aggregate, member/index,
+variant와 collection opcode는 {doc}`ribos-bounded-aggregate-runtime-v1`에 따라
+실행한다. `CALL_HELPER`는 유효 artifact에 존재해도 이 incremental engine에서
+성공하지 않으며 도달하면 `VmFault(INVALID_STATE)`를 봉인한다. Partial opcode
+engine을 production policy executor로 해석하거나 boot transfer에 연결할 수 없다.
 
 ## Checked integer 의미
 

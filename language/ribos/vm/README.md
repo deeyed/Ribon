@@ -54,15 +54,20 @@ loop/helper counter, handle, aggregate scratch, outcome/output, fault와 optiona
 fixed offset을 가지며 heap과 native C value union을 사용하지 않는다. Scalar slot은
 artifact type width를 다시 확인하고 explicit little-endian byte로 읽고 쓴다.
 
-`interpreter.h`는 PreparedProgram만 받는 target-neutral incremental scalar engine이다.
+`interpreter.h`는 PreparedProgram만 받는 target-neutral incremental engine이다.
 Verified instruction ID를 PC로 사용하고 dispatch 전에 fuel을 감소시키며 parameter,
 scalar constant, move, checked unary/binary, direct jump/branch, direct call, return과
-trap을 portable C switch로 실행한다. Policy call은 C recursion 대신 arena의 explicit
-frame record를 쓰고 verified depth/stack closure를 push 전에 검사한다. Loop는 verified
+trap을 portable C switch로 실행한다. List, Dict, struct와 tagged variant는 verified
+fixed-capacity inline layout 안에서만 구성·조회하며 unused capacity와 padding을
+결정론적으로 zero한다. Dict는 stable key order의 fixed entry array와 bounded linear
+lookup을 쓴다. Policy call은 C recursion 대신 arena의 explicit frame record를 쓰고
+8-byte-aligned frame size와 verified depth/stack closure를 push 전에 검사한다. Scalar와
+copy-only aggregate argument/result는 exact slot byte로 전달한다. Loop는 verified
 latch-to-header edge에서만 fixed counter를 감소시킨다. Context
 generation/type/digest와 fault receipt도 arena에 fixed-offset byte로 봉인한다. 이
 engine의 entry `RETURNED`는 내부 함수 반환이며 `BootAction`이나 full-policy success가
-아니다. Helper와 aggregate opcode는 후속 실행 계층이 닫기 전까지 fail closed한다.
+아니다. Helper callback과 ownership-bearing handle runtime은 후속 실행 계층이 닫기
+전까지 fail closed한다.
 
 Execute의 terminal 결과는 sealed `BootAction`, typed `PolicyError`, catch 불가능한
 `VmFault` 세 class뿐이다. BootAction은 실제 jump가 아닌 single-consume intent이며
@@ -75,6 +80,7 @@ make check-ribos-runtime-storage
 make check-ribos-vm-scalar
 make check-ribos-vm-calls
 make check-ribos-vm-loops
+make check-ribos-vm-aggregates
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
 ```
@@ -100,7 +106,7 @@ Structural reader가 envelope, payload hash와 section range를 통과시킨 art
 아니다. Runtime counter, Ed25519 signature, rollback과 product key policy가 실행
 허가 전에 별도로 통과해야 한다.
 
-이 README와 host gate는 runtime ABI, verifier, host-side scalar/direct-call/loop
-dispatch와 execution eligibility 경계만 설명한다. Full policy execution, production
-signature/rollback provider, boot product linkage, QEMU 또는 hardware policy 실행
-증거가 아니다.
+이 README와 host gate는 runtime ABI, verifier, host-side
+scalar/direct-call/loop/aggregate dispatch와 execution eligibility 경계만 설명한다.
+Full policy execution, production signature/rollback provider, helper/ownership
+execution, boot product linkage, QEMU 또는 hardware policy 실행 증거가 아니다.

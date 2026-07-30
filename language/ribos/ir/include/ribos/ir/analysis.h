@@ -15,6 +15,7 @@ extern "C" {
 #define RIBOS_IR_MAX_VALUE_BYTES (1024u * 1024u)
 #define RIBOS_IR_MAX_FRAME_BYTES (16u * 1024u * 1024u)
 #define RIBOS_IR_MAX_STACK_BYTES (64u * 1024u * 1024u)
+#define RIBOS_IR_FRAME_ALIGNMENT_V1 8u
 
 /** VM이 collection value를 저장하는 결정론적 representation이다. */
 typedef enum RibosIrStorageKind {

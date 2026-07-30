@@ -290,7 +290,8 @@ byte size, alignment, source-map ID, flags
 ```
 
 Slot range는 owner function frame 안에 있어야 하며 정렬·겹침·type storage를
-독립 verifier가 재계산한다.
+독립 verifier가 재계산한다. Function row의 frame bytes는 bytecode frame alignment
+8의 배수이며 maximum stack bytes는 reachable frame들의 aligned 크기를 합한 값이다.
 
 ## Bytecode instruction encoding
 

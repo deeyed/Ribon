@@ -585,7 +585,7 @@ ribos_layout_slots(
         RibosIrFunctionResource *resource =
             &closure->functions[function_index];
         uint32_t offset = 0;
-        uint32_t frame_alignment = 1;
+        uint32_t frame_alignment = RIBOS_IR_FRAME_ALIGNMENT_V1;
         uint32_t aggregate_bytes = 0;
         size_t local;
 

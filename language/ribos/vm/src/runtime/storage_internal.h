@@ -113,6 +113,97 @@ RibosVmStatus ribos_vm_storage_consume_instruction_internal_v1(
     uint64_t *remaining_instructions,
     uint64_t *consumed_instructions);
 
+RibosVmStatus ribos_vm_storage_slot_zero_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id);
+
+RibosVmStatus ribos_vm_storage_slot_copy_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t source_function_id,
+    uint64_t source_frame_base,
+    uint32_t source_slot_id,
+    uint32_t destination_function_id,
+    uint64_t destination_frame_base,
+    uint32_t destination_slot_id);
+
+RibosVmStatus ribos_vm_storage_slot_slice_read_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t offset,
+    uint8_t *bytes,
+    uint32_t byte_size);
+
+RibosVmStatus ribos_vm_storage_slot_slice_write_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t offset,
+    const uint8_t *bytes,
+    uint32_t byte_size);
+
+RibosVmStatus ribos_vm_storage_slot_slice_zero_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t offset,
+    uint32_t byte_size);
+
+RibosVmStatus ribos_vm_storage_slot_slice_copy_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t source_function_id,
+    uint64_t source_frame_base,
+    uint32_t source_slot_id,
+    uint32_t source_offset,
+    uint32_t destination_function_id,
+    uint64_t destination_frame_base,
+    uint32_t destination_slot_id,
+    uint32_t destination_offset,
+    uint32_t byte_size);
+
+RibosVmStatus ribos_vm_storage_slot_slice_move_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t source_offset,
+    uint32_t destination_offset,
+    uint32_t byte_size);
+
+RibosVmStatus ribos_vm_storage_slot_slice_compare_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t left_function_id,
+    uint64_t left_frame_base,
+    uint32_t left_slot_id,
+    uint32_t left_offset,
+    uint32_t right_function_id,
+    uint64_t right_frame_base,
+    uint32_t right_slot_id,
+    uint32_t right_offset,
+    uint32_t byte_size,
+    int *comparison);
+
 RibosVmStatus ribos_vm_storage_seal_fault_internal_v1(
     const RibosPreparedProgram *prepared_program,
     RibosVmStorage *storage,

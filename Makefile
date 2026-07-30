@@ -461,6 +461,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-runtime-contract check-ribos-prepared-program \
 	check-ribos-runtime-storage check-ribos-vm-scalar \
 	check-ribos-vm-calls check-ribos-vm-loops \
+	check-ribos-vm-aggregates \
 	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
@@ -752,6 +753,21 @@ check-ribos-vm-loops: check-ribos-vm-scalar \
 			language/ribos/vm/tests/calls_loops_interpreter.rbs; \
 		$(RIBOS_VM_CALLS_LOOPS_TEST) \
 			"$$tmp/calls-loops-interpreter.rba" loops
+
+check-ribos-vm-aggregates: check-ribos-vm-calls \
+		$(RIBOS_VM_CALLS_LOOPS_TEST)
+	@tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/aggregate-interpreter.rba" \
+			language/ribos/vm/tests/aggregate_interpreter.rbs; \
+		$(RIBOS_VM_CALLS_LOOPS_TEST) \
+			"$$tmp/aggregate-interpreter.rba" aggregates; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/aggregate-calls.rba" \
+			language/ribos/frontend/tests/semantic/positive/aggregate_lowering.rbs; \
+		$(RIBOS_VM_CALLS_LOOPS_TEST) \
+			"$$tmp/aggregate-calls.rba" aggregate-calls
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1464,7 +1480,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-verifier check-ribos-runtime-contract \
 	check-ribos-prepared-program check-ribos-runtime-storage \
 	check-ribos-vm-scalar check-ribos-vm-calls \
-	check-ribos-vm-loops \
+	check-ribos-vm-loops check-ribos-vm-aggregates \
 	check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \

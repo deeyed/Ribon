@@ -80,7 +80,7 @@ stack에 나타나면 실행하지 않는다.
 유효한 `CALL_DIRECT` 한 개는 다음 순서를 가진다.
 
 1. Caller의 instruction fuel 1개를 먼저 소비한다.
-2. Callee function, return type, parameter 수와 scalar slot layout을 다시 검사한다.
+2. Callee function, return type, parameter 수와 exact slot layout을 다시 검사한다.
 3. `frame_depth + 1`과 `stack_cursor + callee.frame_bytes`가 verifier closure 안인지
    검사한다.
 4. Active frame에 같은 callee function이 없는지 검사한다.
@@ -90,18 +90,22 @@ stack에 나타나면 실행하지 않는다.
 8. Continuation, caller result slot과 callee frame record를 기록한다.
 9. PC를 callee entry block의 첫 instruction으로 바꾼다.
 
-v1.1 direct call의 parameter와 result는 `SCALAR` storage이고 최대 8 bytes다. Type ID,
-byte size와 function ownership이 정확히 같아야 한다. Nested function의 `PARAMETER`
-instruction은 이미 복사된 parameter slot이 initialized인지 재확인하는 no-op다.
-Entry function의 `PARAMETER`만 immutable `RibosVmContext`에서 값을 읽는다.
+v1.2 direct call의 parameter와 result는 type ID, byte size와 function ownership이
+정확히 같은 slot이다. Scalar는 exact width로, copy-only aggregate는
+{doc}`ribos-bounded-aggregate-runtime-v1`의 전체 inline representation으로 복사한다.
+각 function frame 크기는 8-byte 배수이며 stack closure도 frame-end padding을
+포함한다. Nested function의 `PARAMETER` instruction은 이미 복사된 parameter slot이
+initialized인지 재확인하는 no-op다. Entry function의 `PARAMETER`만 immutable
+`RibosVmContext`에서 값을 읽는다.
 
-Aggregate, collection과 opaque handle parameter/result는 이 계약에 없다. 해당 call이
-도달하면 성공이나 byte truncation이 아니라 fail closed한다.
+Ownership-bearing opaque handle의 dynamic consume/borrow state는 이 계약에 없다.
+Stage-2의 정적 provenance·linearity 보장을 runtime ownership 증거로 확대하지 않는다.
 
 ## Return과 continuation
 
-Nested `RETURN`은 initialized scalar operand를 active frame에서 읽고 caller의 verified
-result slot에 복사한다. 그 뒤에만 callee frame value와 record를 지우고 caller
+Nested `RETURN`은 initialized operand를 active frame에서 읽고 caller의 verified
+result slot에 exact bytes로 복사한다. Aggregate padding과 unused capacity도 값의
+일부로 전달된다. 그 뒤에만 callee frame value와 record를 지우고 caller
 continuation으로 복귀한다.
 
 Entry frame의 `RETURN`은 기존 incremental `RETURNED` state를 만든다. 이는 내부 정책
@@ -119,7 +123,8 @@ Frame push 전에 다음을 검사한다.
 - active control state와 top frame의 일치
 - direct callee와 entry block/instruction의 존재
 - result type과 callee return type의 일치
-- parameter count, type, byte size와 storage kind의 일치
+- parameter count, type와 byte size의 일치
+- 모든 frame base와 frame byte size의 8-byte 정렬
 - continuation instruction이 caller function에 속하는지
 - return slot이 caller function에 속하는지
 - verifier call depth 이내인지
@@ -190,7 +195,7 @@ Stage-1/Stage-2 verifier와 scalar interpreter gate를 먼저 통과시킨다.
 Call gate는 다음을 검사한다.
 
 - 두 단계 nested direct call
-- argument와 return value의 exact scalar transfer
+- scalar와 copy-only aggregate argument/result의 exact transfer
 - explicit push/pop과 caller continuation
 - sequential callee frame reuse
 - runtime depth/stack과 verifier closure 일치

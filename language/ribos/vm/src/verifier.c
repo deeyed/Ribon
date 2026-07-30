@@ -625,7 +625,8 @@ ribos_verifier_type_layout(
                 RIBOS_BC_SHAPE_ENUM_VARIANT) {
                 continue;
             }
-            if (ribos_verifier_u32(variant + 8) != type_id) {
+            if (ribos_verifier_u32(variant + 8) != type_id ||
+                ribos_verifier_u32(variant + 12) > UINT8_MAX) {
                 return 0;
             }
             for (payload = shape_start;
@@ -1343,7 +1344,8 @@ ribos_verifier_validate_functions_and_frames(
         uint32_t parameter_start = ribos_verifier_u32(function + 32);
         uint32_t parameter_count = ribos_verifier_u32(function + 36);
         uint32_t frame_offset = 0;
-        uint32_t frame_alignment = 1;
+        uint32_t frame_alignment =
+            RIBOS_BYTECODE_FRAME_ALIGNMENT_V1;
         uint32_t local;
 
         if (ribos_verifier_u32(function) != function_id ||

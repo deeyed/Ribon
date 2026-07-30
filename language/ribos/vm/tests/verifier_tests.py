@@ -310,6 +310,17 @@ def mutate_struct_member_ordinal(artifact: Artifact) -> None:
     raise AssertionError("user struct MEMBER absent")
 
 
+def mutate_enum_tag_width(artifact: Artifact) -> None:
+    """Make one enum variant tag exceed the one-byte runtime encoding."""
+
+    for index in range(artifact.count(2)):
+        row = artifact.row(2, index)
+        if u32(artifact.data, row + 4) == 1:
+            p32(artifact.data, row + 12, 256)
+            return
+    raise AssertionError("enum variant shape absent")
+
+
 def mutate_reachable_capability(artifact: Artifact) -> None:
     """Make header/function capability metadata omit one reachable helper."""
 
@@ -526,25 +537,37 @@ def main(argv: list[str]) -> int:
                     "aggregate_lowering.rbs: member hostile seed unavailable"
                 )
             else:
-                artifact = Artifact(aggregate_seed)
-                try:
-                    mutate_struct_member_ordinal(artifact)
-                except AssertionError as error:
-                    failures.append(
-                        f"struct-member-ordinal: mutation unavailable: {error}"
-                    )
-                else:
-                    output = root / "hostile-struct-member-ordinal.rba"
+                aggregate_mutations: tuple[Mutation, ...] = (
+                    (
+                        "struct-member-ordinal",
+                        mutate_struct_member_ordinal,
+                        "type-mismatch",
+                    ),
+                    (
+                        "enum-tag-width",
+                        mutate_enum_tag_width,
+                        "invalid-type",
+                    ),
+                )
+                for name, mutate, expected in aggregate_mutations:
+                    artifact = Artifact(aggregate_seed)
+                    try:
+                        mutate(artifact)
+                    except AssertionError as error:
+                        failures.append(
+                            f"{name}: mutation unavailable: {error}"
+                        )
+                        continue
+                    output = root / f"hostile-{name}.rba"
                     output.write_bytes(artifact.seal())
                     checked = verify(args.verifier, output)
                     combined = checked.stdout + checked.stderr
                     if (
                         checked.returncode == 0
-                        or "status=type-mismatch" not in combined
+                        or f"status={expected}" not in combined
                     ):
                         failures.append(
-                            "struct-member-ordinal: expected "
-                            f"type-mismatch, got\n{combined}"
+                            f"{name}: expected {expected}, got\n{combined}"
                         )
                     else:
                         hostile += 1

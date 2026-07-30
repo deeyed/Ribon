@@ -265,7 +265,11 @@ initialize_helper_contract(TestProgram *test)
 }
 
 static int
-prepare_program(const char *path, TestProgram *test)
+prepare_program(
+    const char *path,
+    uint64_t maximum_instructions,
+    uint64_t maximum_helper_calls,
+    TestProgram *test)
 {
     RibosArtifactAuthorizer authorizer = {
         .size = sizeof(authorizer),
@@ -275,6 +279,7 @@ prepare_program(const char *path, TestProgram *test)
         .authorize = authorize_for_test,
     };
     size_t workspace_size = 0;
+    RibosVmStatus vm_status;
 
     memset(test, 0, sizeof(*test));
     test->artifact = read_file(path, &test->artifact_size);
@@ -290,8 +295,8 @@ prepare_program(const char *path, TestProgram *test)
         .size = sizeof(test->limits),
         .runtime_abi_major = RIBOS_VM_RUNTIME_ABI_V1_MAJOR,
         .runtime_abi_minor = RIBOS_VM_RUNTIME_ABI_V1_MINOR,
-        .maximum_instructions = 4096,
-        .maximum_helper_calls = 2,
+        .maximum_instructions = maximum_instructions,
+        .maximum_helper_calls = maximum_helper_calls,
         .maximum_stack_bytes = 4096,
         .maximum_arena_bytes = 65536,
         .maximum_input_bytes = 256,
@@ -304,29 +309,50 @@ prepare_program(const char *path, TestProgram *test)
         .maximum_handles = 4,
         .maximum_trace_records = 4,
     };
-    if (ribos_authorized_artifact_workspace_size_v1(
-            test->artifact_size,
-            &workspace_size) != RIBOS_VM_STATUS_OK) {
+    vm_status = ribos_authorized_artifact_workspace_size_v1(
+        test->artifact_size,
+        &workspace_size);
+    if (vm_status != RIBOS_VM_STATUS_OK) {
+        fprintf(
+            stderr,
+            "authorized workspace: %s\n",
+            ribos_vm_status_name(vm_status));
         return 0;
     }
     test->authorized_workspace = malloc(workspace_size);
-    if (test->authorized_workspace == NULL ||
-        ribos_authorize_artifact_v1(
+    if (test->authorized_workspace == NULL) {
+        return 0;
+    }
+    vm_status = ribos_authorize_artifact_v1(
             test->artifact,
             test->artifact_size,
             &authorizer,
             test->authorized_workspace,
             workspace_size,
-            &test->authorized) != RIBOS_VM_STATUS_OK ||
-        ribos_prepared_program_workspace_size_v1(
+            &test->authorized);
+    if (vm_status != RIBOS_VM_STATUS_OK) {
+        fprintf(
+            stderr,
+            "authorize artifact: %s\n",
+            ribos_vm_status_name(vm_status));
+        return 0;
+    }
+    vm_status = ribos_prepared_program_workspace_size_v1(
             test->authorized,
             &test->contract,
-            &workspace_size) != RIBOS_VM_STATUS_OK) {
+            &workspace_size);
+    if (vm_status != RIBOS_VM_STATUS_OK) {
+        fprintf(
+            stderr,
+            "prepared workspace: %s\n",
+            ribos_vm_status_name(vm_status));
         return 0;
     }
     test->prepared_workspace = malloc(workspace_size);
-    return test->prepared_workspace != NULL &&
-        ribos_prepare_program_v1(
+    if (test->prepared_workspace == NULL) {
+        return 0;
+    }
+    vm_status = ribos_prepare_program_v1(
             test->authorized,
             ribos_schema_reference_v1(),
             &test->contract,
@@ -334,7 +360,15 @@ prepare_program(const char *path, TestProgram *test)
             test->prepared_workspace,
             workspace_size,
             &test->report,
-            &test->prepared) == RIBOS_VM_STATUS_OK;
+            &test->prepared);
+    if (vm_status != RIBOS_VM_STATUS_OK) {
+        fprintf(
+            stderr,
+            "prepare program: %s\n",
+            ribos_vm_status_name(vm_status));
+        return 0;
+    }
+    return 1;
 }
 
 static void
@@ -378,6 +412,137 @@ instruction_operand(
     }
     row = section_row(operands, start + ordinal);
     return row == NULL ? RIBOS_VM_INVALID_ID : read_u32(row);
+}
+
+static int
+slot_bytes(
+    TestProgram *test,
+    TestArena *arena,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint8_t **bytes,
+    uint32_t *byte_size)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *slots =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SLOTS);
+    const uint8_t *slot = section_row(slots, slot_id);
+    uint8_t *allocation;
+    uint32_t size;
+
+    if (bytes == NULL || byte_size == NULL || slot == NULL ||
+        read_u32(slot + 4) != function_id) {
+        return 0;
+    }
+    size = read_u32(slot + 16);
+    allocation = malloc(size == 0 ? 1 : size);
+    if (allocation == NULL ||
+        ribos_vm_storage_slot_read_v1(
+            test->prepared,
+            arena->storage,
+            arena->size,
+            function_id,
+            frame_base,
+            slot_id,
+            allocation,
+            size) != RIBOS_VM_STATUS_OK) {
+        free(allocation);
+        return 0;
+    }
+    *bytes = allocation;
+    *byte_size = size;
+    return 1;
+}
+
+static int
+store_slot_bytes(
+    TestProgram *test,
+    TestArena *arena,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    const uint8_t *bytes,
+    uint32_t byte_size)
+{
+    return ribos_vm_storage_slot_write_v1(
+        test->prepared,
+        arena->storage,
+        arena->size,
+        function_id,
+        frame_base,
+        slot_id,
+        bytes,
+        byte_size) == RIBOS_VM_STATUS_OK;
+}
+
+static uint32_t
+find_instruction(
+    const RibosArtifactView *view,
+    uint32_t function_id,
+    uint8_t opcode,
+    uint32_t minimum_operands)
+{
+    const RibosArtifactSectionView *blocks =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_BLOCKS);
+    const RibosArtifactSectionView *instructions =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+
+    for (uint32_t id = 0; id < instructions->count; ++id) {
+        const uint8_t *instruction = section_row(instructions, id);
+        const uint8_t *block = section_row(
+            blocks,
+            read_u32(instruction + 8));
+
+        if (instruction[0] == opcode &&
+            read_u16(instruction + 2) >= minimum_operands &&
+            block != NULL &&
+            read_u32(block + 4) == function_id) {
+            return id;
+        }
+    }
+    return RIBOS_VM_INVALID_ID;
+}
+
+static uint32_t
+find_instruction_target(
+    const RibosArtifactView *view,
+    uint32_t function_id,
+    uint8_t opcode,
+    uint32_t target,
+    uint32_t minimum_operands)
+{
+    const RibosArtifactSectionView *blocks =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_BLOCKS);
+    const RibosArtifactSectionView *instructions =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+
+    for (uint32_t id = 0; id < instructions->count; ++id) {
+        const uint8_t *instruction = section_row(instructions, id);
+        const uint8_t *block = section_row(
+            blocks,
+            read_u32(instruction + 8));
+
+        if (instruction[0] == opcode &&
+            read_u32(instruction + 20) == target &&
+            read_u16(instruction + 2) >= minimum_operands &&
+            block != NULL &&
+            read_u32(block + 4) == function_id) {
+            return id;
+        }
+    }
+    return RIBOS_VM_INVALID_ID;
 }
 
 static int
@@ -1182,6 +1347,868 @@ test_loops(
     return passed;
 }
 
+static int
+bytes_are_zero(
+    const uint8_t *bytes,
+    uint32_t start,
+    uint32_t end)
+{
+    for (uint32_t index = start; index < end; ++index) {
+        if (bytes[index] != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static uint32_t
+artifact_type_alignment(
+    const RibosArtifactView *view,
+    uint32_t type_id)
+{
+    const RibosArtifactSectionView *slots =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SLOTS);
+
+    for (uint32_t id = 0; id < slots->count; ++id) {
+        const uint8_t *slot = section_row(slots, id);
+
+        if (read_u32(slot + 8) == type_id) {
+            return read_u32(slot + 20);
+        }
+    }
+    return 0;
+}
+
+static int
+validate_list_encoding(
+    TestProgram *test,
+    TestArena *arena,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    int *saw_empty,
+    int *saw_full)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *types =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_TYPES);
+    const RibosArtifactSectionView *slots =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SLOTS);
+    uint32_t result_id = read_u32(instruction + 12);
+    const uint8_t *slot = section_row(slots, result_id);
+    const uint8_t *type = slot == NULL ? NULL :
+        section_row(types, read_u32(slot + 8));
+    const uint8_t *element = type == NULL ? NULL :
+        section_row(types, read_u32(type + 8));
+    uint8_t *bytes = NULL;
+    uint32_t byte_size = 0;
+    uint32_t count = read_u16(instruction + 2);
+    uint32_t kind = type == NULL ? UINT32_MAX :
+        read_u16(type + 4);
+    uint32_t bound = type == NULL ? 0 : read_u32(type + 16);
+    uint32_t stride = type == NULL ? 0 : read_u32(type + 44);
+    uint32_t payload = type == NULL ? 0 : read_u32(type + 48);
+    uint32_t element_size =
+        element == NULL ? 0 : read_u32(element + 40);
+    int valid = slot != NULL && element != NULL &&
+        (kind == RIBOS_BC_TYPE_ARRAY ||
+         kind == RIBOS_BC_TYPE_LIST) &&
+        count <= bound && stride >= element_size &&
+        slot_bytes(
+            test,
+            arena,
+            control->function_id,
+            control->frame_base,
+            result_id,
+            &bytes,
+            &byte_size);
+
+    if (!valid) {
+        free(bytes);
+        return 0;
+    }
+    if (kind == RIBOS_BC_TYPE_LIST) {
+        valid = payload >= 4 && read_u32(bytes) == count &&
+            bytes_are_zero(bytes, 4, payload);
+    } else {
+        valid = count == bound && payload == 0;
+    }
+    for (uint32_t index = 0; valid && index < count; ++index) {
+        uint32_t element_end =
+            payload + index * stride + element_size;
+        uint32_t stride_end =
+            payload + (index + 1u) * stride;
+
+        valid = stride_end <= byte_size &&
+            bytes_are_zero(bytes, element_end, stride_end);
+    }
+    if (valid) {
+        uint32_t used = payload + count * stride;
+
+        valid = used <= byte_size &&
+            bytes_are_zero(bytes, used, byte_size);
+    }
+    if (count == 0) {
+        *saw_empty = 1;
+    }
+    if (count == bound) {
+        *saw_full = 1;
+    }
+    free(bytes);
+    return valid;
+}
+
+static int
+validate_map_encoding(
+    TestProgram *test,
+    TestArena *arena,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    int *saw_empty)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *types =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_TYPES);
+    const RibosArtifactSectionView *slots =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SLOTS);
+    uint32_t result_id = read_u32(instruction + 12);
+    const uint8_t *slot = section_row(slots, result_id);
+    const uint8_t *type = slot == NULL ? NULL :
+        section_row(types, read_u32(slot + 8));
+    const uint8_t *key_type = type == NULL ? NULL :
+        section_row(types, read_u32(type + 8));
+    const uint8_t *value_type = type == NULL ? NULL :
+        section_row(types, read_u32(type + 12));
+    uint8_t *bytes = NULL;
+    uint32_t byte_size = 0;
+    uint32_t count = read_u16(instruction + 2) / 2u;
+    uint32_t bound = type == NULL ? 0 : read_u32(type + 16);
+    uint32_t stride = type == NULL ? 0 : read_u32(type + 44);
+    uint32_t payload = type == NULL ? 0 : read_u32(type + 48);
+    uint32_t key_size =
+        key_type == NULL ? 0 : read_u32(key_type + 40);
+    uint32_t value_size =
+        value_type == NULL ? 0 : read_u32(value_type + 40);
+    int valid = type != NULL && key_type != NULL &&
+        value_type != NULL &&
+        read_u16(type + 4) == RIBOS_BC_TYPE_DICT &&
+        read_u16(key_type + 4) == RIBOS_BC_TYPE_UNSIGNED &&
+        read_u16(value_type + 4) == RIBOS_BC_TYPE_UNSIGNED &&
+        key_size == 4 && value_size == 4 && stride == 8 &&
+        count <= bound &&
+        slot_bytes(
+            test,
+            arena,
+            control->function_id,
+            control->frame_base,
+            result_id,
+            &bytes,
+            &byte_size);
+
+    if (!valid || payload < 4 || read_u32(bytes) != count) {
+        free(bytes);
+        return 0;
+    }
+    valid = bytes_are_zero(bytes, 4, payload);
+    for (uint32_t index = 1; valid && index < count; ++index) {
+        uint32_t previous =
+            read_u32(bytes + payload + (index - 1u) * stride);
+        uint32_t current =
+            read_u32(bytes + payload + index * stride);
+
+        valid = previous < current;
+    }
+    if (valid) {
+        uint32_t used = payload + count * stride;
+
+        valid = used <= byte_size &&
+            bytes_are_zero(bytes, used, byte_size);
+    }
+    if (count == 0) {
+        *saw_empty = 1;
+    }
+    free(bytes);
+    return valid;
+}
+
+static int
+validate_struct_encoding(
+    TestProgram *test,
+    TestArena *arena,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *types =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_TYPES);
+    const RibosArtifactSectionView *shapes =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SHAPES);
+    const RibosArtifactSectionView *slots =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SLOTS);
+    uint32_t result_id = read_u32(instruction + 12);
+    const uint8_t *slot = section_row(slots, result_id);
+    uint32_t type_id = slot == NULL ?
+        RIBOS_VM_INVALID_ID : read_u32(slot + 8);
+    const uint8_t *type = section_row(types, type_id);
+    uint32_t shape_start =
+        type == NULL ? 0 : read_u32(type + 20);
+    uint32_t shape_count =
+        type == NULL ? 0 : read_u32(type + 24);
+    uint8_t *bytes = NULL;
+    uint8_t *used = NULL;
+    uint32_t byte_size = 0;
+    uint32_t cursor = 0;
+    int valid = type != NULL &&
+        read_u16(type + 4) == RIBOS_BC_TYPE_STRUCT &&
+        slot_bytes(
+            test,
+            arena,
+            control->function_id,
+            control->frame_base,
+            result_id,
+            &bytes,
+            &byte_size);
+
+    if (!valid) {
+        free(bytes);
+        return 0;
+    }
+    used = calloc(byte_size == 0 ? 1 : byte_size, 1);
+    if (used == NULL) {
+        free(bytes);
+        return 0;
+    }
+    for (uint32_t index = 0; valid && index < shape_count; ++index) {
+        const uint8_t *shape =
+            section_row(shapes, shape_start + index);
+        uint32_t field_type_id = shape == NULL ?
+            RIBOS_VM_INVALID_ID : read_u32(shape + 20);
+        const uint8_t *field_type =
+            section_row(types, field_type_id);
+        uint32_t alignment =
+            artifact_type_alignment(view, field_type_id);
+        uint32_t field_size = field_type == NULL ?
+            0 : read_u32(field_type + 40);
+
+        if (shape == NULL || alignment == 0 ||
+            cursor > UINT32_MAX - (alignment - 1u)) {
+            valid = 0;
+            break;
+        }
+        cursor = (cursor + alignment - 1u) &
+            ~(alignment - 1u);
+        if (cursor > byte_size ||
+            field_size > byte_size - cursor) {
+            valid = 0;
+            break;
+        }
+        memset(used + cursor, 1, field_size);
+        cursor += field_size;
+    }
+    for (uint32_t index = 0; valid && index < byte_size; ++index) {
+        if (used[index] == 0 && bytes[index] != 0) {
+            valid = 0;
+        }
+    }
+    free(used);
+    free(bytes);
+    return valid;
+}
+
+static int
+validate_variant_encoding(
+    TestProgram *test,
+    TestArena *arena,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *types =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_TYPES);
+    const RibosArtifactSectionView *slots =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SLOTS);
+    uint32_t result_id = read_u32(instruction + 12);
+    const uint8_t *slot = section_row(slots, result_id);
+    const uint8_t *type = slot == NULL ? NULL :
+        section_row(types, read_u32(slot + 8));
+    uint8_t *bytes = NULL;
+    uint32_t byte_size = 0;
+    uint32_t payload =
+        type == NULL ? 0 : read_u32(type + 48);
+    uint32_t count = read_u16(instruction + 2);
+    int valid = type != NULL &&
+        slot_bytes(
+            test,
+            arena,
+            control->function_id,
+            control->frame_base,
+            result_id,
+            &bytes,
+            &byte_size) &&
+        byte_size != 0 &&
+        read_u32(instruction + 20) <= UINT8_MAX &&
+        bytes[0] == (uint8_t)read_u32(instruction + 20) &&
+        payload <= byte_size &&
+        bytes_are_zero(bytes, 1, payload);
+
+    if (valid && count == 0) {
+        valid = bytes_are_zero(bytes, payload, byte_size);
+    }
+    free(bytes);
+    return valid;
+}
+
+static int
+validate_move_encoding(
+    TestProgram *test,
+    TestArena *arena,
+    const RibosVmStorageExecutionControl *control,
+    const RibosArtifactView *view,
+    const uint8_t *instruction)
+{
+    uint32_t source_id =
+        instruction_operand(view, instruction, 0);
+    uint32_t result_id = read_u32(instruction + 12);
+    uint8_t *source = NULL;
+    uint8_t *result = NULL;
+    uint32_t source_size = 0;
+    uint32_t result_size = 0;
+    int valid =
+        slot_bytes(
+            test,
+            arena,
+            control->function_id,
+            control->frame_base,
+            source_id,
+            &source,
+            &source_size) &&
+        slot_bytes(
+            test,
+            arena,
+            control->function_id,
+            control->frame_base,
+            result_id,
+            &result,
+            &result_size) &&
+        source_size == result_size &&
+        memcmp(source, result, source_size) == 0;
+
+    free(source);
+    free(result);
+    return valid;
+}
+
+static int
+test_aggregate_execution(
+    TestProgram *test,
+    const TestContext *context)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *instructions =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+    uint32_t counts[9] = {0};
+    TestArena arena;
+    RibosVmInterpreterSnapshot snapshot;
+    int saw_empty_list = 0;
+    int saw_full_list = 0;
+    int saw_empty_map = 0;
+    int passed = 1;
+
+    memset(&arena, 0, sizeof(arena));
+    if (!initialize_arena(test, context, &arena) ||
+        ribos_vm_interpreter_snapshot_v1(
+            test->prepared,
+            arena.storage,
+            arena.size,
+            &snapshot) != RIBOS_VM_STATUS_OK) {
+        release_arena(&arena);
+        return expect_true("aggregate fixture", 0);
+    }
+    while (passed &&
+           (snapshot.state == RIBOS_VM_INTERPRETER_READY ||
+            snapshot.state == RIBOS_VM_INTERPRETER_RUNNING)) {
+        const uint8_t *instruction =
+            section_row(instructions, snapshot.instruction_id);
+        RibosVmStorageExecutionControl control;
+        uint64_t remaining;
+        uint8_t opcode;
+
+        if (instruction == NULL ||
+            ribos_vm_storage_execution_load_internal_v1(
+                test->prepared,
+                arena.storage,
+                arena.size,
+                &control,
+                &remaining) != RIBOS_VM_STATUS_OK) {
+            passed = 0;
+            break;
+        }
+        (void)remaining;
+        opcode = instruction[0];
+        if (opcode == RIBOS_BC_CALL_HELPER) {
+            break;
+        }
+        passed = expect_status(
+            "aggregate instruction",
+            ribos_vm_interpreter_step_v1(
+                test->prepared,
+                &context->value,
+                arena.storage,
+                arena.size,
+                &snapshot),
+            RIBOS_VM_STATUS_OK);
+        if (!passed ||
+            snapshot.state == RIBOS_VM_INTERPRETER_FAULTED) {
+            passed = 0;
+            break;
+        }
+        if (opcode == RIBOS_BC_BUILD_LIST) {
+            ++counts[0];
+            passed = validate_list_encoding(
+                test,
+                &arena,
+                &control,
+                instruction,
+                &saw_empty_list,
+                &saw_full_list);
+        } else if (opcode == RIBOS_BC_BUILD_MAP) {
+            ++counts[1];
+            passed = validate_map_encoding(
+                test,
+                &arena,
+                &control,
+                instruction,
+                &saw_empty_map);
+        } else if (opcode == RIBOS_BC_BUILD_STRUCT) {
+            ++counts[2];
+            passed = validate_struct_encoding(
+                test,
+                &arena,
+                &control,
+                instruction);
+        } else if (opcode == RIBOS_BC_BUILD_VARIANT) {
+            ++counts[3];
+            passed = validate_variant_encoding(
+                test,
+                &arena,
+                &control,
+                instruction);
+        } else if (opcode == RIBOS_BC_MEMBER) {
+            ++counts[4];
+        } else if (opcode == RIBOS_BC_INDEX) {
+            ++counts[5];
+        } else if (opcode == RIBOS_BC_COLLECTION_LENGTH) {
+            ++counts[6];
+        } else if (opcode == RIBOS_BC_VARIANT_TAG) {
+            ++counts[7];
+        } else if (opcode == RIBOS_BC_VARIANT_PAYLOAD) {
+            ++counts[8];
+        } else if (opcode == RIBOS_BC_MOVE &&
+                   control.function_id == snapshot.function_id) {
+            passed = validate_move_encoding(
+                test,
+                &arena,
+                &control,
+                view,
+                instruction);
+        }
+    }
+    if (!(counts[0] >= 4 && counts[1] >= 2 &&
+            counts[2] >= 3 && counts[3] >= 1 &&
+            counts[4] >= 1 && counts[5] >= 3 &&
+            counts[7] >= 1 &&
+            counts[8] >= 2 &&
+            saw_empty_list && saw_full_list &&
+            saw_empty_map)) {
+        fprintf(
+            stderr,
+            "aggregate counts list=%u map=%u struct=%u variant=%u "
+            "member=%u index=%u length=%u tag=%u payload=%u "
+            "empty-list=%d full-list=%d empty-map=%d\n",
+            counts[0],
+            counts[1],
+            counts[2],
+            counts[3],
+            counts[4],
+            counts[5],
+            counts[6],
+            counts[7],
+            counts[8],
+            saw_empty_list,
+            saw_full_list,
+            saw_empty_map);
+        passed = 0;
+    }
+    passed = passed && expect_true(
+        "aggregate opcode closure",
+        passed);
+    passed = passed && expect_true(
+        "aggregate path reaches terminal helper",
+        snapshot.function_id == view->entry_function &&
+            section_row(
+                instructions,
+                snapshot.instruction_id)[0] ==
+                RIBOS_BC_CALL_HELPER);
+    release_arena(&arena);
+    return passed;
+}
+
+static int
+expect_current_fault(
+    TestProgram *test,
+    const TestContext *context,
+    TestArena *arena,
+    uint32_t expected_fault)
+{
+    RibosVmInterpreterSnapshot snapshot;
+    RibosVmFaultReceipt receipt;
+
+    return expect_status(
+               "aggregate hostile step",
+               ribos_vm_interpreter_step_v1(
+                   test->prepared,
+                   &context->value,
+                   arena->storage,
+                   arena->size,
+                   &snapshot),
+               RIBOS_VM_STATUS_OK) &&
+        expect_status(
+            "aggregate hostile receipt",
+            ribos_vm_interpreter_fault_v1(
+                test->prepared,
+                arena->storage,
+                arena->size,
+                &receipt),
+            RIBOS_VM_STATUS_OK) &&
+        expect_true(
+            "aggregate hostile fail closed",
+            snapshot.state == RIBOS_VM_INTERPRETER_FAULTED &&
+                snapshot.fault_code == expected_fault &&
+                receipt.fault_code == expected_fault);
+}
+
+static int
+test_invalid_aggregate_state(
+    TestProgram *test,
+    const TestContext *context)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *instructions =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+    uint32_t exercise_function = view->entry_function;
+    uint32_t map_id = find_instruction(
+        view,
+        exercise_function,
+        RIBOS_BC_BUILD_MAP,
+        6);
+    uint32_t index_id = find_instruction_target(
+        view,
+        exercise_function,
+        RIBOS_BC_INDEX,
+        0,
+        2);
+    uint32_t payload_id = find_instruction(
+        view,
+        exercise_function,
+        RIBOS_BC_VARIANT_PAYLOAD,
+        1);
+    const uint8_t *map = section_row(instructions, map_id);
+    const uint8_t *index = section_row(instructions, index_id);
+    const uint8_t *payload =
+        section_row(instructions, payload_id);
+    TestArena arena;
+    RibosVmInterpreterSnapshot snapshot;
+    RibosVmStorageExecutionControl control;
+    uint64_t remaining;
+    int passed = map != NULL && index != NULL &&
+        payload != NULL;
+
+    memset(&arena, 0, sizeof(arena));
+    passed = passed && initialize_arena(test, context, &arena) &&
+        advance_to_instruction(
+            test,
+            context,
+            &arena,
+            exercise_function,
+            map_id,
+            &snapshot) &&
+        ribos_vm_storage_execution_load_internal_v1(
+            test->prepared,
+            arena.storage,
+            arena.size,
+            &control,
+            &remaining) == RIBOS_VM_STATUS_OK;
+    if (passed) {
+        uint32_t first_key = instruction_operand(view, map, 0);
+        uint32_t duplicate_key = instruction_operand(view, map, 2);
+        uint8_t *bytes = NULL;
+        uint32_t byte_size = 0;
+
+        passed = slot_bytes(
+            test,
+            &arena,
+            control.function_id,
+            control.frame_base,
+            first_key,
+            &bytes,
+            &byte_size) &&
+            store_slot_bytes(
+                test,
+                &arena,
+                control.function_id,
+                control.frame_base,
+                duplicate_key,
+                bytes,
+                byte_size);
+        free(bytes);
+    }
+    passed = passed && expect_current_fault(
+        test,
+        context,
+        &arena,
+        RIBOS_VM_FAULT_INVALID_VALUE);
+    release_arena(&arena);
+
+    memset(&arena, 0, sizeof(arena));
+    passed = passed && initialize_arena(test, context, &arena) &&
+        advance_to_instruction(
+            test,
+            context,
+            &arena,
+            exercise_function,
+            index_id,
+            &snapshot) &&
+        ribos_vm_storage_execution_load_internal_v1(
+            test->prepared,
+            arena.storage,
+            arena.size,
+            &control,
+            &remaining) == RIBOS_VM_STATUS_OK;
+    if (passed) {
+        uint32_t index_slot = instruction_operand(view, index, 1);
+
+        passed = ribos_vm_storage_slot_store_unsigned_v1(
+            test->prepared,
+            arena.storage,
+            arena.size,
+            control.function_id,
+            control.frame_base,
+            index_slot,
+            32,
+            UINT32_MAX) == RIBOS_VM_STATUS_OK;
+    }
+    passed = passed && expect_current_fault(
+        test,
+        context,
+        &arena,
+        RIBOS_VM_FAULT_INVALID_VALUE);
+    release_arena(&arena);
+
+    memset(&arena, 0, sizeof(arena));
+    passed = passed && initialize_arena(test, context, &arena) &&
+        advance_to_instruction(
+            test,
+            context,
+            &arena,
+            exercise_function,
+            payload_id,
+            &snapshot) &&
+        ribos_vm_storage_execution_load_internal_v1(
+            test->prepared,
+            arena.storage,
+            arena.size,
+            &control,
+            &remaining) == RIBOS_VM_STATUS_OK;
+    if (passed) {
+        uint32_t aggregate_slot =
+            instruction_operand(view, payload, 0);
+        uint8_t *bytes = NULL;
+        uint32_t byte_size = 0;
+
+        passed = slot_bytes(
+            test,
+            &arena,
+            control.function_id,
+            control.frame_base,
+            aggregate_slot,
+            &bytes,
+            &byte_size) &&
+            byte_size != 0;
+        if (passed) {
+            bytes[0] = UINT8_MAX;
+            passed = store_slot_bytes(
+                test,
+                &arena,
+                control.function_id,
+                control.frame_base,
+                aggregate_slot,
+                bytes,
+                byte_size);
+        }
+        free(bytes);
+    }
+    passed = passed && expect_current_fault(
+        test,
+        context,
+        &arena,
+        RIBOS_VM_FAULT_INVALID_VALUE);
+    release_arena(&arena);
+    return passed;
+}
+
+static int
+test_aggregate_calls(
+    TestProgram *test,
+    const TestContext *context)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(test->prepared);
+    const RibosArtifactSectionView *instructions =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_INSTRUCTIONS);
+    const RibosArtifactSectionView *slots =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SLOTS);
+    const RibosArtifactSectionView *types =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_TYPES);
+    TestArena arena;
+    RibosVmInterpreterSnapshot snapshot;
+    uint32_t aggregate_calls = 0;
+    int passed = 1;
+
+    memset(&arena, 0, sizeof(arena));
+    if (!initialize_arena(test, context, &arena) ||
+        ribos_vm_interpreter_snapshot_v1(
+            test->prepared,
+            arena.storage,
+            arena.size,
+            &snapshot) != RIBOS_VM_STATUS_OK) {
+        release_arena(&arena);
+        return expect_true("aggregate call fixture", 0);
+    }
+    while (passed &&
+           (snapshot.state == RIBOS_VM_INTERPRETER_READY ||
+            snapshot.state == RIBOS_VM_INTERPRETER_RUNNING)) {
+        const uint8_t *instruction =
+            section_row(instructions, snapshot.instruction_id);
+
+        if (instruction == NULL) {
+            passed = 0;
+            break;
+        }
+        if (instruction[0] == RIBOS_BC_CALL_HELPER) {
+            break;
+        }
+        if (instruction[0] == RIBOS_BC_CALL_DIRECT) {
+            const uint8_t *slot = section_row(
+                slots,
+                read_u32(instruction + 12));
+            const uint8_t *type = slot == NULL ? NULL :
+                section_row(types, read_u32(slot + 8));
+            uint32_t storage_kind = type == NULL ?
+                UINT32_MAX : read_u32(type + 36);
+
+            if (storage_kind == RIBOS_BC_STORAGE_TAGGED_UNION ||
+                storage_kind == RIBOS_BC_STORAGE_INLINE_STRUCT ||
+                storage_kind == RIBOS_BC_STORAGE_INLINE_ARRAY ||
+                storage_kind == RIBOS_BC_STORAGE_INLINE_LIST ||
+                storage_kind == RIBOS_BC_STORAGE_SORTED_MAP) {
+                ++aggregate_calls;
+            }
+        }
+        passed = expect_status(
+            "aggregate direct-call instruction",
+            ribos_vm_interpreter_step_v1(
+                test->prepared,
+                &context->value,
+                arena.storage,
+                arena.size,
+                &snapshot),
+            RIBOS_VM_STATUS_OK);
+        if (snapshot.state == RIBOS_VM_INTERPRETER_FAULTED) {
+            RibosVmFaultReceipt receipt;
+
+            memset(&receipt, 0, sizeof(receipt));
+            (void)ribos_vm_interpreter_fault_v1(
+                test->prepared,
+                arena.storage,
+                arena.size,
+                &receipt);
+            fprintf(
+                stderr,
+                "aggregate direct-call fault: function=%u "
+                "instruction=%u fault=%u subject=%u detail=%u\n",
+                snapshot.function_id,
+                snapshot.instruction_id,
+                snapshot.fault_code,
+                receipt.subject,
+                receipt.detail);
+            passed = 0;
+        }
+    }
+    if (!(aggregate_calls >= 2 &&
+          snapshot.function_id == view->entry_function &&
+          section_row(
+              instructions,
+              snapshot.instruction_id)[0] ==
+              RIBOS_BC_CALL_HELPER)) {
+        fprintf(
+            stderr,
+            "aggregate direct-call closure: calls=%u function=%u "
+            "entry=%u instruction=%u opcode=%u state=%u fault=%u\n",
+            aggregate_calls,
+            snapshot.function_id,
+            view->entry_function,
+            snapshot.instruction_id,
+            section_row(instructions, snapshot.instruction_id)[0],
+            snapshot.state,
+            snapshot.fault_code);
+    }
+    passed = passed && expect_true(
+        "aggregate direct-call closure",
+        aggregate_calls >= 2 &&
+            snapshot.function_id == view->entry_function &&
+            section_row(
+                instructions,
+                snapshot.instruction_id)[0] ==
+                RIBOS_BC_CALL_HELPER);
+    release_arena(&arena);
+    return passed;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1191,13 +2218,28 @@ main(int argc, char **argv)
 
     if (argc != 3 ||
         (strcmp(argv[2], "calls") != 0 &&
-         strcmp(argv[2], "loops") != 0)) {
-        fprintf(stderr, "usage: %s POLICY.rba calls|loops\n", argv[0]);
+         strcmp(argv[2], "loops") != 0 &&
+         strcmp(argv[2], "aggregates") != 0 &&
+         strcmp(argv[2], "aggregate-calls") != 0)) {
+        fprintf(
+            stderr,
+            "usage: %s POLICY.rba "
+            "calls|loops|aggregates|aggregate-calls\n",
+            argv[0]);
         return 2;
     }
-    if (!prepare_program(argv[1], &test) ||
+    uint64_t maximum_helper_calls =
+        strcmp(argv[2], "aggregate-calls") == 0 ? 1 : 2;
+    uint64_t maximum_instructions =
+        strcmp(argv[2], "aggregate-calls") == 0 ? 1024 : 4096;
+
+    if (!prepare_program(
+            argv[1],
+            maximum_instructions,
+            maximum_helper_calls,
+            &test) ||
         !initialize_context(&test, &context)) {
-        fprintf(stderr, "failed to prepare calls/loops fixture\n");
+        fprintf(stderr, "failed to prepare interpreter fixture\n");
         release_program(&test);
         return 1;
     }
@@ -1206,8 +2248,15 @@ main(int argc, char **argv)
         passed = test_call_depth_and_nested_fault(
             &test,
             &context) && passed;
-    } else {
+    } else if (strcmp(argv[2], "loops") == 0) {
         passed = test_loops(&test, &context);
+    } else if (strcmp(argv[2], "aggregates") == 0) {
+        passed = test_aggregate_execution(&test, &context);
+        passed = test_invalid_aggregate_state(
+            &test,
+            &context) && passed;
+    } else {
+        passed = test_aggregate_calls(&test, &context);
     }
     release_program(&test);
     if (!passed) {
@@ -1217,11 +2266,20 @@ main(int argc, char **argv)
         puts(
             "RIBOS-VM-CALLS-OK calls=direct frames=explicit "
             "resources=exact evidence=host-interpreter");
-    } else {
+    } else if (strcmp(argv[2], "loops") == 0) {
         puts(
             "RIBOS-VM-LOOPS-OK loops=latch-bounded "
             "dispatch=exact reset=external-entry "
             "evidence=host-interpreter");
+    } else if (strcmp(argv[2], "aggregates") == 0) {
+        puts(
+            "RIBOS-VM-AGGREGATES-OK storage=inline "
+            "maps=stable-order faults=fail-closed "
+            "evidence=host-interpreter");
+    } else {
+        puts(
+            "RIBOS-VM-AGGREGATE-CALLS-OK transfer=exact "
+            "frames=arena-backed evidence=host-interpreter");
     }
     return 0;
 }

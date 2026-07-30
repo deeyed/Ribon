@@ -1,0 +1,76 @@
+struct Reading {
+    channel: u8
+    sample: u32
+}
+
+enum AggregateResult {
+    Missing
+    Complete(Reading, u32)
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=4096,
+    helper_budget=2,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let seed: u32 = 11
+    let empty_values: List[u32, 4] = []
+    let values: List[u32, 4] = [
+        seed,
+        3,
+        5,
+    ]
+    let full_values: List[u32, 4] = [
+        1,
+        2,
+        3,
+        4,
+    ]
+    let copied_values = values
+    let readings: List[Reading, 3] = [
+        Reading(channel=1, sample=10),
+        Reading(channel=2, sample=20),
+    ]
+    let copied_readings = readings
+    let empty_map: Dict[u32, u32, 4] = {}
+    let readings_by_channel: Dict[u32, u32, 4] = {
+        3: 30,
+        1: 10,
+        2: 20,
+    }
+    let selected = readings_by_channel.get(
+        2,
+        default=99,
+    )
+    let fallback = readings_by_channel.get(
+        4,
+        default=7,
+    )
+    let first = copied_values[1]
+    let total = selected + fallback + seed + first
+    let reading = Reading(
+        channel=2,
+        sample=total,
+    )
+    let copied = reading
+    let aggregate = AggregateResult.Complete(
+        copied,
+        total + 1,
+    )
+    match aggregate {
+        AggregateResult.Complete(reading, next) => {
+            if reading.sample + next > 0 {
+                return Ok(boot.recovery(
+                    RecoveryReason.REQUESTED
+                ))
+            }
+            return Err(BootError.POLICY_REJECTED)
+        }
+        AggregateResult.Missing => {
+            return Err(BootError.POLICY_REJECTED)
+        }
+    }
+}

@@ -5,6 +5,11 @@
 
 #include <string.h>
 
+_Static_assert(
+    RIBOS_IR_FRAME_ALIGNMENT_V1 ==
+        RIBOS_BYTECODE_FRAME_ALIGNMENT_V1,
+    "Policy IR and bytecode frame alignment must match");
+
 typedef struct RibosArtifactImport {
     uint32_t stable_id;
     uint32_t capabilities;

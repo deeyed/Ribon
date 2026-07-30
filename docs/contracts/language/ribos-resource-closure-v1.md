@@ -135,11 +135,12 @@ resize, rehash와 heap fallback은 없다.
 ## Slot, frame와 call stack
 
 Policy IR v1.1은 virtual slot ID 순서대로 frame offset을 배치하며 slot storage를
-재사용하지 않는다. 각 offset은 type alignment를 만족한다.
+재사용하지 않는다. 각 offset은 type alignment를 만족하고 function frame 전체는
+VM frame alignment인 8 bytes로 올림한다.
 
 ```text
 frame bytes
-  = align(sum(aligned slot storage), maximum slot alignment)
+  = align(sum(aligned slot storage), max(maximum slot alignment, 8))
 
 maximum call depth
   = 1 + maximum reachable direct-callee depth
@@ -147,6 +148,10 @@ maximum call depth
 maximum stack bytes
   = frame bytes + maximum reachable callee stack bytes
 ```
+
+따라서 모든 frame base와 end는 8-byte-aligned이고 direct-call stack 합에는 slot 뒤
+padding이 포함된다. Compiler와 independent verifier는 이 값을 각각 계산하며 runtime
+arena는 같은 alignment보다 작은 frame을 받아들이지 않는다.
 
 이 layout은 최적 register allocation이 아니라 verifier가 쉽게 재계산할 수 있는
 baseline이다. Emitter가 slot reuse를 도입하려면 별도 liveness proof와 artifact

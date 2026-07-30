@@ -67,6 +67,8 @@ board service는 VM Core가 아니라 후속 embedder 계층이 소유해야 한
   authority로 연결할 수 없다.
 - 후속 ADR 0029는 같은 portable switch와 verified instruction ID 위에 explicit
   direct-call frame과 latch-bound loop counter를 추가한다.
+- 후속 ADR 0030은 같은 arena와 switch 위에 canonical fixed-capacity aggregate
+  실행을 추가한다.
 
 ## 기각한 대안
 

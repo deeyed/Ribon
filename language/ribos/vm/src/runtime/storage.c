@@ -7,6 +7,11 @@
 #include <stdint.h>
 #include <string.h>
 
+_Static_assert(
+    RIBOS_VM_STORAGE_ALIGNMENT_V1 ==
+        RIBOS_BYTECODE_FRAME_ALIGNMENT_V1,
+    "runtime arena alignment must match bytecode frame alignment");
+
 #define RIBOS_VM_STORAGE_MAGIC UINT64_C(0x524253564d535431)
 #define RIBOS_VM_CONTROL_BYTES UINT64_C(512)
 #define RIBOS_VM_FRAME_RECORD_BYTES UINT32_C(32)
@@ -1279,6 +1284,485 @@ ribos_vm_storage_slot_read_v1(
             ribos_vm_storage_location_const_value(
                 storage,
                 &location),
+            byte_size);
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+static int
+ribos_vm_storage_slice_is_valid(
+    const RibosVmSlotLocation *location,
+    uint32_t offset,
+    uint32_t byte_size)
+{
+    return location != NULL &&
+        offset <= location->byte_size &&
+        byte_size <= location->byte_size - offset;
+}
+
+static int
+ribos_vm_storage_location_is_initialized(
+    const RibosVmStorage *storage,
+    const RibosVmSlotLocation *location)
+{
+    const uint8_t *state;
+
+    if (storage == NULL || location == NULL) {
+        return 0;
+    }
+    state = ribos_vm_storage_location_const_state(storage, location);
+    return state[0] == RIBOS_VM_SLOT_STORAGE_INITIALIZED &&
+        state[1] == 0 && state[2] == 0 && state[3] == 0 &&
+        state[4] == 0 && state[5] == 0 && state[6] == 0 &&
+        state[7] == 0;
+}
+
+static void
+ribos_vm_storage_location_mark_initialized(
+    RibosVmStorage *storage,
+    const RibosVmSlotLocation *location)
+{
+    uint8_t *state =
+        ribos_vm_storage_location_state(storage, location);
+
+    memset(state, 0, RIBOS_VM_SLOT_STATE_BYTES);
+    state[0] = RIBOS_VM_SLOT_STORAGE_INITIALIZED;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_zero_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id)
+{
+    RibosVmSlotLocation location;
+    RibosVmStatus status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        function_id,
+        frame_base,
+        slot_id,
+        &location);
+
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (location.byte_size != 0) {
+        memset(
+            ribos_vm_storage_location_value(storage, &location),
+            0,
+            location.byte_size);
+    }
+    ribos_vm_storage_location_mark_initialized(storage, &location);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_copy_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t source_function_id,
+    uint64_t source_frame_base,
+    uint32_t source_slot_id,
+    uint32_t destination_function_id,
+    uint64_t destination_frame_base,
+    uint32_t destination_slot_id)
+{
+    RibosVmSlotLocation source;
+    RibosVmSlotLocation destination;
+    RibosVmStatus status;
+
+    status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        source_function_id,
+        source_frame_base,
+        source_slot_id,
+        &source);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        destination_function_id,
+        destination_frame_base,
+        destination_slot_id,
+        &destination);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (source.type_id != destination.type_id ||
+        source.byte_size != destination.byte_size) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
+    if (!ribos_vm_storage_location_is_initialized(
+            storage,
+            &source)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (source.byte_size != 0) {
+        memmove(
+            ribos_vm_storage_location_value(
+                storage,
+                &destination),
+            ribos_vm_storage_location_const_value(
+                storage,
+                &source),
+            source.byte_size);
+    }
+    ribos_vm_storage_location_mark_initialized(
+        storage,
+        &destination);
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_slice_read_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t offset,
+    uint8_t *bytes,
+    uint32_t byte_size)
+{
+    RibosVmSlotLocation location;
+    RibosVmStatus status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        function_id,
+        frame_base,
+        slot_id,
+        &location);
+
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (!ribos_vm_storage_slice_is_valid(
+            &location,
+            offset,
+            byte_size) ||
+        (byte_size != 0 && bytes == NULL)) {
+        return RIBOS_VM_STATUS_INVALID_SIZE;
+    }
+    if (!ribos_vm_storage_location_is_initialized(
+            storage,
+            &location)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (byte_size != 0) {
+        memcpy(
+            bytes,
+            ribos_vm_storage_location_const_value(
+                storage,
+                &location) + offset,
+            byte_size);
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_slice_write_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t offset,
+    const uint8_t *bytes,
+    uint32_t byte_size)
+{
+    RibosVmSlotLocation location;
+    RibosVmStatus status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        function_id,
+        frame_base,
+        slot_id,
+        &location);
+
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (!ribos_vm_storage_slice_is_valid(
+            &location,
+            offset,
+            byte_size) ||
+        (byte_size != 0 && bytes == NULL)) {
+        return RIBOS_VM_STATUS_INVALID_SIZE;
+    }
+    if (!ribos_vm_storage_location_is_initialized(
+            storage,
+            &location)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (byte_size != 0) {
+        memcpy(
+            ribos_vm_storage_location_value(
+                storage,
+                &location) + offset,
+            bytes,
+            byte_size);
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_slice_zero_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t offset,
+    uint32_t byte_size)
+{
+    RibosVmSlotLocation location;
+    RibosVmStatus status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        function_id,
+        frame_base,
+        slot_id,
+        &location);
+
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (!ribos_vm_storage_slice_is_valid(
+            &location,
+            offset,
+            byte_size)) {
+        return RIBOS_VM_STATUS_INVALID_SIZE;
+    }
+    if (!ribos_vm_storage_location_is_initialized(
+            storage,
+            &location)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (byte_size != 0) {
+        memset(
+            ribos_vm_storage_location_value(
+                storage,
+                &location) + offset,
+            0,
+            byte_size);
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_slice_copy_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t source_function_id,
+    uint64_t source_frame_base,
+    uint32_t source_slot_id,
+    uint32_t source_offset,
+    uint32_t destination_function_id,
+    uint64_t destination_frame_base,
+    uint32_t destination_slot_id,
+    uint32_t destination_offset,
+    uint32_t byte_size)
+{
+    RibosVmSlotLocation source;
+    RibosVmSlotLocation destination;
+    RibosVmStatus status;
+
+    status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        source_function_id,
+        source_frame_base,
+        source_slot_id,
+        &source);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        destination_function_id,
+        destination_frame_base,
+        destination_slot_id,
+        &destination);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (!ribos_vm_storage_slice_is_valid(
+            &source,
+            source_offset,
+            byte_size) ||
+        !ribos_vm_storage_slice_is_valid(
+            &destination,
+            destination_offset,
+            byte_size)) {
+        return RIBOS_VM_STATUS_INVALID_SIZE;
+    }
+    if (!ribos_vm_storage_location_is_initialized(
+            storage,
+            &source) ||
+        !ribos_vm_storage_location_is_initialized(
+            storage,
+            &destination)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (byte_size != 0) {
+        memmove(
+            ribos_vm_storage_location_value(
+                storage,
+                &destination) + destination_offset,
+            ribos_vm_storage_location_const_value(
+                storage,
+                &source) + source_offset,
+            byte_size);
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_slice_move_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t function_id,
+    uint64_t frame_base,
+    uint32_t slot_id,
+    uint32_t source_offset,
+    uint32_t destination_offset,
+    uint32_t byte_size)
+{
+    RibosVmSlotLocation location;
+    RibosVmStatus status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        function_id,
+        frame_base,
+        slot_id,
+        &location);
+
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (!ribos_vm_storage_slice_is_valid(
+            &location,
+            source_offset,
+            byte_size) ||
+        !ribos_vm_storage_slice_is_valid(
+            &location,
+            destination_offset,
+            byte_size)) {
+        return RIBOS_VM_STATUS_INVALID_SIZE;
+    }
+    if (!ribos_vm_storage_location_is_initialized(
+            storage,
+            &location)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (byte_size != 0) {
+        memmove(
+            ribos_vm_storage_location_value(
+                storage,
+                &location) + destination_offset,
+            ribos_vm_storage_location_value(
+                storage,
+                &location) + source_offset,
+            byte_size);
+    }
+    return RIBOS_VM_STATUS_OK;
+}
+
+RibosVmStatus
+ribos_vm_storage_slot_slice_compare_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t left_function_id,
+    uint64_t left_frame_base,
+    uint32_t left_slot_id,
+    uint32_t left_offset,
+    uint32_t right_function_id,
+    uint64_t right_frame_base,
+    uint32_t right_slot_id,
+    uint32_t right_offset,
+    uint32_t byte_size,
+    int *comparison)
+{
+    RibosVmSlotLocation left;
+    RibosVmSlotLocation right;
+    RibosVmStatus status;
+
+    if (comparison == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    *comparison = 0;
+    status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        left_function_id,
+        left_frame_base,
+        left_slot_id,
+        &left);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    status = ribos_vm_storage_locate_slot(
+        prepared_program,
+        storage,
+        arena_size,
+        right_function_id,
+        right_frame_base,
+        right_slot_id,
+        &right);
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (!ribos_vm_storage_slice_is_valid(
+            &left,
+            left_offset,
+            byte_size) ||
+        !ribos_vm_storage_slice_is_valid(
+            &right,
+            right_offset,
+            byte_size)) {
+        return RIBOS_VM_STATUS_INVALID_SIZE;
+    }
+    if (!ribos_vm_storage_location_is_initialized(
+            storage,
+            &left) ||
+        !ribos_vm_storage_location_is_initialized(
+            storage,
+            &right)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    if (byte_size != 0) {
+        *comparison = memcmp(
+            ribos_vm_storage_location_const_value(
+                storage,
+                &left) + left_offset,
+            ribos_vm_storage_location_const_value(
+                storage,
+                &right) + right_offset,
             byte_size);
     }
     return RIBOS_VM_STATUS_OK;

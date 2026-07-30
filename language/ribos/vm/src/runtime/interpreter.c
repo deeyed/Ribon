@@ -10,6 +10,7 @@
 typedef struct RibosVmInterpreterTables {
     const RibosArtifactView *view;
     const RibosArtifactSectionView *types;
+    const RibosArtifactSectionView *shapes;
     const RibosArtifactSectionView *constants;
     const RibosArtifactSectionView *functions;
     const RibosArtifactSectionView *blocks;
@@ -27,7 +28,24 @@ typedef struct RibosVmInterpreterSlot {
     uint16_t bit_width;
     uint32_t storage_kind;
     uint32_t byte_size;
+    uint32_t alignment;
 } RibosVmInterpreterSlot;
+
+typedef struct RibosVmInterpreterType {
+    uint32_t id;
+    uint16_t kind;
+    uint16_t bit_width;
+    uint32_t first_type;
+    uint32_t second_type;
+    uint32_t bound;
+    uint32_t shape_start;
+    uint32_t shape_count;
+    uint32_t storage_kind;
+    uint32_t byte_size;
+    uint32_t element_stride;
+    uint32_t payload_offset;
+    uint32_t capacity;
+} RibosVmInterpreterType;
 
 static uint16_t
 ribos_vm_interpreter_u16(const uint8_t *bytes)
@@ -113,6 +131,9 @@ ribos_vm_interpreter_tables(
     tables->types = ribos_artifact_find_section(
         view,
         RIBOS_ARTIFACT_SECTION_TYPES);
+    tables->shapes = ribos_artifact_find_section(
+        view,
+        RIBOS_ARTIFACT_SECTION_SHAPES);
     tables->constants = ribos_artifact_find_section(
         view,
         RIBOS_ARTIFACT_SECTION_CONSTANTS);
@@ -134,7 +155,8 @@ ribos_vm_interpreter_tables(
     tables->operands = ribos_artifact_find_section(
         view,
         RIBOS_ARTIFACT_SECTION_OPERANDS);
-    if (tables->types == NULL || tables->constants == NULL ||
+    if (tables->types == NULL || tables->shapes == NULL ||
+        tables->constants == NULL ||
         tables->functions == NULL || tables->blocks == NULL ||
         tables->loops == NULL ||
         tables->slots == NULL || tables->instructions == NULL ||
@@ -218,8 +240,103 @@ ribos_vm_interpreter_slot(
         .bit_width = ribos_vm_interpreter_u16(type_row + 6),
         .storage_kind = ribos_vm_interpreter_u32(type_row + 36),
         .byte_size = ribos_vm_interpreter_u32(slot_row + 16),
+        .alignment = ribos_vm_interpreter_u32(slot_row + 20),
     };
     return 1;
+}
+
+static int
+ribos_vm_interpreter_type(
+    const RibosVmInterpreterTables *tables,
+    uint32_t type_id,
+    RibosVmInterpreterType *type)
+{
+    const uint8_t *row;
+
+    if (tables == NULL || type == NULL) {
+        return 0;
+    }
+    row = ribos_vm_interpreter_row(tables->types, type_id);
+    if (row == NULL ||
+        ribos_vm_interpreter_u32(row) != type_id) {
+        return 0;
+    }
+    *type = (RibosVmInterpreterType){
+        .id = type_id,
+        .kind = ribos_vm_interpreter_u16(row + 4),
+        .bit_width = ribos_vm_interpreter_u16(row + 6),
+        .first_type = ribos_vm_interpreter_u32(row + 8),
+        .second_type = ribos_vm_interpreter_u32(row + 12),
+        .bound = ribos_vm_interpreter_u32(row + 16),
+        .shape_start = ribos_vm_interpreter_u32(row + 20),
+        .shape_count = ribos_vm_interpreter_u32(row + 24),
+        .storage_kind = ribos_vm_interpreter_u32(row + 36),
+        .byte_size = ribos_vm_interpreter_u32(row + 40),
+        .element_stride = ribos_vm_interpreter_u32(row + 44),
+        .payload_offset = ribos_vm_interpreter_u32(row + 48),
+        .capacity = ribos_vm_interpreter_u32(row + 52),
+    };
+    return 1;
+}
+
+static int
+ribos_vm_interpreter_type_alignment(
+    const RibosVmInterpreterTables *tables,
+    uint32_t type_id,
+    uint32_t *alignment)
+{
+    uint32_t slot_id;
+
+    if (tables == NULL || alignment == NULL) {
+        return 0;
+    }
+    for (slot_id = 0; slot_id < tables->slots->count; ++slot_id) {
+        const uint8_t *row =
+            ribos_vm_interpreter_row(tables->slots, slot_id);
+
+        if (row != NULL &&
+            ribos_vm_interpreter_u32(row + 8) == type_id) {
+            uint32_t value =
+                ribos_vm_interpreter_u32(row + 20);
+
+            if (value == 0 || value > 8 ||
+                (value & (value - 1u)) != 0) {
+                return 0;
+            }
+            *alignment = value;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int
+ribos_vm_interpreter_align_u32(
+    uint32_t value,
+    uint32_t alignment,
+    uint32_t *result)
+{
+    uint32_t mask;
+
+    if (result == NULL || alignment == 0 ||
+        (alignment & (alignment - 1u)) != 0) {
+        return 0;
+    }
+    mask = alignment - 1u;
+    if (value > UINT32_MAX - mask) {
+        return 0;
+    }
+    *result = (value + mask) & ~mask;
+    return 1;
+}
+
+static int
+ribos_vm_interpreter_range_u32(
+    uint32_t offset,
+    uint32_t byte_size,
+    uint32_t limit)
+{
+    return offset <= limit && byte_size <= limit - offset;
 }
 
 static uint32_t
@@ -589,7 +706,1501 @@ ribos_vm_interpreter_store_unsigned(
             control->frame_base,
             slot->id,
             slot->bit_width,
-            value) == RIBOS_VM_STATUS_OK;
+        value) == RIBOS_VM_STATUS_OK;
+}
+
+static int
+ribos_vm_interpreter_zero_slot(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control,
+    const RibosVmInterpreterSlot *slot)
+{
+    return slot != NULL &&
+        slot->function_id == control->function_id &&
+        ribos_vm_storage_slot_zero_internal_v1(
+            prepared_program,
+            storage,
+            arena_size,
+            control->function_id,
+            control->frame_base,
+            slot->id) == RIBOS_VM_STATUS_OK;
+}
+
+static int
+ribos_vm_interpreter_copy_slot(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *source_control,
+    const RibosVmInterpreterSlot *source,
+    const RibosVmStorageExecutionControl *destination_control,
+    const RibosVmInterpreterSlot *destination)
+{
+    return source != NULL && destination != NULL &&
+        source->function_id == source_control->function_id &&
+        destination->function_id ==
+            destination_control->function_id &&
+        source->type_id == destination->type_id &&
+        source->byte_size == destination->byte_size &&
+        ribos_vm_storage_slot_copy_internal_v1(
+            prepared_program,
+            storage,
+            arena_size,
+            source_control->function_id,
+            source_control->frame_base,
+            source->id,
+            destination_control->function_id,
+            destination_control->frame_base,
+            destination->id) == RIBOS_VM_STATUS_OK;
+}
+
+static int
+ribos_vm_interpreter_copy_slice(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *source_control,
+    const RibosVmInterpreterSlot *source,
+    uint32_t source_offset,
+    const RibosVmStorageExecutionControl *destination_control,
+    const RibosVmInterpreterSlot *destination,
+    uint32_t destination_offset,
+    uint32_t byte_size)
+{
+    return source != NULL && destination != NULL &&
+        source->function_id == source_control->function_id &&
+        destination->function_id ==
+            destination_control->function_id &&
+        ribos_vm_storage_slot_slice_copy_internal_v1(
+            prepared_program,
+            storage,
+            arena_size,
+            source_control->function_id,
+            source_control->frame_base,
+            source->id,
+            source_offset,
+            destination_control->function_id,
+            destination_control->frame_base,
+            destination->id,
+            destination_offset,
+            byte_size) == RIBOS_VM_STATUS_OK;
+}
+
+static int
+ribos_vm_interpreter_read_slice(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control,
+    const RibosVmInterpreterSlot *slot,
+    uint32_t offset,
+    uint8_t *bytes,
+    uint32_t byte_size)
+{
+    return slot != NULL &&
+        slot->function_id == control->function_id &&
+        ribos_vm_storage_slot_slice_read_internal_v1(
+            prepared_program,
+            storage,
+            arena_size,
+            control->function_id,
+            control->frame_base,
+            slot->id,
+            offset,
+            bytes,
+            byte_size) == RIBOS_VM_STATUS_OK;
+}
+
+static int
+ribos_vm_interpreter_write_slice(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control,
+    const RibosVmInterpreterSlot *slot,
+    uint32_t offset,
+    const uint8_t *bytes,
+    uint32_t byte_size)
+{
+    return slot != NULL &&
+        slot->function_id == control->function_id &&
+        ribos_vm_storage_slot_slice_write_internal_v1(
+            prepared_program,
+            storage,
+            arena_size,
+            control->function_id,
+            control->frame_base,
+            slot->id,
+            offset,
+            bytes,
+            byte_size) == RIBOS_VM_STATUS_OK;
+}
+
+static int
+ribos_vm_interpreter_struct_field(
+    const RibosVmInterpreterTables *tables,
+    const RibosVmInterpreterType *type,
+    uint32_t requested_ordinal,
+    uint32_t *field_type,
+    uint32_t *field_offset)
+{
+    uint32_t offset = 0;
+    uint32_t index;
+
+    if (tables == NULL || type == NULL ||
+        field_type == NULL || field_offset == NULL ||
+        type->kind != RIBOS_BC_TYPE_STRUCT ||
+        requested_ordinal >= type->shape_count ||
+        type->shape_start > tables->shapes->count ||
+        type->shape_count >
+            tables->shapes->count - type->shape_start) {
+        return 0;
+    }
+    for (index = 0; index < type->shape_count; ++index) {
+        const uint8_t *shape = ribos_vm_interpreter_row(
+            tables->shapes,
+            type->shape_start + index);
+        RibosVmInterpreterType value_type;
+        uint32_t value_type_id;
+        uint32_t alignment;
+
+        if (shape == NULL ||
+            ribos_vm_interpreter_u32(shape + 4) !=
+                RIBOS_BC_SHAPE_STRUCT_FIELD ||
+            ribos_vm_interpreter_u32(shape + 8) != type->id ||
+            ribos_vm_interpreter_u32(shape + 16) != index) {
+            return 0;
+        }
+        value_type_id = ribos_vm_interpreter_u32(shape + 20);
+        if (!ribos_vm_interpreter_type(
+                tables,
+                value_type_id,
+                &value_type) ||
+            !ribos_vm_interpreter_type_alignment(
+                tables,
+                value_type_id,
+                &alignment) ||
+            !ribos_vm_interpreter_align_u32(
+                offset,
+                alignment,
+                &offset) ||
+            !ribos_vm_interpreter_range_u32(
+                offset,
+                value_type.byte_size,
+                type->byte_size)) {
+            return 0;
+        }
+        if (index == requested_ordinal) {
+            *field_type = value_type_id;
+            *field_offset = offset;
+            return 1;
+        }
+        offset += value_type.byte_size;
+    }
+    return 0;
+}
+
+static int
+ribos_vm_interpreter_enum_variant_exists(
+    const RibosVmInterpreterTables *tables,
+    const RibosVmInterpreterType *type,
+    uint32_t tag)
+{
+    uint32_t index;
+
+    if (tables == NULL || type == NULL ||
+        type->kind != RIBOS_BC_TYPE_ENUM ||
+        tag > UINT8_MAX ||
+        type->shape_start > tables->shapes->count ||
+        type->shape_count >
+            tables->shapes->count - type->shape_start) {
+        return 0;
+    }
+    for (index = 0; index < type->shape_count; ++index) {
+        const uint8_t *shape = ribos_vm_interpreter_row(
+            tables->shapes,
+            type->shape_start + index);
+
+        if (shape != NULL &&
+            ribos_vm_interpreter_u32(shape + 4) ==
+                RIBOS_BC_SHAPE_ENUM_VARIANT &&
+            ribos_vm_interpreter_u32(shape + 8) == type->id &&
+            ribos_vm_interpreter_u32(shape + 12) == tag) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int
+ribos_vm_interpreter_enum_payload(
+    const RibosVmInterpreterTables *tables,
+    const RibosVmInterpreterType *type,
+    uint32_t tag,
+    uint32_t requested_ordinal,
+    uint32_t *payload_type,
+    uint32_t *payload_offset,
+    uint32_t *payload_count)
+{
+    uint32_t offset = type == NULL ? 0 : type->payload_offset;
+    uint32_t count = 0;
+    uint32_t index;
+
+    if (tables == NULL || type == NULL ||
+        type->kind != RIBOS_BC_TYPE_ENUM ||
+        !ribos_vm_interpreter_enum_variant_exists(
+            tables,
+            type,
+            tag)) {
+        return 0;
+    }
+    for (index = 0; index < type->shape_count; ++index) {
+        const uint8_t *shape = ribos_vm_interpreter_row(
+            tables->shapes,
+            type->shape_start + index);
+        uint32_t value_type_id;
+        RibosVmInterpreterType value_type;
+        uint32_t alignment;
+
+        if (shape == NULL ||
+            ribos_vm_interpreter_u32(shape + 4) !=
+                RIBOS_BC_SHAPE_ENUM_PAYLOAD ||
+            ribos_vm_interpreter_u32(shape + 12) != tag) {
+            continue;
+        }
+        if (ribos_vm_interpreter_u32(shape + 8) != type->id ||
+            ribos_vm_interpreter_u32(shape + 16) != count) {
+            return 0;
+        }
+        value_type_id = ribos_vm_interpreter_u32(shape + 20);
+        if (!ribos_vm_interpreter_type(
+                tables,
+                value_type_id,
+                &value_type) ||
+            !ribos_vm_interpreter_type_alignment(
+                tables,
+                value_type_id,
+                &alignment) ||
+            !ribos_vm_interpreter_align_u32(
+                offset,
+                alignment,
+                &offset) ||
+            !ribos_vm_interpreter_range_u32(
+                offset,
+                value_type.byte_size,
+                type->byte_size)) {
+            return 0;
+        }
+        if (requested_ordinal == count &&
+            payload_type != NULL && payload_offset != NULL) {
+            *payload_type = value_type_id;
+            *payload_offset = offset;
+        }
+        offset += value_type.byte_size;
+        ++count;
+    }
+    if (payload_count != NULL) {
+        *payload_count = count;
+    }
+    return requested_ordinal < count ||
+        requested_ordinal == RIBOS_VM_INVALID_ID;
+}
+
+static int
+ribos_vm_interpreter_variant_payload(
+    const RibosVmInterpreterTables *tables,
+    const RibosVmInterpreterType *type,
+    uint32_t tag,
+    uint32_t ordinal,
+    uint32_t *payload_type,
+    uint32_t *payload_offset,
+    uint32_t *payload_count)
+{
+    if (type == NULL || tag > UINT8_MAX) {
+        return 0;
+    }
+    if (type->kind == RIBOS_BC_TYPE_OPTION) {
+        uint32_t count = tag == 0 ? 1u : 0u;
+
+        if (tag > 1 || (ordinal != RIBOS_VM_INVALID_ID &&
+                       ordinal >= count)) {
+            return 0;
+        }
+        if (payload_count != NULL) {
+            *payload_count = count;
+        }
+        if (count != 0 && ordinal != RIBOS_VM_INVALID_ID) {
+            *payload_type = type->first_type;
+            *payload_offset = type->payload_offset;
+        }
+        return 1;
+    }
+    if (type->kind == RIBOS_BC_TYPE_RESULT) {
+        if (tag > 1 ||
+            (ordinal != RIBOS_VM_INVALID_ID && ordinal != 0)) {
+            return 0;
+        }
+        if (payload_count != NULL) {
+            *payload_count = 1;
+        }
+        if (ordinal != RIBOS_VM_INVALID_ID) {
+            *payload_type =
+                tag == 0 ? type->first_type : type->second_type;
+            *payload_offset = type->payload_offset;
+        }
+        return 1;
+    }
+    return ribos_vm_interpreter_enum_payload(
+        tables,
+        type,
+        tag,
+        ordinal,
+        payload_type,
+        payload_offset,
+        payload_count);
+}
+
+static int
+ribos_vm_interpreter_variant_tag_is_valid(
+    const RibosVmInterpreterTables *tables,
+    const RibosVmInterpreterType *type,
+    uint32_t tag)
+{
+    uint32_t count;
+
+    return ribos_vm_interpreter_variant_payload(
+        tables,
+        type,
+        tag,
+        RIBOS_VM_INVALID_ID,
+        NULL,
+        NULL,
+        &count);
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_build_list(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    RibosVmInterpreterType aggregate;
+    RibosVmInterpreterType element;
+    uint32_t count;
+    uint32_t index;
+    uint8_t length_bytes[4];
+
+    if (!ribos_vm_interpreter_type(
+            tables,
+            result->type_id,
+            &aggregate) ||
+        (aggregate.kind != RIBOS_BC_TYPE_ARRAY &&
+         aggregate.kind != RIBOS_BC_TYPE_LIST) ||
+        !ribos_vm_interpreter_type(
+            tables,
+            aggregate.first_type,
+            &element) ||
+        result->byte_size != aggregate.byte_size ||
+        aggregate.capacity != aggregate.bound ||
+        aggregate.element_stride < element.byte_size ||
+        aggregate.payload_offset > aggregate.byte_size ||
+        aggregate.element_stride == 0 ||
+        (aggregate.element_stride != 0 &&
+            aggregate.capacity >
+                (aggregate.byte_size - aggregate.payload_offset) /
+                    aggregate.element_stride) ||
+        ribos_vm_interpreter_u32(instruction + 20) !=
+            aggregate.capacity) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    count = ribos_vm_interpreter_u16(instruction + 2);
+    if (count > aggregate.capacity ||
+        (aggregate.kind == RIBOS_BC_TYPE_ARRAY &&
+         count != aggregate.capacity) ||
+        !ribos_vm_interpreter_zero_slot(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    if (aggregate.kind == RIBOS_BC_TYPE_LIST) {
+        ribos_vm_interpreter_write_u32(length_bytes, count);
+        if (!ribos_vm_interpreter_write_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                result,
+                0,
+                length_bytes,
+                sizeof(length_bytes))) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+    }
+    for (index = 0; index < count; ++index) {
+        uint32_t operand_id = ribos_vm_interpreter_operand(
+            tables,
+            instruction,
+            index);
+        RibosVmInterpreterSlot operand;
+        uint32_t destination =
+            aggregate.payload_offset +
+            index * aggregate.element_stride;
+
+        if (!ribos_vm_interpreter_slot(
+                tables,
+                operand_id,
+                &operand) ||
+            operand.function_id != control->function_id ||
+            operand.type_id != aggregate.first_type ||
+            operand.byte_size != element.byte_size ||
+            !ribos_vm_interpreter_range_u32(
+                destination,
+                element.byte_size,
+                aggregate.byte_size) ||
+            !ribos_vm_interpreter_copy_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &operand,
+                0,
+                control,
+                result,
+                destination,
+                element.byte_size)) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+    }
+    return RIBOS_VM_FAULT_NONE;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_build_struct(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    RibosVmInterpreterType aggregate;
+    uint32_t count = ribos_vm_interpreter_u16(instruction + 2);
+    uint32_t index;
+
+    if (!ribos_vm_interpreter_type(
+            tables,
+            result->type_id,
+            &aggregate) ||
+        aggregate.kind != RIBOS_BC_TYPE_STRUCT ||
+        result->byte_size != aggregate.byte_size ||
+        ribos_vm_interpreter_u32(instruction + 20) !=
+            result->type_id ||
+        count != aggregate.shape_count ||
+        !ribos_vm_interpreter_zero_slot(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    for (index = 0; index < count; ++index) {
+        uint32_t operand_id = ribos_vm_interpreter_operand(
+            tables,
+            instruction,
+            index);
+        RibosVmInterpreterSlot operand;
+        RibosVmInterpreterType field;
+        uint32_t field_type;
+        uint32_t field_offset;
+
+        if (!ribos_vm_interpreter_struct_field(
+                tables,
+                &aggregate,
+                index,
+                &field_type,
+                &field_offset) ||
+            !ribos_vm_interpreter_type(
+                tables,
+                field_type,
+                &field) ||
+            !ribos_vm_interpreter_slot(
+                tables,
+                operand_id,
+                &operand) ||
+            operand.function_id != control->function_id ||
+            operand.type_id != field_type ||
+            operand.byte_size != field.byte_size ||
+            !ribos_vm_interpreter_copy_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &operand,
+                0,
+                control,
+                result,
+                field_offset,
+                field.byte_size)) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+    }
+    return RIBOS_VM_FAULT_NONE;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_build_variant(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    RibosVmInterpreterType aggregate;
+    uint32_t tag = ribos_vm_interpreter_u32(instruction + 20);
+    uint32_t count = ribos_vm_interpreter_u16(instruction + 2);
+    uint32_t expected_count = 0;
+    uint32_t index;
+    uint8_t tag_byte;
+
+    if (!ribos_vm_interpreter_type(
+            tables,
+            result->type_id,
+            &aggregate) ||
+        (aggregate.kind != RIBOS_BC_TYPE_OPTION &&
+         aggregate.kind != RIBOS_BC_TYPE_RESULT &&
+         aggregate.kind != RIBOS_BC_TYPE_ENUM) ||
+        result->byte_size != aggregate.byte_size ||
+        tag > UINT8_MAX ||
+        !ribos_vm_interpreter_variant_payload(
+            tables,
+            &aggregate,
+            tag,
+            RIBOS_VM_INVALID_ID,
+            NULL,
+            NULL,
+            &expected_count) ||
+        count != expected_count ||
+        !ribos_vm_interpreter_zero_slot(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    tag_byte = (uint8_t)tag;
+    if (!ribos_vm_interpreter_write_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result,
+            0,
+            &tag_byte,
+            1)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    for (index = 0; index < count; ++index) {
+        uint32_t operand_id = ribos_vm_interpreter_operand(
+            tables,
+            instruction,
+            index);
+        RibosVmInterpreterSlot operand;
+        RibosVmInterpreterType payload;
+        uint32_t payload_type;
+        uint32_t payload_offset;
+
+        if (!ribos_vm_interpreter_variant_payload(
+                tables,
+                &aggregate,
+                tag,
+                index,
+                &payload_type,
+                &payload_offset,
+                NULL) ||
+            !ribos_vm_interpreter_type(
+                tables,
+                payload_type,
+                &payload) ||
+            !ribos_vm_interpreter_slot(
+                tables,
+                operand_id,
+                &operand) ||
+            operand.function_id != control->function_id ||
+            operand.type_id != payload_type ||
+            operand.byte_size != payload.byte_size ||
+            !ribos_vm_interpreter_range_u32(
+                payload_offset,
+                payload.byte_size,
+                aggregate.byte_size) ||
+            !ribos_vm_interpreter_copy_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &operand,
+                0,
+                control,
+                result,
+                payload_offset,
+                payload.byte_size)) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+    }
+    return RIBOS_VM_FAULT_NONE;
+}
+
+static int64_t
+ribos_vm_interpreter_sign_extend(
+    uint64_t value,
+    uint16_t bit_width)
+{
+    if (bit_width == 64) {
+        return value <= (uint64_t)INT64_MAX ?
+            (int64_t)value :
+            -1 - (int64_t)(UINT64_MAX - value);
+    }
+    if ((value & (UINT64_C(1) << (bit_width - 1u))) != 0) {
+        return (int64_t)value -
+            (int64_t)(UINT64_C(1) << bit_width);
+    }
+    return (int64_t)value;
+}
+
+static int
+ribos_vm_interpreter_compare_keys(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *left_control,
+    const RibosVmInterpreterSlot *left,
+    uint32_t left_offset,
+    const RibosVmStorageExecutionControl *right_control,
+    const RibosVmInterpreterSlot *right,
+    uint32_t right_offset,
+    const RibosVmInterpreterType *key_type,
+    int *comparison)
+{
+    uint8_t left_bytes[8] = {0};
+    uint8_t right_bytes[8] = {0};
+    uint64_t left_value;
+    uint64_t right_value;
+
+    if (key_type == NULL || comparison == NULL ||
+        key_type->byte_size == 0 ||
+        key_type->byte_size > sizeof(left_bytes) ||
+        !ribos_vm_interpreter_read_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            left_control,
+            left,
+            left_offset,
+            left_bytes,
+            key_type->byte_size) ||
+        !ribos_vm_interpreter_read_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            right_control,
+            right,
+            right_offset,
+            right_bytes,
+            key_type->byte_size)) {
+        return 0;
+    }
+    left_value = ribos_vm_interpreter_u64(left_bytes);
+    right_value = ribos_vm_interpreter_u64(right_bytes);
+    if (key_type->kind == RIBOS_BC_TYPE_SIGNED) {
+        int64_t left_signed = ribos_vm_interpreter_sign_extend(
+            left_value,
+            key_type->bit_width);
+        int64_t right_signed = ribos_vm_interpreter_sign_extend(
+            right_value,
+            key_type->bit_width);
+
+        *comparison =
+            left_signed < right_signed ? -1 :
+            left_signed > right_signed ? 1 : 0;
+        return 1;
+    }
+    if (key_type->kind != RIBOS_BC_TYPE_UNSIGNED &&
+        !(key_type->kind == RIBOS_BC_TYPE_NAMED &&
+          key_type->byte_size == 4)) {
+        return 0;
+    }
+    *comparison =
+        left_value < right_value ? -1 :
+        left_value > right_value ? 1 : 0;
+    return 1;
+}
+
+static int
+ribos_vm_interpreter_map_layout(
+    const RibosVmInterpreterTables *tables,
+    const RibosVmInterpreterType *map,
+    RibosVmInterpreterType *key,
+    RibosVmInterpreterType *value,
+    uint32_t *value_offset)
+{
+    uint32_t value_alignment;
+
+    return tables != NULL && map != NULL &&
+        key != NULL && value != NULL &&
+        value_offset != NULL &&
+        (map->kind == RIBOS_BC_TYPE_FROZEN_MAP ||
+         map->kind == RIBOS_BC_TYPE_DICT) &&
+        map->storage_kind == RIBOS_BC_STORAGE_SORTED_MAP &&
+        ribos_vm_interpreter_type(
+            tables,
+            map->first_type,
+            key) &&
+        ribos_vm_interpreter_type(
+            tables,
+            map->second_type,
+            value) &&
+        ribos_vm_interpreter_type_alignment(
+            tables,
+            map->second_type,
+            &value_alignment) &&
+        ribos_vm_interpreter_align_u32(
+            key->byte_size,
+            value_alignment,
+            value_offset) &&
+        map->element_stride != 0 &&
+        *value_offset <= map->element_stride &&
+        value->byte_size <= map->element_stride - *value_offset &&
+        map->payload_offset <= map->byte_size &&
+        map->capacity <=
+            (map->byte_size - map->payload_offset) /
+                map->element_stride;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_build_map(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    RibosVmInterpreterType map;
+    RibosVmInterpreterType key_type;
+    RibosVmInterpreterType value_type;
+    uint32_t value_offset;
+    uint32_t operand_count =
+        ribos_vm_interpreter_u16(instruction + 2);
+    uint32_t cardinality = operand_count / 2u;
+    uint32_t inserted = 0;
+    uint32_t pair;
+    uint8_t cardinality_bytes[4];
+
+    if ((operand_count & 1u) != 0 ||
+        !ribos_vm_interpreter_type(
+            tables,
+            result->type_id,
+            &map) ||
+        !ribos_vm_interpreter_map_layout(
+            tables,
+            &map,
+            &key_type,
+            &value_type,
+            &value_offset) ||
+        result->byte_size != map.byte_size ||
+        ribos_vm_interpreter_u32(instruction + 20) !=
+            map.capacity ||
+        cardinality > map.capacity ||
+        (map.kind == RIBOS_BC_TYPE_FROZEN_MAP &&
+         cardinality != map.capacity) ||
+        !ribos_vm_interpreter_zero_slot(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    for (pair = 0; pair < cardinality; ++pair) {
+        uint32_t key_slot_id = ribos_vm_interpreter_operand(
+            tables,
+            instruction,
+            pair * 2u);
+        uint32_t value_slot_id = ribos_vm_interpreter_operand(
+            tables,
+            instruction,
+            pair * 2u + 1u);
+        RibosVmInterpreterSlot key;
+        RibosVmInterpreterSlot value;
+        uint32_t insertion = 0;
+        uint32_t entry_offset;
+        uint32_t shift_bytes;
+
+        if (!ribos_vm_interpreter_slot(
+                tables,
+                key_slot_id,
+                &key) ||
+            !ribos_vm_interpreter_slot(
+                tables,
+                value_slot_id,
+                &value) ||
+            key.function_id != control->function_id ||
+            value.function_id != control->function_id ||
+            key.type_id != map.first_type ||
+            value.type_id != map.second_type ||
+            key.byte_size != key_type.byte_size ||
+            value.byte_size != value_type.byte_size) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+        while (insertion < inserted) {
+            int comparison;
+            uint32_t existing_offset =
+                map.payload_offset +
+                insertion * map.element_stride;
+
+            if (!ribos_vm_interpreter_compare_keys(
+                    prepared_program,
+                    storage,
+                    arena_size,
+                    control,
+                    &key,
+                    0,
+                    control,
+                    result,
+                    existing_offset,
+                    &key_type,
+                    &comparison)) {
+                return RIBOS_VM_FAULT_INVALID_VALUE;
+            }
+            if (comparison == 0) {
+                return RIBOS_VM_FAULT_INVALID_VALUE;
+            }
+            if (comparison < 0) {
+                break;
+            }
+            ++insertion;
+        }
+        entry_offset =
+            map.payload_offset +
+            insertion * map.element_stride;
+        shift_bytes = (inserted - insertion) *
+            map.element_stride;
+        if (!ribos_vm_interpreter_range_u32(
+                entry_offset,
+                map.element_stride,
+                map.byte_size) ||
+            (shift_bytes != 0 &&
+             ribos_vm_storage_slot_slice_move_internal_v1(
+                 prepared_program,
+                 storage,
+                 arena_size,
+                 control->function_id,
+                 control->frame_base,
+                 result->id,
+                 entry_offset,
+                 entry_offset + map.element_stride,
+                 shift_bytes) != RIBOS_VM_STATUS_OK) ||
+            ribos_vm_storage_slot_slice_zero_internal_v1(
+                prepared_program,
+                storage,
+                arena_size,
+                control->function_id,
+                control->frame_base,
+                result->id,
+                entry_offset,
+                map.element_stride) != RIBOS_VM_STATUS_OK ||
+            !ribos_vm_interpreter_copy_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &key,
+                0,
+                control,
+                result,
+                entry_offset,
+                key_type.byte_size) ||
+            !ribos_vm_interpreter_copy_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &value,
+                0,
+                control,
+                result,
+                entry_offset + value_offset,
+                value_type.byte_size)) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+        ++inserted;
+    }
+    ribos_vm_interpreter_write_u32(
+        cardinality_bytes,
+        cardinality);
+    if (!ribos_vm_interpreter_write_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result,
+            0,
+            cardinality_bytes,
+            sizeof(cardinality_bytes))) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    return RIBOS_VM_FAULT_NONE;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_member(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    uint32_t owner_id = ribos_vm_interpreter_operand(
+        tables,
+        instruction,
+        0);
+    RibosVmInterpreterSlot owner;
+    RibosVmInterpreterType owner_type;
+    RibosVmInterpreterType field_type;
+    uint32_t field_type_id;
+    uint32_t field_offset;
+    uint32_t ordinal =
+        ribos_vm_interpreter_u32(instruction + 24);
+
+    if (!ribos_vm_interpreter_slot(
+            tables,
+            owner_id,
+            &owner) ||
+        owner.function_id != control->function_id ||
+        !ribos_vm_interpreter_type(
+            tables,
+            owner.type_id,
+            &owner_type) ||
+        owner_type.kind != RIBOS_BC_TYPE_STRUCT ||
+        !ribos_vm_interpreter_struct_field(
+            tables,
+            &owner_type,
+            ordinal,
+            &field_type_id,
+            &field_offset) ||
+        field_type_id != result->type_id ||
+        !ribos_vm_interpreter_type(
+            tables,
+            field_type_id,
+            &field_type) ||
+        result->byte_size != field_type.byte_size ||
+        !ribos_vm_interpreter_zero_slot(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result) ||
+        !ribos_vm_interpreter_copy_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            &owner,
+            field_offset,
+            control,
+            result,
+            0,
+            field_type.byte_size)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    return RIBOS_VM_FAULT_NONE;
+}
+
+static int
+ribos_vm_interpreter_load_index(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control,
+    const RibosVmInterpreterSlot *slot,
+    uint32_t *index)
+{
+    uint64_t value;
+
+    if (index == NULL ||
+        slot->type_kind != RIBOS_BC_TYPE_UNSIGNED ||
+        !ribos_vm_interpreter_load_unsigned(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            slot,
+            &value) ||
+        value > UINT32_MAX) {
+        return 0;
+    }
+    *index = (uint32_t)value;
+    return 1;
+}
+
+static uint32_t
+ribos_vm_interpreter_collection_length(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmStorageExecutionControl *control,
+    const RibosVmInterpreterSlot *collection,
+    const RibosVmInterpreterType *type,
+    uint32_t *length)
+{
+    uint8_t bytes[4];
+
+    if (length == NULL || type == NULL) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    if (type->kind == RIBOS_BC_TYPE_ARRAY) {
+        *length = type->capacity;
+        return RIBOS_VM_FAULT_NONE;
+    }
+    if (type->kind != RIBOS_BC_TYPE_LIST ||
+        !ribos_vm_interpreter_read_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            collection,
+            0,
+            bytes,
+            sizeof(bytes))) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    *length = ribos_vm_interpreter_u32(bytes);
+    return *length <= type->capacity ?
+        RIBOS_VM_FAULT_NONE :
+        RIBOS_VM_FAULT_INVALID_VALUE;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_index(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    uint32_t collection_id = ribos_vm_interpreter_operand(
+        tables,
+        instruction,
+        0);
+    uint32_t key_id = ribos_vm_interpreter_operand(
+        tables,
+        instruction,
+        1);
+    RibosVmInterpreterSlot collection;
+    RibosVmInterpreterSlot key;
+    RibosVmInterpreterType collection_type;
+    uint32_t mode = ribos_vm_interpreter_u32(instruction + 20);
+
+    if (!ribos_vm_interpreter_slot(
+            tables,
+            collection_id,
+            &collection) ||
+        !ribos_vm_interpreter_slot(
+            tables,
+            key_id,
+            &key) ||
+        collection.function_id != control->function_id ||
+        key.function_id != control->function_id ||
+        !ribos_vm_interpreter_type(
+            tables,
+            collection.type_id,
+            &collection_type)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    if (collection_type.kind == RIBOS_BC_TYPE_ARRAY ||
+        collection_type.kind == RIBOS_BC_TYPE_LIST) {
+        RibosVmInterpreterType element;
+        uint32_t index;
+        uint32_t length;
+        uint32_t offset;
+        uint32_t fault;
+
+        fault = ribos_vm_interpreter_collection_length(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            &collection,
+            &collection_type,
+            &length);
+        if (mode != 0 ||
+            fault != RIBOS_VM_FAULT_NONE ||
+            !ribos_vm_interpreter_load_index(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &key,
+                &index) ||
+            index >= length ||
+            !ribos_vm_interpreter_type(
+                tables,
+                collection_type.first_type,
+                &element) ||
+            result->type_id != collection_type.first_type ||
+            result->byte_size != element.byte_size ||
+            collection_type.element_stride == 0 ||
+            index >
+                (UINT32_MAX -
+                    collection_type.payload_offset) /
+                    collection_type.element_stride) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+        offset = collection_type.payload_offset +
+            index * collection_type.element_stride;
+        if (!ribos_vm_interpreter_range_u32(
+                offset,
+                element.byte_size,
+                collection_type.byte_size) ||
+            !ribos_vm_interpreter_zero_slot(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                result) ||
+            !ribos_vm_interpreter_copy_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &collection,
+                offset,
+                control,
+                result,
+                0,
+                element.byte_size)) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+        return RIBOS_VM_FAULT_NONE;
+    }
+    if (collection_type.kind == RIBOS_BC_TYPE_FROZEN_MAP ||
+        collection_type.kind == RIBOS_BC_TYPE_DICT) {
+        RibosVmInterpreterType key_type;
+        RibosVmInterpreterType value_type;
+        uint32_t value_offset;
+        uint8_t cardinality_bytes[4];
+        uint32_t cardinality;
+        uint32_t index;
+
+        if ((mode != 0 && mode != 1) ||
+            key.type_id != collection_type.first_type ||
+            result->type_id != collection_type.second_type ||
+            !ribos_vm_interpreter_map_layout(
+                tables,
+                &collection_type,
+                &key_type,
+                &value_type,
+                &value_offset) ||
+            !ribos_vm_interpreter_read_slice(
+                prepared_program,
+                storage,
+                arena_size,
+                control,
+                &collection,
+                0,
+                cardinality_bytes,
+                sizeof(cardinality_bytes))) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+        cardinality =
+            ribos_vm_interpreter_u32(cardinality_bytes);
+        if (cardinality > collection_type.capacity) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+        for (index = 0; index < cardinality; ++index) {
+            int comparison;
+            uint32_t entry_offset =
+                collection_type.payload_offset +
+                index * collection_type.element_stride;
+
+            if (!ribos_vm_interpreter_compare_keys(
+                    prepared_program,
+                    storage,
+                    arena_size,
+                    control,
+                    &collection,
+                    entry_offset,
+                    control,
+                    &key,
+                    0,
+                    &key_type,
+                    &comparison)) {
+                return RIBOS_VM_FAULT_INVALID_VALUE;
+            }
+            if (comparison == 0) {
+                if (!ribos_vm_interpreter_zero_slot(
+                        prepared_program,
+                        storage,
+                        arena_size,
+                        control,
+                        result) ||
+                    !ribos_vm_interpreter_copy_slice(
+                        prepared_program,
+                        storage,
+                        arena_size,
+                        control,
+                        &collection,
+                        entry_offset + value_offset,
+                        control,
+                        result,
+                        0,
+                        value_type.byte_size)) {
+                    return RIBOS_VM_FAULT_INVALID_VALUE;
+                }
+                return RIBOS_VM_FAULT_NONE;
+            }
+            if (comparison > 0) {
+                break;
+            }
+        }
+        if (mode == 1) {
+            uint32_t default_id = ribos_vm_interpreter_operand(
+                tables,
+                instruction,
+                2);
+            RibosVmInterpreterSlot fallback;
+
+            if (!ribos_vm_interpreter_slot(
+                    tables,
+                    default_id,
+                    &fallback) ||
+                fallback.function_id != control->function_id ||
+                fallback.type_id != result->type_id ||
+                !ribos_vm_interpreter_copy_slot(
+                    prepared_program,
+                    storage,
+                    arena_size,
+                    control,
+                    &fallback,
+                    control,
+                    result)) {
+                return RIBOS_VM_FAULT_INVALID_VALUE;
+            }
+            return RIBOS_VM_FAULT_NONE;
+        }
+    }
+    return RIBOS_VM_FAULT_INVALID_VALUE;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_collection_length(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    uint32_t collection_id = ribos_vm_interpreter_operand(
+        tables,
+        instruction,
+        0);
+    RibosVmInterpreterSlot collection;
+    RibosVmInterpreterType type;
+    uint32_t length;
+    uint32_t fault;
+
+    if (!ribos_vm_interpreter_slot(
+            tables,
+            collection_id,
+            &collection) ||
+        collection.function_id != control->function_id ||
+        !ribos_vm_interpreter_type(
+            tables,
+            collection.type_id,
+            &type) ||
+        ribos_vm_interpreter_u32(instruction + 20) !=
+            type.capacity) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    fault = ribos_vm_interpreter_collection_length(
+        prepared_program,
+        storage,
+        arena_size,
+        control,
+        &collection,
+        &type,
+        &length);
+    if (fault != RIBOS_VM_FAULT_NONE ||
+        result->type_kind != RIBOS_BC_TYPE_UNSIGNED ||
+        result->bit_width != 32 ||
+        !ribos_vm_interpreter_store_unsigned(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result,
+            length)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    return RIBOS_VM_FAULT_NONE;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_variant_tag(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    uint32_t aggregate_id = ribos_vm_interpreter_operand(
+        tables,
+        instruction,
+        0);
+    RibosVmInterpreterSlot aggregate;
+    RibosVmInterpreterType type;
+    uint8_t tag;
+
+    if (!ribos_vm_interpreter_slot(
+            tables,
+            aggregate_id,
+            &aggregate) ||
+        aggregate.function_id != control->function_id ||
+        !ribos_vm_interpreter_type(
+            tables,
+            aggregate.type_id,
+            &type) ||
+        !ribos_vm_interpreter_read_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            &aggregate,
+            0,
+            &tag,
+            1) ||
+        !ribos_vm_interpreter_variant_tag_is_valid(
+            tables,
+            &type,
+            tag) ||
+        result->type_kind != RIBOS_BC_TYPE_UNSIGNED ||
+        result->bit_width != 32 ||
+        !ribos_vm_interpreter_store_unsigned(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result,
+            tag)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    return RIBOS_VM_FAULT_NONE;
+}
+
+static uint32_t
+ribos_vm_interpreter_execute_variant_payload(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmInterpreterTables *tables,
+    const RibosVmStorageExecutionControl *control,
+    const uint8_t *instruction,
+    const RibosVmInterpreterSlot *result)
+{
+    uint32_t aggregate_id = ribos_vm_interpreter_operand(
+        tables,
+        instruction,
+        0);
+    RibosVmInterpreterSlot aggregate;
+    RibosVmInterpreterType type;
+    RibosVmInterpreterType payload;
+    uint32_t expected_tag =
+        ribos_vm_interpreter_u32(instruction + 20);
+    uint32_t ordinal =
+        ribos_vm_interpreter_u32(instruction + 24);
+    uint32_t payload_type;
+    uint32_t payload_offset;
+    uint8_t stored_tag;
+
+    if (ordinal == RIBOS_VM_INVALID_ID) {
+        ordinal = 0;
+    }
+    if (!ribos_vm_interpreter_slot(
+            tables,
+            aggregate_id,
+            &aggregate) ||
+        aggregate.function_id != control->function_id ||
+        !ribos_vm_interpreter_type(
+            tables,
+            aggregate.type_id,
+            &type) ||
+        expected_tag > UINT8_MAX ||
+        !ribos_vm_interpreter_read_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            &aggregate,
+            0,
+            &stored_tag,
+            1) ||
+        stored_tag != expected_tag ||
+        !ribos_vm_interpreter_variant_payload(
+            tables,
+            &type,
+            expected_tag,
+            ordinal,
+            &payload_type,
+            &payload_offset,
+            NULL) ||
+        payload_type != result->type_id ||
+        !ribos_vm_interpreter_type(
+            tables,
+            payload_type,
+            &payload) ||
+        result->byte_size != payload.byte_size ||
+        !ribos_vm_interpreter_zero_slot(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            result) ||
+        !ribos_vm_interpreter_copy_slice(
+            prepared_program,
+            storage,
+            arena_size,
+            control,
+            &aggregate,
+            payload_offset,
+            control,
+            result,
+            0,
+            payload.byte_size)) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    return RIBOS_VM_FAULT_NONE;
 }
 
 static uint32_t
@@ -714,12 +2325,40 @@ ribos_vm_interpreter_execute_compare(
     const RibosVmInterpreterSlot *result,
     uint32_t operation)
 {
-    uint8_t left_bytes[8];
-    uint8_t right_bytes[8];
+    uint8_t left_bytes[8] = {0};
+    uint8_t right_bytes[8] = {0};
     uint32_t comparison = 0;
 
     if (left->type_id != right->type_id ||
-        result->type_kind != RIBOS_BC_TYPE_BOOL ||
+        left->byte_size != right->byte_size ||
+        result->type_kind != RIBOS_BC_TYPE_BOOL) {
+        return RIBOS_VM_FAULT_INVALID_VALUE;
+    }
+    if (operation == RIBOS_BC_CHECK_EQUAL ||
+        operation == RIBOS_BC_CHECK_NOT_EQUAL) {
+        int exact_comparison;
+
+        if (ribos_vm_storage_slot_slice_compare_internal_v1(
+                prepared_program,
+                storage,
+                arena_size,
+                control->function_id,
+                control->frame_base,
+                left->id,
+                0,
+                control->function_id,
+                control->frame_base,
+                right->id,
+                0,
+                left->byte_size,
+                &exact_comparison) != RIBOS_VM_STATUS_OK) {
+            return RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+        comparison = exact_comparison == 0;
+        if (operation == RIBOS_BC_CHECK_NOT_EQUAL) {
+            comparison = !comparison;
+        }
+    } else if (left->byte_size > sizeof(left_bytes) ||
         !ribos_vm_interpreter_slot_read(
             prepared_program,
             storage,
@@ -735,16 +2374,6 @@ ribos_vm_interpreter_execute_compare(
             right,
             right_bytes)) {
         return RIBOS_VM_FAULT_INVALID_VALUE;
-    }
-    if (operation == RIBOS_BC_CHECK_EQUAL ||
-        operation == RIBOS_BC_CHECK_NOT_EQUAL) {
-        comparison = memcmp(
-            left_bytes,
-            right_bytes,
-            left->byte_size) == 0;
-        if (operation == RIBOS_BC_CHECK_NOT_EQUAL) {
-            comparison = !comparison;
-        }
     } else if (left->type_kind == RIBOS_BC_TYPE_UNSIGNED) {
         uint64_t left_value;
         uint64_t right_value;
@@ -1165,15 +2794,6 @@ ribos_vm_interpreter_execute_binary(
     return RIBOS_VM_FAULT_INVALID_VALUE;
 }
 
-static int
-ribos_vm_interpreter_copy_scalar_slot(
-    const RibosVmInterpreterSlot *slot)
-{
-    return slot != NULL &&
-        slot->storage_kind == RIBOS_BC_STORAGE_SCALAR &&
-        slot->byte_size <= 8;
-}
-
 static RibosVmStatus
 ribos_vm_interpreter_execute_call(
     const RibosPreparedProgram *prepared_program,
@@ -1214,8 +2834,7 @@ ribos_vm_interpreter_execute_call(
         callee_function_id);
     if (function == NULL ||
         ribos_vm_interpreter_u32(function) != callee_function_id ||
-        ribos_vm_interpreter_u32(function + 8) != result->type_id ||
-        !ribos_vm_interpreter_copy_scalar_slot(result)) {
+        ribos_vm_interpreter_u32(function + 8) != result->type_id) {
         *fault_code = RIBOS_VM_FAULT_INVALID_VALUE;
         *fault_detail = callee_function_id;
         return RIBOS_VM_STATUS_OK;
@@ -1269,7 +2888,6 @@ ribos_vm_interpreter_execute_call(
             ordinal);
         RibosVmInterpreterSlot operand;
         RibosVmInterpreterSlot parameter;
-        uint8_t bytes[8] = {0};
 
         if (!ribos_vm_interpreter_slot(
                 tables,
@@ -1282,23 +2900,15 @@ ribos_vm_interpreter_execute_call(
             operand.function_id != control->function_id ||
             parameter.function_id != callee_function_id ||
             operand.type_id != parameter.type_id ||
-            !ribos_vm_interpreter_copy_scalar_slot(&operand) ||
-            !ribos_vm_interpreter_copy_scalar_slot(&parameter) ||
             operand.byte_size != parameter.byte_size ||
-            !ribos_vm_interpreter_slot_read(
+            !ribos_vm_interpreter_copy_slot(
                 prepared_program,
                 storage,
                 arena_size,
                 control,
                 &operand,
-                bytes) ||
-            !ribos_vm_interpreter_slot_write(
-                prepared_program,
-                storage,
-                arena_size,
                 &callee_value_control,
-                &parameter,
-                bytes)) {
+                &parameter)) {
             *fault_code = RIBOS_VM_FAULT_INVALID_VALUE;
             *fault_detail = ordinal;
             return RIBOS_VM_STATUS_OK;
@@ -1337,7 +2947,6 @@ ribos_vm_interpreter_execute_return(
     RibosVmStorageExecutionControl caller_value_control;
     RibosVmStorageReturnTarget target;
     RibosVmInterpreterSlot caller_result;
-    uint8_t bytes[8] = {0};
     RibosVmStatus status;
 
     if (tables == NULL || operand == NULL || control == NULL ||
@@ -1360,15 +2969,7 @@ ribos_vm_interpreter_execute_return(
         caller_result.function_id != target.function_id ||
         caller_result.type_id != operand->type_id ||
         caller_result.byte_size != operand->byte_size ||
-        !ribos_vm_interpreter_copy_scalar_slot(operand) ||
-        !ribos_vm_interpreter_copy_scalar_slot(&caller_result) ||
-        !ribos_vm_interpreter_slot_read(
-            prepared_program,
-            storage,
-            arena_size,
-            control,
-            operand,
-            bytes)) {
+        operand->function_id != control->function_id) {
         *fault_code = status == RIBOS_VM_STATUS_OK ?
             RIBOS_VM_FAULT_INVALID_VALUE :
             RIBOS_VM_FAULT_INTERNAL;
@@ -1378,13 +2979,14 @@ ribos_vm_interpreter_execute_return(
     caller_value_control = *control;
     caller_value_control.function_id = target.function_id;
     caller_value_control.frame_base = target.frame_base;
-    if (!ribos_vm_interpreter_slot_write(
+    if (!ribos_vm_interpreter_copy_slot(
             prepared_program,
             storage,
             arena_size,
+            control,
+            operand,
             &caller_value_control,
-            &caller_result,
-            bytes)) {
+            &caller_result)) {
         *fault_code = RIBOS_VM_FAULT_INVALID_VALUE;
         *fault_detail = caller_result.id;
         return RIBOS_VM_STATUS_OK;
@@ -1939,8 +3541,7 @@ ribos_vm_interpreter_step_v1(
         } else {
             uint32_t slot_state;
 
-            if (!ribos_vm_interpreter_copy_scalar_slot(&result) ||
-                ribos_vm_storage_slot_state_v1(
+            if (ribos_vm_storage_slot_state_v1(
                     prepared_program,
                     storage,
                     arena_size,
@@ -2052,29 +3653,114 @@ ribos_vm_interpreter_step_v1(
         uint32_t operand_id =
             ribos_vm_interpreter_operand(&tables, instruction, 0);
         RibosVmInterpreterSlot operand;
-        uint8_t bytes[8];
 
         if (!ribos_vm_interpreter_slot(
                 &tables,
                 operand_id,
                 &operand) ||
             operand.type_id != result.type_id ||
-            !ribos_vm_interpreter_slot_read(
+            !ribos_vm_interpreter_copy_slot(
                 prepared_program,
                 storage,
                 arena_size,
                 &control,
                 &operand,
-                bytes) ||
-            !ribos_vm_interpreter_slot_write(
+                &control,
+                &result)) {
+            fault_code = RIBOS_VM_FAULT_INVALID_VALUE;
+        }
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_BUILD_LIST) {
+        fault_code = ribos_vm_interpreter_execute_build_list(
+            prepared_program,
+            storage,
+            arena_size,
+            &tables,
+            &control,
+            instruction,
+            &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_BUILD_MAP) {
+        fault_code = ribos_vm_interpreter_execute_build_map(
+            prepared_program,
+            storage,
+            arena_size,
+            &tables,
+            &control,
+            instruction,
+            &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_BUILD_STRUCT) {
+        fault_code = ribos_vm_interpreter_execute_build_struct(
+            prepared_program,
+            storage,
+            arena_size,
+            &tables,
+            &control,
+            instruction,
+            &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_BUILD_VARIANT) {
+        fault_code = ribos_vm_interpreter_execute_build_variant(
+            prepared_program,
+            storage,
+            arena_size,
+            &tables,
+            &control,
+            instruction,
+            &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_MEMBER) {
+        fault_code = ribos_vm_interpreter_execute_member(
+            prepared_program,
+            storage,
+            arena_size,
+            &tables,
+            &control,
+            instruction,
+            &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_INDEX) {
+        fault_code = ribos_vm_interpreter_execute_index(
+            prepared_program,
+            storage,
+            arena_size,
+            &tables,
+            &control,
+            instruction,
+            &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_COLLECTION_LENGTH) {
+        fault_code =
+            ribos_vm_interpreter_execute_collection_length(
                 prepared_program,
                 storage,
                 arena_size,
+                &tables,
                 &control,
-                &result,
-                bytes)) {
-            fault_code = RIBOS_VM_FAULT_INVALID_VALUE;
-        }
+                instruction,
+                &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_VARIANT_TAG) {
+        fault_code = ribos_vm_interpreter_execute_variant_tag(
+            prepared_program,
+            storage,
+            arena_size,
+            &tables,
+            &control,
+            instruction,
+            &result);
+    } else if (fault_code == RIBOS_VM_FAULT_NONE &&
+               opcode == RIBOS_BC_VARIANT_PAYLOAD) {
+        fault_code =
+            ribos_vm_interpreter_execute_variant_payload(
+                prepared_program,
+                storage,
+                arena_size,
+                &tables,
+                &control,
+                instruction,
+                &result);
     } else if (fault_code == RIBOS_VM_FAULT_NONE &&
                opcode == RIBOS_BC_CHECKED_UNARY) {
         uint32_t operand_id =

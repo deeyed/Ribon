@@ -60,6 +60,7 @@ def check_dump(fixture: Path, output: str, failures: list[str]) -> None:
             int(match.group(2)) == 0
             or int(match.group(3), 16) == 0
             or int(match.group(4)) != 1
+            or frame_bytes % 8 != 0
             or int(match.group(8)) < frame_bytes
             or int(match.group(9)) == 0
             or int(match.group(10)) == 0
@@ -104,7 +105,7 @@ def check_dump(fixture: Path, output: str, failures: list[str]) -> None:
         )
     if fixture.name == "bounded_map.rbs" and not any(
         line.startswith("IR-RESOURCE-FUNCTION id=1 ")
-        and "stack=116 call-depth=2 instructions=18 helpers=1 " in line
+        and "stack=120 call-depth=2 instructions=18 helpers=1 " in line
         for line in lines
     ):
         failures.append(

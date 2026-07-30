@@ -47,7 +47,10 @@ Pre-OS policy runtime은 평균 속도보다 다음 성질이 중요하다.
 - Entry를 포함한 모든 active frame은 연속 frame-value stack과 explicit record를
   가진다.
 - Continuation은 native return address가 아니라 verified instruction ID다.
-- Argument와 return transfer는 v1.1에서 scalar, exact type, 최대 8 bytes로 제한한다.
+- Argument와 return transfer는 v1.2에서 exact type의 scalar 또는 copy-only inline
+  aggregate 전체 byte로 제한한다.
+- 모든 function frame 크기는 8-byte 배수이고 stack closure는 frame-end padding을
+  포함한다.
 - Active function ID 중복을 거부해 verifier의 recursion 금지를 runtime에서도
   집행한다.
 - Frame push 전에 verifier call depth와 maximum stack bytes를 검사한다.
@@ -68,8 +71,11 @@ Pre-OS policy runtime은 평균 속도보다 다음 성질이 중요하다.
   수치로 비교할 수 있다.
 - Inner loop는 outer iteration마다 external header entry에서 재활성화된다.
 - Recursion, indirect call과 tail-call 최적화는 지원되지 않는다.
-- Aggregate와 opaque handle call transfer는 별도 ownership 계약이 닫힐 때까지
-  fail closed한다.
+- Aggregate call transfer는
+  {doc}`../contracts/language/ribos-bounded-aggregate-runtime-v1`의 결정론적 inline
+  representation을 exact-copy한다.
+- Opaque handle의 runtime consume/borrow state는 별도 ownership 계약이 닫힐 때까지
+  실행 증거에 포함하지 않는다.
 - Frame validation은 매 step에 bounded 추가 비용을 만든다. 성능 최적화는 동일
   invariant와 differential evidence를 보존해야 한다.
 - Helper callback, terminal action과 recovery authority는 여전히 후속 runtime
