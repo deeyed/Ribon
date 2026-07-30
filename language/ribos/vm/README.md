@@ -24,7 +24,25 @@ Verifier, target-safe artifact codec, schema와 neutral base adapter는
 `libribos-target-core.a`에 들어간다. CLI만 host 계층에 있으며 target archive에는
 libc allocator, `FILE`, frontend, Policy IR와 artifact emitter가 들어갈 수 없다.
 
+Runtime public ABI는 다음 header가 소유한다.
+
+```text
+include/ribos/vm/runtime.h
+```
+
+Runtime ABI 1.0은 product schema 1.1과 helper execution contract 1.0을 분리한다.
+Schema는 type, helper signature, capability와 ownership을 소유하고 execution contract는
+effect, synchronous callback, mode/phase, I/O, operation, poll, deadline, durability와
+handle transition을 소유한다. `RibosPreparedProgram`과 `RibosVmHelperCall`은 opaque
+process-local type이며 public structure는 fixed-width field와 explicit pointer만
+사용한다.
+
+Execute의 terminal 결과는 sealed `BootAction`, typed `PolicyError`, catch 불가능한
+`VmFault` 세 class뿐이다. BootAction은 실제 jump가 아닌 single-consume intent이며
+fault recovery callback은 sealed receipt를 통지할 뿐 outcome을 바꾸지 않는다.
+
 ```sh
+make check-ribos-runtime-contract
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
 ```
@@ -50,5 +68,5 @@ Structural reader가 envelope, payload hash와 section range를 통과시킨 art
 아니다. Runtime counter, Ed25519 signature, rollback과 product key policy가 실행
 허가 전에 별도로 통과해야 한다.
 
-이 README와 host gate는 VM dispatch, boot product linkage, QEMU 또는 hardware policy
-실행 증거가 아니다.
+이 README와 host gate는 runtime ABI와 verifier의 host compile/unit 경계만 설명한다.
+VM dispatch, boot product linkage, QEMU 또는 hardware policy 실행 증거가 아니다.

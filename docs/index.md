@@ -62,6 +62,7 @@ contracts/language/ribos-resource-closure-v1
 contracts/language/ribos-bytecode-artifact-v1
 contracts/language/ribos-bytecode-verifier-v1
 contracts/language/ribos-host-target-boundary
+contracts/language/ribos-vm-runtime-v1
 api/public-c-api
 ```
 
@@ -100,6 +101,7 @@ adr/0021-ribos-bytecode-artifact
 adr/0022-ribos-independent-bytecode-verifier
 adr/0023-ribos-stage2-policy-verifier
 adr/0024-ribos-host-target-boundary
+adr/0025-ribos-vm-runtime-contract
 ```
 
 ```{toctree}

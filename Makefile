@@ -90,6 +90,7 @@ RIBOS_IR_MODULE_TEST := $(TEST_BUILD_DIR)/ribos_ir_module_tests
 RIBOS_IR_RESOURCE_TEST := $(TEST_BUILD_DIR)/ribos_ir_resource_tests
 RIBOS_ARTIFACT_TEST := $(TEST_BUILD_DIR)/ribos_artifact_tests
 RIBOS_ALLOCATOR_TEST := $(TEST_BUILD_DIR)/ribos_allocator_boundary_tests
+RIBOS_RUNTIME_CONTRACT_TEST := $(TEST_BUILD_DIR)/ribos_runtime_contract_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
@@ -153,6 +154,7 @@ RIBOS_HEADERS := \
 	language/ribos/ir/src/ir_internal.h \
 	language/ribos/artifact/include/ribos/artifact/format.h \
 	language/ribos/artifact/src/internal.h \
+	language/ribos/vm/include/ribos/vm/runtime.h \
 	language/ribos/vm/include/ribos/vm/verifier.h \
 	language/ribos/frontend/src/parser_internal.h \
 	language/ribos/frontend/src/semantic_internal.h \
@@ -442,7 +444,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	ribos-parser-pilot check-ribos-parser-snapshot check-ribos-parser-pilot \
 	check-ribos-semantics check-ribos-schema check-ribos-ir \
 	check-ribos-resources check-ribos-artifact check-ribos-verifier \
-	check-ribos-host-boundary ribos-libraries \
+	check-ribos-runtime-contract check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
@@ -633,6 +635,19 @@ check-ribos-verifier: check-ribos-artifact $(RIBOS_VERIFIER)
 	$(PYTHON) language/ribos/vm/tests/verifier_tests.py \
 		--compiler $(RIBOS_PARSER_PILOT) \
 		--verifier $(RIBOS_VERIFIER)
+
+$(RIBOS_RUNTIME_CONTRACT_TEST): \
+		language/ribos/vm/tests/runtime_contract_tests.c \
+		language/ribos/vm/include/ribos/vm/runtime.h \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		language/ribos/vm/tests/runtime_contract_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+check-ribos-runtime-contract: $(RIBOS_RUNTIME_CONTRACT_TEST)
+	$(PYTHON) language/ribos/vm/tests/check_runtime_header.py
+	$(RIBOS_RUNTIME_CONTRACT_TEST)
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1342,7 +1357,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-parser-pilot check-ribos-semantics check-ribos-schema \
 	check-ribos-ir check-ribos-resources check-ribos-artifact \
-	check-ribos-verifier check-ribos-host-boundary \
+	check-ribos-verifier check-ribos-runtime-contract check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \
