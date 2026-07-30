@@ -53,8 +53,9 @@ frontend + Policy IR + artifact emitter
         -> libribos-host-compiler.a
 ```
 
-- `language/ribos/base`는 allocator와 writer descriptor만 소유한다. libc allocator,
-  `FILE`, filesystem 또는 process API를 포함하지 않는다.
+- `language/ribos/base`는 allocator와 writer descriptor 및 allocation-free checked
+  size/offset 산술만 소유한다. libc allocator, `FILE`, filesystem 또는 process API를
+  포함하지 않는다.
 - `language/ribos/host`는 hosted allocator/writer/format adapter, parser/verifier CLI,
   artifact emitter와 explicit Pegen integration을 소유한다.
 - Frontend와 Policy IR의 동적 storage는 caller가 전달한 `RibosAllocator` authority만

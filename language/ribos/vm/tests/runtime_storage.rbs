@@ -1,0 +1,17 @@
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    helper_budget=2,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let marker: u64 = 72623859790382856
+    let small: u8 = 7
+    let signed: i16 = 2
+    let enabled: bool = True
+
+    if enabled {
+        return Ok(boot.recovery(RecoveryReason.INVALID_IMAGE))
+    }
+    return Ok(boot.recovery(RecoveryReason.INVALID_IMAGE))
+}

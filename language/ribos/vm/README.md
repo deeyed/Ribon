@@ -29,6 +29,7 @@ Runtime public ABI는 다음 header가 소유한다.
 ```text
 include/ribos/vm/runtime.h
 include/ribos/vm/prepared.h
+include/ribos/vm/storage.h
 ```
 
 Runtime ABI 1.0은 product schema 1.1과 helper execution contract 1.0을 분리한다.
@@ -46,6 +47,12 @@ report, effective limits와 artifact/schema/helper binding digest를 caller-owne
 workspace에 봉인한다. Selected schema pointer와 original helper table pointer는
 보존하지 않는다.
 
+`storage.h`는 PreparedProgram의 verifier closure와 product/mode limit을 하나의
+caller-owned 8-byte-aligned runtime arena plan으로 낮춘다. Frame, typed slot state,
+loop/helper counter, handle, aggregate scratch, outcome/output, fault와 optional trace는
+fixed offset을 가지며 heap과 native C value union을 사용하지 않는다. Scalar slot은
+artifact type width를 다시 확인하고 explicit little-endian byte로 읽고 쓴다.
+
 Execute의 terminal 결과는 sealed `BootAction`, typed `PolicyError`, catch 불가능한
 `VmFault` 세 class뿐이다. BootAction은 실제 jump가 아닌 single-consume intent이며
 fault recovery callback은 sealed receipt를 통지할 뿐 outcome을 바꾸지 않는다.
@@ -53,6 +60,7 @@ fault recovery callback은 sealed receipt를 통지할 뿐 outcome을 바꾸지 
 ```sh
 make check-ribos-runtime-contract
 make check-ribos-prepared-program
+make check-ribos-runtime-storage
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
 ```

@@ -36,10 +36,10 @@ Source language, Policy IR, bytecode ISA와 verifier 의미는 다른 계약이 
 
 | 소유 계층 | 허용된 책임 | 생성 archive |
 | --- | --- | --- |
-| `base` | allocator/writer descriptor와 checked adapter | target core |
+| `base` | allocator/writer descriptor와 checked size/offset 산술 | target core |
 | `schema` | canonical product schema와 identity | target core |
 | `artifact` | wire registry, reader, codec와 hash | target core |
-| `vm` | caller-workspace independent verifier | target core |
+| `vm` | caller-workspace verifier, preparation와 bounded runtime storage | target core |
 | `host` support | libc allocator, `FILE` writer와 hosted format | host support |
 | `frontend` + `ir` | source compile, typed AST, IR와 resource closure | host compiler |
 | `host` emitter | validated Policy IR에서 `.rba` emission | host compiler |
@@ -81,6 +81,13 @@ diagnostic dump는 `FILE`, `fprintf`, `fputc`, `fputs` 또는 `snprintf`를 직�
 
 Writer는 debug/inspection sink다. Artifact wire format이나 VM helper ABI가 아니며
 production target이 writer를 반드시 제공할 필요는 없다.
+
+## Neutral checked 산술
+
+`Ribos base`의 checked API는 process-local `size_t`와 architecture-neutral `uint64_t`
+산술을 분리한다. Runtime plan, artifact range와 caller workspace는 unchecked
+`count * stride`, `offset + length` 또는 alignment round-up을 사용할 수 없다. 이
+helper는 allocation을 수행하거나 product별 cap을 소유하지 않는다.
 
 ## Pegen과 CLI
 
@@ -124,6 +131,6 @@ Boundary gate는 다음을 검사한다.
 4. target archive의 hosted undefined symbol
 5. counting allocator의 allocation/release size와 zero-live-object closure
 
-이 성공은 compiler와 verifier가 분리된 architecture-neutral object graph임을
-증명한다. VM interpreter, helper dispatch, signature trust, boot integration, QEMU와
-physical hardware 실행은 증명하지 않는다.
+이 성공은 compiler와 target verifier/runtime storage가 분리된 architecture-neutral
+object graph임을 증명한다. VM opcode interpreter, helper dispatch, signature trust,
+boot integration, QEMU와 physical hardware 실행은 증명하지 않는다.

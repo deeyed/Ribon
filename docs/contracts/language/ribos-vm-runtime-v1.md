@@ -6,13 +6,16 @@ last_verified: 2026-07-31
 code_paths:
   - language/ribos/vm/include/ribos/vm/runtime.h
   - language/ribos/vm/include/ribos/vm/prepared.h
+  - language/ribos/vm/include/ribos/vm/storage.h
   - language/ribos/vm/src/prepared.c
+  - language/ribos/vm/src/runtime/storage.c
   - language/ribos/vm/tests/runtime_contract_tests.c
   - language/ribos/vm/tests/check_runtime_header.py
   - Makefile
 tests:
   - make check-ribos-runtime-contract
   - make check-ribos-prepared-program
+  - make check-ribos-runtime-storage
   - make check-ribos-schema
   - make check-ribos-verifier
   - make check-ribos-host-boundary
@@ -146,6 +149,11 @@ outcome에 사용할 수 없다.
 `RibosVmLimits`는 artifact resource closure, product/mode limit과 caller arena limit의
 교집합이다. Prepare는 이 교집합을 줄일 수 있지만 artifact가 선언한 상한보다 넓힐 수
 없다.
+
+Exact caller-owned arena layout, generic/product cap 교집합과 typed value storage는
+{doc}`ribos-runtime-storage-v1`이 소유한다. Runtime size query는 verifier가 재계산한
+stack/depth와 product handle/output/trace cap을 함께 닫고 required byte가 product
+arena cap을 넘으면 opcode dispatch 전에 거부한다.
 
 | Field | 집행 지점 |
 | --- | --- |
@@ -374,5 +382,5 @@ type 유입을 거부한다.
 이 성공은 ABI와 host compile/unit 증거다.
 {doc}`ribos-prepared-program-v1`과 `make check-ribos-prepared-program`은 별도로
 authorization, two-stage verification과 immutable binding 수명을 검증한다. 이 두
-gate 모두 opcode interpreter, helper 실행, Ribon service adapter, QEMU와 hardware
-policy 실행을 증명하지 않는다.
+gate와 `make check-ribos-runtime-storage` 모두 opcode interpreter, helper 실행,
+Ribon service adapter, QEMU와 hardware policy 실행을 증명하지 않는다.

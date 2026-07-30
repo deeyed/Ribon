@@ -106,6 +106,7 @@ def inspect_archives(
 
     required_target_members = {
         "base_allocator.o",
+        "base_checked.o",
         "base_writer.o",
         "schema.o",
         "artifact_wire.o",
@@ -113,6 +114,7 @@ def inspect_archives(
         "artifact_codec.o",
         "verifier.o",
         "prepared.o",
+        "runtime_storage.o",
     }
     missing_target = sorted(required_target_members.difference(target_members))
     if missing_target:

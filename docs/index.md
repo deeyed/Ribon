@@ -64,6 +64,7 @@ contracts/language/ribos-bytecode-verifier-v1
 contracts/language/ribos-host-target-boundary
 contracts/language/ribos-vm-runtime-v1
 contracts/language/ribos-prepared-program-v1
+contracts/language/ribos-runtime-storage-v1
 api/public-c-api
 ```
 
@@ -104,6 +105,7 @@ adr/0023-ribos-stage2-policy-verifier
 adr/0024-ribos-host-target-boundary
 adr/0025-ribos-vm-runtime-contract
 adr/0026-ribos-authorized-prepared-program
+adr/0027-ribos-bounded-runtime-storage
 ```
 
 ```{toctree}
