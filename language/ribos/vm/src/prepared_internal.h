@@ -6,6 +6,11 @@
 #define RIBOS_AUTHORIZED_ARTIFACT_MAGIC UINT64_C(0x5242414155544831)
 #define RIBOS_PREPARED_PROGRAM_MAGIC UINT64_C(0x5242505245505631)
 
+typedef struct RibosPreparedTypeSemantics {
+    uint8_t ownership;
+    uint8_t schema_type_class;
+} RibosPreparedTypeSemantics;
+
 struct RibosAuthorizedArtifact {
     uint64_t magic;
     uint16_t major;
@@ -33,6 +38,9 @@ struct RibosPreparedProgram {
     uint8_t schema_digest[RIBOS_VM_DIGEST_BYTES];
     uint8_t helper_execution_digest[RIBOS_VM_DIGEST_BYTES];
     uint8_t binding_digest[RIBOS_VM_DIGEST_BYTES];
+    const RibosPreparedTypeSemantics *type_semantics;
+    uint32_t type_semantics_count;
+    uint32_t reserved_type_semantics;
     RibosVerifierReport report;
     RibosVmLimits limits;
     RibosVmHelperContract helper_contract;

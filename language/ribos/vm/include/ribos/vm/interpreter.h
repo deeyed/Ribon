@@ -14,13 +14,14 @@ extern "C" {
  * @file interpreter.h
  * @brief PreparedProgram만 실행하는 architecture-neutral Ribos interpreter v1.
  *
- * v1.2 API는 scalar/control-flow, bounded direct call/loop와 heap-free bounded
- * aggregate engine이다. Full policy success나 BootAction을 만들지 않으며 지원 범위
- * 밖 opcode는 fail closed한다.
+ * v1.3 API는 scalar/control-flow, bounded direct call/loop, heap-free bounded
+ * aggregate engine과 verified whole-value ownership transfer를 제공한다. Full
+ * policy success나 BootAction을 만들지 않으며 지원 범위 밖 opcode는 fail
+ * closed한다.
  */
 
 #define RIBOS_VM_INTERPRETER_V1_MAJOR 1u
-#define RIBOS_VM_INTERPRETER_V1_MINOR 2u
+#define RIBOS_VM_INTERPRETER_V1_MINOR 3u
 
 /** Caller가 관찰할 수 있는 bounded interpreter 상태다. */
 typedef enum RibosVmInterpreterState {

@@ -51,9 +51,11 @@ verified type + shape + slot rows
 deterministic value    fail-closed fault
 ```
 
-이 계약의 증거는 host interpreter와 hostile artifact/runtime corpus다. Helper callback,
-ownership-bearing handle의 dynamic consume/borrow, sealed `BootAction`, firmware,
-QEMU와 physical hardware policy execution은 증명하지 않는다.
+이 계약의 증거는 host interpreter와 hostile artifact/runtime corpus다. Aggregate의
+whole-value affine/linear 이동과 opaque generation handle은
+{doc}`ribos-generation-handles-v1`이 소유한다. Helper callback, sealed
+`BootAction`, firmware, QEMU와 physical hardware policy execution은 증명하지
+않는다.
 
 ## 공통 representation 규칙
 
@@ -156,9 +158,10 @@ Type ID와 byte size가 일치하는 initialized slot 전체를 aligned callee f
 parameter slot로 복사하고, return도 caller result slot 전체를 복사한다. Frame을
 pop하기 전에 return copy가 끝나야 한다.
 
-이 규칙은 ownership-bearing opaque handle의 runtime duplication을 허가하는 계약이
-아니다. Affine/linear handle state와 helper effect transition은 별도 계약이
-정의될 때까지 실행 증거 밖에 있다.
+Non-copy argument와 nested return은 exact-copy 뒤 source slot 전체를 `MOVED`로
+바꾼다. Empty Option/Result처럼 payload token이 없는 aggregate도 type ownership에
+따라 이동한다. Handle generation, borrow와 consume은
+{doc}`ribos-generation-handles-v1`을 따른다.
 
 ## Fail-closed 조건
 
@@ -195,5 +198,5 @@ Gate는 두 artifact를 사용한다.
   alignment closure
 
 Hostile 경로는 duplicate key, out-of-range index, corrupt runtime tag와 1-byte tag
-범위를 넘는 artifact shape를 거부한다. 이 gate의 성공을 helper, ownership,
+범위를 넘는 artifact shape를 거부한다. 이 gate의 성공을 helper execution,
 firmware, QEMU, physical hardware 또는 full boot policy 성공으로 확대하지 않는다.

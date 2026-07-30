@@ -30,6 +30,7 @@ Runtime public ABI는 다음 header가 소유한다.
 include/ribos/vm/runtime.h
 include/ribos/vm/prepared.h
 include/ribos/vm/storage.h
+include/ribos/vm/handles.h
 include/ribos/vm/interpreter.h
 ```
 
@@ -45,8 +46,9 @@ process-local type이며 public structure는 fixed-width field와 explicit point
 VM은 copied artifact에 Stage-1과 Stage-2를 실행한다. 성공한
 `RibosPreparedProgram`은 exact artifact byte, copied helper callback table, verifier
 report, effective limits와 artifact/schema/helper binding digest를 caller-owned
-workspace에 봉인한다. Selected schema pointer와 original helper table pointer는
-보존하지 않는다.
+workspace에 봉인한다. Stage-2가 승인한 artifact type별 ownership/schema class도
+복사해 runtime handle과 aggregate interpreter가 같은 의미를 소비한다. Selected
+schema pointer와 original helper table pointer는 보존하지 않는다.
 
 `storage.h`는 PreparedProgram의 verifier closure와 product/mode limit을 하나의
 caller-owned 8-byte-aligned runtime arena plan으로 낮춘다. Frame, typed slot state,
@@ -62,11 +64,14 @@ fixed-capacity inline layout 안에서만 구성·조회하며 unused capacity�
 결정론적으로 zero한다. Dict는 stable key order의 fixed entry array와 bounded linear
 lookup을 쓴다. Policy call은 C recursion 대신 arena의 explicit frame record를 쓰고
 8-byte-aligned frame size와 verified depth/stack closure를 push 전에 검사한다. Scalar와
-copy-only aggregate argument/result는 exact slot byte로 전달한다. Loop는 verified
+aggregate argument/result는 exact slot byte로 전달하고 non-copy source 전체를
+`MOVED`로 바꾼다. Loop는 verified
 latch-to-header edge에서만 fixed counter를 감소시킨다. Context
 generation/type/digest와 fault receipt도 arena에 fixed-offset byte로 봉인한다. 이
 engine의 entry `RETURNED`는 내부 함수 반환이며 `BootAction`이나 full-policy success가
-아니다. Helper callback과 ownership-bearing handle runtime은 후속 실행 계층이 닫기
+아니다. `handles.h`는 fixed arena record와 process-local host table을 결합한
+generation token, synchronous borrow, irreversible consume/replace/revoke와 bounded
+fault cleanup을 제공한다. 실제 helper callback dispatch는 후속 실행 계층이 닫기
 전까지 fail closed한다.
 
 Execute의 terminal 결과는 sealed `BootAction`, typed `PolicyError`, catch 불가능한
@@ -81,6 +86,7 @@ make check-ribos-vm-scalar
 make check-ribos-vm-calls
 make check-ribos-vm-loops
 make check-ribos-vm-aggregates
+make check-ribos-vm-handles
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
 ```
@@ -107,6 +113,7 @@ Structural reader가 envelope, payload hash와 section range를 통과시킨 art
 허가 전에 별도로 통과해야 한다.
 
 이 README와 host gate는 runtime ABI, verifier, host-side
-scalar/direct-call/loop/aggregate dispatch와 execution eligibility 경계만 설명한다.
-Full policy execution, production signature/rollback provider, helper/ownership
-execution, boot product linkage, QEMU 또는 hardware policy 실행 증거가 아니다.
+scalar/direct-call/loop/aggregate dispatch, generation handle defense와 execution
+eligibility 경계만 설명한다. Full policy execution, production signature/rollback
+provider, product helper execution, boot product linkage, QEMU 또는 hardware policy
+실행 증거가 아니다.

@@ -1,0 +1,23 @@
+@policy(
+    capabilities=[
+        Capability.INSPECT,
+        Capability.BOOT,
+    ],
+    instruction_budget=64,
+    helper_budget=4,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let empty: Option[Image] = None
+    let moved = empty
+    let target = slot.selected()
+    let candidate = slot.image(target)?
+
+    match image.verify(candidate) {
+        Result.Ok(verified) => {
+            return Ok(boot.slot(target, verified))
+        }
+        Result.Err(reason) => {
+            return Ok(boot.recovery(RecoveryReason.INVALID_IMAGE))
+        }
+    }
+}

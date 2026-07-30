@@ -165,8 +165,9 @@ Scalar와 direct control-flow의 incremental 실행 의미는
 loop counter는 {doc}`ribos-bounded-calls-loops-v1`이 소유한다. 이 engine의
 `RETURNED`는 entry 함수 반환이며 sealed `BootAction`이나 full-policy outcome이
 아니다. Bounded aggregate 실행은 {doc}`ribos-bounded-aggregate-runtime-v1`이
-소유한다. Helper, ownership-bearing handle과 recovery notification이 닫히기 전에는
-production execute entry로 사용하지 않는다.
+소유한다. Generation handle, dynamic ownership과 bounded cleanup은
+{doc}`ribos-generation-handles-v1`이 소유한다. Product helper dispatch와 recovery
+notification이 닫히기 전에는 production execute entry로 사용하지 않는다.
 
 | Field | 집행 지점 |
 | --- | --- |

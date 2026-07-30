@@ -185,6 +185,18 @@ const uint8_t *ribos_prepared_program_binding_digest_v1(
 const RibosArtifactView *ribos_prepared_program_artifact_view_v1(
     const RibosPreparedProgram *prepared_program);
 
+/**
+ * Verified artifact type의 schema ownership과 named type class를 반환한다.
+ *
+ * Non-named type의 `schema_type_class`는 `RIBOS_VM_INVALID_ID`다. Aggregate
+ * ownership은 member/element/payload ownership의 최댓값으로 이미 닫혀 있다.
+ */
+RibosVmStatus ribos_prepared_program_type_semantics_v1(
+    const RibosPreparedProgram *prepared_program,
+    uint32_t type_id,
+    uint32_t *ownership,
+    uint32_t *schema_type_class);
+
 /** PreparedProgram이 복사해 소유하는 helper contract를 borrow한다. */
 const RibosVmHelperContract *ribos_prepared_program_helper_contract_v1(
     const RibosPreparedProgram *prepared_program);

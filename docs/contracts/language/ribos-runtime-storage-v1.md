@@ -133,7 +133,10 @@ context generation/type/digest가 들어간다. Native pointer와 C structure im
 저장하지 않는다.
 
 Frame record는 direct-call interpreter가 실제로 push/pop하는 bounded control
-record다. Handle record, outcome와 trace는 후속 interpreter가 사용할 reservation이다.
+record다. Handle record는 {doc}`ribos-generation-handles-v1`의 pointer-free
+generation/lifecycle/type/ownership record로 사용한다. Trusted pointer와 drop
+callback은 arena가 아닌 caller-owned host table에만 있다. Outcome와 trace는 후속
+executor가 사용할 reservation이다.
 Fault region의 첫 152 bytes는 stable receipt field와 artifact/trace digest이고 마지막
 8 bytes는 seal과 recovery-notified state다. Public `RibosVmFaultReceipt`의 native
 padding이나 reserved word는 arena에 복사하지 않는다. Storage v1 API는 opcode,
@@ -143,7 +146,8 @@ handle transition 또는 recovery callback을 직접 dispatch하지 않는다.
 
 Frame value region 크기는 verifier가 artifact에서 재계산한 maximum stack bytes와
 정확히 같다. 개별 function frame의 slot offset, size와 alignment도 verified function
-및 slot table 값을 사용한다.
+및 slot table 값을 사용한다. Non-copy source는 exact transfer 뒤 slot state를
+`MOVED`로 바꾸며 diagnostic poison mode에서는 value bytes도 poison한다.
 
 32-byte frame record는 function ID, continuation instruction ID, caller return slot,
 frame base와 frame size를 explicit little-endian field로 가진다. Entry record의

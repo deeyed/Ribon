@@ -1,0 +1,22 @@
+@policy(
+    capabilities=[
+        Capability.INSPECT,
+        Capability.BOOT,
+    ],
+    helper_budget=6,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let selected_slot = slot.selected()
+    let active_slot = slot.active()
+    let candidate = slot.image(selected_slot)?
+    let fallback = slot.image(active_slot)?
+    let images: Dict[u32, Image, 2] = {
+        1: candidate,
+    }
+    let selected = images.get(
+        2,
+        default=fallback,
+    )
+
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

@@ -52,6 +52,8 @@ Helper callback과 public full-policy outcome은 후속 runtime 계층의 책임
 Aggregate·collection의 추가 의미는
 {doc}`ribos-bounded-aggregate-runtime-v1`이 소유한다. 따라서 이 계약의 host gate는
 firmware, QEMU, 실제 boot transfer 또는 physical hardware 실행 증거가 아니다.
+Non-copy slot의 whole-value 이동과 opaque object lifetime은
+{doc}`ribos-generation-handles-v1`이 소유한다.
 
 ## Public incremental API
 
@@ -142,7 +144,7 @@ Fault를 발생시킨 유효 instruction도 한 번 dispatch되었으므로 cons
 | `CONST_INTEGER` | typed 8/16/32/64-bit 정수, 범위 검사 |
 | `CONST_STRING` | constant ID와 byte length token |
 | `CONST_SYMBOL` | constant ID token, 8-byte opaque면 length도 포함 |
-| `MOVE` | 같은 type ID의 exact value bytes 복사 |
+| `MOVE` | 같은 type ID의 exact value bytes 복사, non-copy source는 `MOVED` |
 | `CHECKED_UNARY` | `not`, unary `+`, unary `-`, bitwise `~` |
 | `CHECKED_BINARY` | 비교, bitwise, shift와 정수 산술 |
 | `JUMP` | direct target block 진입 |

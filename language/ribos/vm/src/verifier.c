@@ -2399,6 +2399,24 @@ ribos_verifier_validate_instruction_semantics(
                     instruction_id,
                     result_type);
             }
+            /*
+             * A defaulted lookup conditionally selects either the collection
+             * value or the fallback operand. v1 has no path-sensitive
+             * ownership join, so accepting a non-copy result would let the
+             * fallback remain statically available after a runtime move.
+             */
+            if (target == 1 &&
+                ribos_verifier_type_ownership(
+                    context,
+                    result_type) >
+                    RIBOS_SCHEMA_OWNERSHIP_COPY) {
+                return ribos_verifier_fail(
+                    context,
+                    RIBOS_VERIFIER_TYPESTATE_VIOLATION,
+                    RIBOS_VERIFIER_SUBJECT_INSTRUCTION,
+                    instruction_id,
+                    result_type);
+            }
         } else {
             return ribos_verifier_instruction_type_error(
                 context,

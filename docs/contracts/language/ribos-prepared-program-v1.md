@@ -155,6 +155,7 @@ Prepared workspace는 다음을 모두 caller-owned storage에 둔다.
 - Stage-1/Stage-2 verifier scratch
 - authorization receipt와 receipt identity
 - verifier report와 effective runtime limits
+- artifact type별 verified ownership과 named schema class
 - artifact, schema, helper와 binding digest
 
 Selected `RibosProductSchema` pointer는 prepare 호출 동안만 borrow한다. Stage-2 뒤
@@ -176,7 +177,13 @@ Prepare는 다음 순서를 지킨다.
 10. Helper descriptor와 callback을 PreparedProgram workspace로 복사한다.
 11. Copied helper table identity를 다시 계산한다.
 12. Effective limits를 verified resource closure에 대조한다.
-13. Prepared binding identity를 계산하고 마지막에만 `PREPARED`로 표시한다.
+13. Stage-2와 같은 재귀 규칙으로 type ownership/schema class table을 만든다.
+14. Prepared binding identity를 계산하고 마지막에만 `PREPARED`로 표시한다.
+
+Type semantics table은 `ribos_prepared_program_type_semantics_v1()`으로만 읽는다.
+Named type은 selected schema class를 반환하고 aggregate는 class 대신
+`RIBOS_VM_INVALID_ID`를 반환한다. Ownership/class row 수와 내용은 binding identity에
+포함되므로 prepare 이후 mutation은 validation에서 거부한다.
 
 Partial initialization, undersized workspace, authorization mismatch, verifier failure,
 schema/helper mismatch와 limit mismatch는 PreparedProgram을 만들지 않는다.

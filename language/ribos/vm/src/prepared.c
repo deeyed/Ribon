@@ -7,6 +7,8 @@
 
 #define RIBOS_AUTHORIZED_STATE_READY 1u
 #define RIBOS_PREPARED_STATE_READY 1u
+#define RIBOS_PREPARED_TYPE_UNRESOLVED UINT8_C(0xff)
+#define RIBOS_PREPARED_TYPE_RESOLVING UINT8_C(0xfe)
 
 typedef struct RibosPreparedArena {
     uint8_t *bytes;
@@ -576,6 +578,212 @@ ribos_prepared_schema_helper_by_id(
     return NULL;
 }
 
+static const uint8_t *
+ribos_prepared_section_row(
+    const RibosArtifactSectionView *section,
+    uint32_t index)
+{
+    size_t offset;
+
+    if (section == NULL || index >= section->count ||
+        !ribos_artifact_size_multiply(
+            index,
+            section->row_size,
+            &offset) ||
+        offset > section->byte_length ||
+        section->row_size > section->byte_length - offset) {
+        return NULL;
+    }
+    return section->bytes + offset;
+}
+
+static uint16_t
+ribos_prepared_read_u16(const uint8_t *bytes)
+{
+    return (uint16_t)bytes[0] |
+        ((uint16_t)bytes[1] << 8);
+}
+
+static uint32_t
+ribos_prepared_read_u32(const uint8_t *bytes)
+{
+    return (uint32_t)bytes[0] |
+        ((uint32_t)bytes[1] << 8) |
+        ((uint32_t)bytes[2] << 16) |
+        ((uint32_t)bytes[3] << 24);
+}
+
+static int
+ribos_prepared_resolve_type_semantics(
+    const RibosArtifactSectionView *types,
+    const RibosArtifactSectionView *shapes,
+    const RibosProductSchema *schema,
+    RibosPreparedTypeSemantics *semantics,
+    uint32_t type_id)
+{
+    const uint8_t *row;
+    uint32_t kind;
+    uint32_t ownership = RIBOS_SCHEMA_OWNERSHIP_COPY;
+
+    if (types == NULL || shapes == NULL || schema == NULL ||
+        semantics == NULL || type_id >= types->count) {
+        return 0;
+    }
+    if (semantics[type_id].ownership <=
+            RIBOS_SCHEMA_OWNERSHIP_LINEAR) {
+        return 1;
+    }
+    if (semantics[type_id].ownership ==
+            RIBOS_PREPARED_TYPE_RESOLVING) {
+        return 0;
+    }
+    semantics[type_id].ownership =
+        RIBOS_PREPARED_TYPE_RESOLVING;
+    row = ribos_prepared_section_row(types, type_id);
+    if (row == NULL) {
+        return 0;
+    }
+    kind = ribos_prepared_read_u16(row + 4);
+    if (kind == RIBOS_BC_TYPE_NAMED) {
+        uint32_t name_length =
+            ribos_prepared_read_u32(row + 56);
+        const RibosSchemaType *type;
+
+        if (name_length > 63) {
+            return 0;
+        }
+        type = ribos_schema_find_type(
+            schema,
+            (const char *)(row + 60),
+            name_length);
+        if (type == NULL ||
+            type->ownership > RIBOS_SCHEMA_OWNERSHIP_LINEAR ||
+            type->type_class > RIBOS_SCHEMA_TYPE_ENUM) {
+            return 0;
+        }
+        ownership = type->ownership;
+        semantics[type_id].schema_type_class =
+            (uint8_t)type->type_class;
+    } else if (kind == RIBOS_BC_TYPE_ARRAY ||
+               kind == RIBOS_BC_TYPE_LIST ||
+               kind == RIBOS_BC_TYPE_OPTION) {
+        uint32_t nested = ribos_prepared_read_u32(row + 8);
+
+        if (!ribos_prepared_resolve_type_semantics(
+                types,
+                shapes,
+                schema,
+                semantics,
+                nested)) {
+            return 0;
+        }
+        ownership = semantics[nested].ownership;
+    } else if (kind == RIBOS_BC_TYPE_FROZEN_MAP ||
+               kind == RIBOS_BC_TYPE_DICT ||
+               kind == RIBOS_BC_TYPE_RESULT) {
+        uint32_t left = ribos_prepared_read_u32(row + 8);
+        uint32_t right = ribos_prepared_read_u32(row + 12);
+
+        if (!ribos_prepared_resolve_type_semantics(
+                types,
+                shapes,
+                schema,
+                semantics,
+                left) ||
+            !ribos_prepared_resolve_type_semantics(
+                types,
+                shapes,
+                schema,
+                semantics,
+                right)) {
+            return 0;
+        }
+        ownership = semantics[left].ownership >
+                semantics[right].ownership ?
+            semantics[left].ownership :
+            semantics[right].ownership;
+    } else if (kind == RIBOS_BC_TYPE_STRUCT ||
+               kind == RIBOS_BC_TYPE_ENUM) {
+        uint32_t start = ribos_prepared_read_u32(row + 20);
+        uint32_t count = ribos_prepared_read_u32(row + 24);
+        uint32_t index;
+
+        if (start > shapes->count ||
+            count > shapes->count - start) {
+            return 0;
+        }
+        for (index = 0; index < count; ++index) {
+            const uint8_t *shape =
+                ribos_prepared_section_row(shapes, start + index);
+            uint32_t nested;
+
+            if (shape == NULL) {
+                return 0;
+            }
+            nested = ribos_prepared_read_u32(shape + 20);
+            if (nested == RIBOS_ARTIFACT_INVALID_ID) {
+                continue;
+            }
+            if (!ribos_prepared_resolve_type_semantics(
+                    types,
+                    shapes,
+                    schema,
+                    semantics,
+                    nested)) {
+                return 0;
+            }
+            if (semantics[nested].ownership > ownership) {
+                ownership = semantics[nested].ownership;
+            }
+        }
+    }
+    if (ownership > RIBOS_SCHEMA_OWNERSHIP_LINEAR) {
+        return 0;
+    }
+    semantics[type_id].ownership = (uint8_t)ownership;
+    return 1;
+}
+
+static int
+ribos_prepared_build_type_semantics(
+    const RibosArtifactView *view,
+    const RibosProductSchema *schema,
+    RibosPreparedTypeSemantics *semantics,
+    uint32_t count)
+{
+    const RibosArtifactSectionView *types =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_TYPES);
+    const RibosArtifactSectionView *shapes =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_SHAPES);
+    uint32_t index;
+
+    if (types == NULL || shapes == NULL || semantics == NULL ||
+        count != types->count) {
+        return 0;
+    }
+    for (index = 0; index < count; ++index) {
+        semantics[index].ownership =
+            RIBOS_PREPARED_TYPE_UNRESOLVED;
+        semantics[index].schema_type_class =
+            RIBOS_PREPARED_TYPE_UNRESOLVED;
+    }
+    for (index = 0; index < count; ++index) {
+        if (!ribos_prepared_resolve_type_semantics(
+                types,
+                shapes,
+                schema,
+                semantics,
+                index)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static uint32_t
 ribos_prepared_expected_transition(
     const RibosProductSchema *schema,
@@ -728,6 +936,8 @@ ribos_prepared_binding_identity(
     const RibosArtifactView *view,
     const uint8_t helper_digest[RIBOS_VM_DIGEST_BYTES],
     const RibosVmLimits *limits,
+    const RibosPreparedTypeSemantics *type_semantics,
+    uint32_t type_semantics_count,
     uint8_t digest[RIBOS_VM_DIGEST_BYTES])
 {
     RibosArtifactSha256 hash;
@@ -792,6 +1002,20 @@ ribos_prepared_binding_identity(
     ribos_prepared_hash_u32(
         &hash,
         limits->maximum_trace_records);
+    ribos_prepared_hash_u32(&hash, type_semantics_count);
+    for (uint32_t index = 0;
+         index < type_semantics_count;
+         ++index) {
+        ribos_prepared_hash_u32(
+            &hash,
+            type_semantics[index].ownership);
+        ribos_prepared_hash_u32(
+            &hash,
+            type_semantics[index].schema_type_class ==
+                    RIBOS_PREPARED_TYPE_UNRESOLVED ?
+                RIBOS_VM_INVALID_ID :
+                type_semantics[index].schema_type_class);
+    }
     ribos_artifact_sha256_finish(&hash, digest);
 }
 
@@ -818,6 +1042,8 @@ ribos_prepared_program_workspace_size_v1(
     RibosVerifierReport report;
     size_t verifier_size;
     size_t binding_bytes;
+    size_t type_semantics_bytes;
+    const RibosArtifactSectionView *types;
     size_t size = 0;
     RibosVmStatus status;
 
@@ -834,10 +1060,18 @@ ribos_prepared_program_workspace_size_v1(
     if (status != RIBOS_VM_STATUS_OK) {
         return status;
     }
-    if (!ribos_artifact_size_multiply(
+    types = ribos_artifact_find_section(
+        &authorized_artifact->view,
+        RIBOS_ARTIFACT_SECTION_TYPES);
+    if (types == NULL ||
+        !ribos_artifact_size_multiply(
             helper_contract->binding_count,
             sizeof(RibosVmHelperBinding),
             &binding_bytes) ||
+        !ribos_artifact_size_multiply(
+            types->count,
+            sizeof(RibosPreparedTypeSemantics),
+            &type_semantics_bytes) ||
         ribos_verifier_workspace_size_v1(
             authorized_artifact->artifact,
             authorized_artifact->artifact_size,
@@ -855,6 +1089,10 @@ ribos_prepared_program_workspace_size_v1(
             &size,
             _Alignof(RibosVmHelperBinding),
             binding_bytes) ||
+        !ribos_prepared_size_append(
+            &size,
+            _Alignof(RibosPreparedTypeSemantics),
+            type_semantics_bytes) ||
         !ribos_prepared_size_append(
             &size,
             8,
@@ -879,6 +1117,7 @@ ribos_prepare_program_v1(
     RibosPreparedArena arena;
     struct RibosPreparedProgram *prepared;
     RibosVmHelperBinding *bindings;
+    RibosPreparedTypeSemantics *type_semantics;
     uint8_t *artifact;
     void *verifier_workspace;
     uint8_t schema_digest[RIBOS_VM_DIGEST_BYTES];
@@ -888,6 +1127,8 @@ ribos_prepare_program_v1(
     size_t required_size;
     size_t verifier_size;
     size_t binding_bytes;
+    size_t type_semantics_bytes;
+    const RibosArtifactSectionView *types;
     RibosVerifierReport local_report;
     RibosVerifierStatus verifier_status;
     RibosVmStatus status;
@@ -938,6 +1179,13 @@ ribos_prepare_program_v1(
             helper_contract->binding_count,
             sizeof(RibosVmHelperBinding),
             &binding_bytes) ||
+        (types = ribos_artifact_find_section(
+            &authorized_artifact->view,
+            RIBOS_ARTIFACT_SECTION_TYPES)) == NULL ||
+        !ribos_artifact_size_multiply(
+            types->count,
+            sizeof(RibosPreparedTypeSemantics),
+            &type_semantics_bytes) ||
         ribos_verifier_workspace_size_v1(
             authorized_artifact->artifact,
             authorized_artifact->artifact_size,
@@ -962,12 +1210,17 @@ ribos_prepare_program_v1(
         &arena,
         _Alignof(RibosVmHelperBinding),
         binding_bytes);
+    type_semantics = ribos_prepared_arena_take(
+        &arena,
+        _Alignof(RibosPreparedTypeSemantics),
+        type_semantics_bytes);
     verifier_workspace = ribos_prepared_arena_take(
         &arena,
         8,
         verifier_size);
     if (arena.failed || prepared == NULL || artifact == NULL ||
-        bindings == NULL || verifier_workspace == NULL) {
+        bindings == NULL || type_semantics == NULL ||
+        verifier_workspace == NULL) {
         return RIBOS_VM_STATUS_INTERNAL_ERROR;
     }
     memcpy(
@@ -1018,6 +1271,13 @@ ribos_prepare_program_v1(
             schema_digest_after)) {
         return RIBOS_VM_STATUS_DIGEST_MISMATCH;
     }
+    if (!ribos_prepared_build_type_semantics(
+            &prepared->view,
+            schema,
+            type_semantics,
+            types->count)) {
+        return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+    }
 
     status = ribos_vm_helper_contract_compute_identity_v1(
         helper_contract,
@@ -1044,6 +1304,8 @@ ribos_prepare_program_v1(
     memcpy(bindings, helper_contract->bindings, binding_bytes);
     prepared->helper_contract = *helper_contract;
     prepared->helper_contract.bindings = bindings;
+    prepared->type_semantics = type_semantics;
+    prepared->type_semantics_count = types->count;
     status = ribos_vm_helper_contract_compute_identity_v1(
         &prepared->helper_contract,
         copied_helper_digest);
@@ -1084,6 +1346,8 @@ ribos_prepare_program_v1(
         &prepared->view,
         helper_digest,
         effective_limits,
+        prepared->type_semantics,
+        prepared->type_semantics_count,
         prepared->binding_digest);
     prepared->state = RIBOS_PREPARED_STATE_READY;
     prepared->magic = RIBOS_PREPARED_PROGRAM_MAGIC;
@@ -1100,6 +1364,7 @@ ribos_prepared_program_validate_v1(
     uint8_t authorization_digest[RIBOS_VM_DIGEST_BYTES];
     uint8_t helper_digest[RIBOS_VM_DIGEST_BYTES];
     uint8_t binding_digest[RIBOS_VM_DIGEST_BYTES];
+    const RibosArtifactSectionView *types;
     RibosVmStatus status;
 
     if (prepared_program == NULL) {
@@ -1114,7 +1379,9 @@ ribos_prepared_program_validate_v1(
         prepared_program->artifact == NULL ||
         prepared_program->artifact_size <
             RIBOS_ARTIFACT_ENVELOPE_BYTES ||
-        prepared_program->report.status != RIBOS_VERIFIER_OK) {
+        prepared_program->report.status != RIBOS_VERIFIER_OK ||
+        prepared_program->type_semantics == NULL ||
+        prepared_program->reserved_type_semantics != 0) {
         return RIBOS_VM_STATUS_NOT_PREPARED;
     }
     if (ribos_artifact_open_v1(
@@ -1137,6 +1404,28 @@ ribos_prepared_program_validate_v1(
             view.artifact_hash,
             prepared_program->authorization.artifact_hash)) {
         return RIBOS_VM_STATUS_DIGEST_MISMATCH;
+    }
+    types = ribos_artifact_find_section(
+        &view,
+        RIBOS_ARTIFACT_SECTION_TYPES);
+    if (types == NULL ||
+        prepared_program->type_semantics_count != types->count) {
+        return RIBOS_VM_STATUS_DIGEST_MISMATCH;
+    }
+    for (uint32_t index = 0;
+         index < prepared_program->type_semantics_count;
+         ++index) {
+        const RibosPreparedTypeSemantics *semantics =
+            &prepared_program->type_semantics[index];
+
+        if (semantics->ownership >
+                RIBOS_SCHEMA_OWNERSHIP_LINEAR ||
+            (semantics->schema_type_class !=
+                 RIBOS_PREPARED_TYPE_UNRESOLVED &&
+             semantics->schema_type_class >
+                 RIBOS_SCHEMA_TYPE_ENUM)) {
+            return RIBOS_VM_STATUS_DIGEST_MISMATCH;
+        }
     }
     status = ribos_authorization_receipt_validate_v1(
         &prepared_program->authorization,
@@ -1179,6 +1468,8 @@ ribos_prepared_program_validate_v1(
         &view,
         helper_digest,
         &prepared_program->limits,
+        prepared_program->type_semantics,
+        prepared_program->type_semantics_count,
         binding_digest);
     if (!ribos_prepared_digest_equal(
             binding_digest,
@@ -1222,6 +1513,37 @@ ribos_prepared_program_artifact_view_v1(
     return ribos_prepared_program_validate_v1(prepared_program) ==
             RIBOS_VM_STATUS_OK ?
         &prepared_program->view : NULL;
+}
+
+RibosVmStatus
+ribos_prepared_program_type_semantics_v1(
+    const RibosPreparedProgram *prepared_program,
+    uint32_t type_id,
+    uint32_t *ownership,
+    uint32_t *schema_type_class)
+{
+    const RibosPreparedTypeSemantics *semantics;
+    RibosVmStatus status =
+        ribos_prepared_program_validate_v1(prepared_program);
+
+    if (ownership == NULL || schema_type_class == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    *ownership = RIBOS_SCHEMA_OWNERSHIP_COPY;
+    *schema_type_class = RIBOS_VM_INVALID_ID;
+    if (status != RIBOS_VM_STATUS_OK) {
+        return status;
+    }
+    if (type_id >= prepared_program->type_semantics_count) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    semantics = &prepared_program->type_semantics[type_id];
+    *ownership = semantics->ownership;
+    if (semantics->schema_type_class !=
+            RIBOS_PREPARED_TYPE_UNRESOLVED) {
+        *schema_type_class = semantics->schema_type_class;
+    }
+    return RIBOS_VM_STATUS_OK;
 }
 
 const RibosVmHelperContract *

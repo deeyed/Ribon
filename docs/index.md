@@ -68,6 +68,7 @@ contracts/language/ribos-runtime-storage-v1
 contracts/language/ribos-scalar-interpreter-v1
 contracts/language/ribos-bounded-calls-loops-v1
 contracts/language/ribos-bounded-aggregate-runtime-v1
+contracts/language/ribos-generation-handles-v1
 api/public-c-api
 ```
 
@@ -112,6 +113,7 @@ adr/0027-ribos-bounded-runtime-storage
 adr/0028-ribos-portable-switch-interpreter
 adr/0029-ribos-explicit-frame-and-loop-accounting
 adr/0030-ribos-inline-bounded-aggregate-execution
+adr/0031-ribos-generation-handle-ownership
 ```
 
 ```{toctree}

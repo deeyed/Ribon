@@ -45,9 +45,10 @@ explicit arena frame stack       latch/backedge counter
              shared instruction fuel
 ```
 
-이 계약이 제공하는 증거는 host interpreter unit과 sanitizer 실행이다. Helper callback,
-aggregate·opaque handle 전달, sealed `BootAction`, recovery notification, firmware,
-QEMU와 실제 hardware policy execution은 증명하지 않는다.
+이 계약이 제공하는 증거는 host interpreter unit과 sanitizer 실행이다. Helper
+callback, sealed `BootAction`, recovery notification, firmware, QEMU와 실제 hardware
+policy execution은 증명하지 않는다. Aggregate와 opaque handle의 ownership 전달은
+{doc}`ribos-generation-handles-v1`이 소유한다.
 
 ## Explicit frame stack
 
@@ -90,7 +91,7 @@ stack에 나타나면 실행하지 않는다.
 8. Continuation, caller result slot과 callee frame record를 기록한다.
 9. PC를 callee entry block의 첫 instruction으로 바꾼다.
 
-v1.2 direct call의 parameter와 result는 type ID, byte size와 function ownership이
+v1.3 direct call의 parameter와 result는 type ID, byte size와 function ownership이
 정확히 같은 slot이다. Scalar는 exact width로, copy-only aggregate는
 {doc}`ribos-bounded-aggregate-runtime-v1`의 전체 inline representation으로 복사한다.
 각 function frame 크기는 8-byte 배수이며 stack closure도 frame-end padding을
@@ -98,8 +99,11 @@ v1.2 direct call의 parameter와 result는 type ID, byte size와 function owners
 initialized인지 재확인하는 no-op다. Entry function의 `PARAMETER`만 immutable
 `RibosVmContext`에서 값을 읽는다.
 
-Ownership-bearing opaque handle의 dynamic consume/borrow state는 이 계약에 없다.
-Stage-2의 정적 provenance·linearity 보장을 runtime ownership 증거로 확대하지 않는다.
+Affine/linear operand는 callee parameter로 exact-copy한 뒤 caller source slot 전체를
+`MOVED`로 바꾼다. Nested return도 caller result copy 뒤 callee source를 이동시킨다.
+Entry return은 caller가 outcome을 가져갈 수 있도록 return slot을 initialized로
+봉인한다. Dynamic generation/borrow/consume은
+{doc}`ribos-generation-handles-v1`을 따른다.
 
 ## Return과 continuation
 
