@@ -7,6 +7,7 @@
 #include "ribos/vm/storage.h"
 
 #include "ribos/vm/helpers.h"
+#include "ribos/vm/terminal.h"
 
 /*
  * 이 header는 VM runtime 구현 전용이다. Arena control bytes를 해석하는 권한은
@@ -133,6 +134,43 @@ RibosVmStatus ribos_vm_storage_helper_execution_store_internal_v1(
     size_t arena_size,
     const RibosVmHelperExecutionSnapshot *snapshot);
 
+RibosVmStatus ribos_vm_storage_terminal_initialize_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmTerminalSnapshot *snapshot);
+
+RibosVmStatus ribos_vm_storage_terminal_load_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    RibosVmTerminalSnapshot *snapshot);
+
+RibosVmStatus ribos_vm_storage_terminal_store_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmTerminalSnapshot *snapshot);
+
+RibosVmStatus ribos_vm_storage_output_write_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const uint8_t *bytes,
+    size_t byte_size);
+
+RibosVmStatus ribos_vm_storage_output_view_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    size_t byte_size,
+    const uint8_t **bytes);
+
+RibosVmStatus ribos_vm_storage_output_zero_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size);
+
 RibosVmStatus ribos_vm_storage_consume_helper_call_internal_v1(
     const RibosPreparedProgram *prepared_program,
     RibosVmStorage *storage,
@@ -253,5 +291,22 @@ RibosVmStatus ribos_vm_storage_read_fault_internal_v1(
     const RibosVmStorage *storage,
     size_t arena_size,
     RibosVmFaultReceipt *receipt);
+
+RibosVmStatus ribos_vm_storage_fault_recovery_mark_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size);
+
+RibosVmStatus ribos_vm_storage_fault_recovery_state_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t *notified);
+
+RibosVmStatus ribos_vm_storage_fault_trace_digest_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const uint8_t trace_digest[RIBOS_VM_DIGEST_BYTES]);
 
 #endif

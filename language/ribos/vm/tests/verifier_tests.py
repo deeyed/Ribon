@@ -446,7 +446,6 @@ SOURCE_HOSTILES: tuple[tuple[str, str], ...] = (
     ("duplicate_verified_image.rbs", "ownership-violation"),
     ("fault_after_boot_action.rbs", "fail-closed-violation"),
     ("noncopy_map_default.rbs", "typestate-violation"),
-    ("no_success_action.rbs", "terminal-action-violation"),
 )
 
 

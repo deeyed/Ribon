@@ -17,6 +17,8 @@ code_paths:
   - Makefile
 tests:
   - make check-ribos-vm-helpers
+  - make check-ribos-vm-terminal
+  - make check-ribos-vm-faults
   - make check-ribos-vm-handles
   - make check-ribos-schema
   - make check-ribos-verifier
@@ -211,10 +213,18 @@ Policy `Result.Err`는 VM fault가 아니다. Typed error payload를 기록하�
 계속 실행한다. Contract fault, capability/mode violation, resource exhaustion과
 embedder failure는 language에서 catch할 수 없다.
 
+`JOURNALED` helper는 callback 동안 canonical product receipt digest와
+`COMMITTED`, `PARTIAL` 또는 `UNCERTAIN` state를 설정해야 한다. `OK` callback에는
+`COMMITTED`만 허용한다. Receipt chain, terminal action seal과 fault recovery 의미는
+{doc}`ribos-terminal-outcome-recovery-v1`이 소유하며 external effect rollback을
+주장하지 않는다.
+
 ## Gate
 
 ```sh
 make check-ribos-vm-helpers
+make check-ribos-vm-terminal
+make check-ribos-vm-faults
 make check-ribos-vm-handles
 make check-ribos-verifier
 make check-ribos-host-boundary

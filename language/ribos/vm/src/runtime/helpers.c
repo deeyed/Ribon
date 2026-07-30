@@ -3,6 +3,7 @@
 
 #include "helpers_internal.h"
 #include "storage_internal.h"
+#include "terminal_internal.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -34,6 +35,9 @@ struct RibosVmHelperCall {
     uint64_t polls;
     uint32_t budget_fault;
     uint32_t consumed_transferred;
+    uint32_t journal_state;
+    uint32_t journal_receipt_set;
+    uint8_t journal_receipt_digest[RIBOS_VM_DIGEST_BYTES];
     RibosVmHandleBorrow borrows[RIBOS_SCHEMA_MAX_PARAMETERS];
     uint8_t borrow_active[RIBOS_SCHEMA_MAX_PARAMETERS];
     RibosVmHandleConsumeLease consume;
@@ -41,6 +45,36 @@ struct RibosVmHelperCall {
     uint32_t reserved0;
     RibosVmHelperPendingHandle pending_handle;
 };
+
+RibosVmStatus
+ribos_vm_helper_call_set_journal_receipt_v1(
+    RibosVmHelperCall *call,
+    uint32_t journal_state,
+    const uint8_t receipt_digest[RIBOS_VM_DIGEST_BYTES])
+{
+    if (call == NULL || call->magic != RIBOS_VM_HELPER_CALL_MAGIC ||
+        call->active != 1 || call->binding == NULL ||
+        receipt_digest == NULL) {
+        return RIBOS_VM_STATUS_INVALID_ARGUMENT;
+    }
+    if (call->binding->execution.effect !=
+            RIBOS_VM_HELPER_EFFECT_JOURNALED ||
+        call->binding->execution.durability !=
+            RIBOS_VM_HELPER_DURABILITY_JOURNAL_RECEIPT ||
+        journal_state < RIBOS_VM_JOURNAL_RECEIPT_COMMITTED ||
+        journal_state > RIBOS_VM_JOURNAL_RECEIPT_UNCERTAIN ||
+        call->journal_receipt_set != 0 ||
+        !ribos_vm_digest_is_nonzero(receipt_digest)) {
+        return RIBOS_VM_STATUS_INVALID_STATE;
+    }
+    call->journal_state = journal_state;
+    call->journal_receipt_set = 1;
+    memcpy(
+        call->journal_receipt_digest,
+        receipt_digest,
+        RIBOS_VM_DIGEST_BYTES);
+    return RIBOS_VM_STATUS_OK;
+}
 
 static int
 ribos_vm_helper_u64_add(
@@ -1359,6 +1393,20 @@ ribos_vm_helper_dispatch_internal_v1(
         call.budget_fault == RIBOS_VM_FAULT_NONE) {
         call.budget_fault = RIBOS_VM_FAULT_HELPER_CONTRACT;
     }
+    if (execution->effect == RIBOS_VM_HELPER_EFFECT_JOURNALED &&
+        call.budget_fault == RIBOS_VM_FAULT_NONE) {
+        if (call.journal_receipt_set != 1 ||
+            (callback_status == RIBOS_VM_HELPER_CALLBACK_OK &&
+             call.journal_state !=
+                 RIBOS_VM_JOURNAL_RECEIPT_COMMITTED)) {
+            call.budget_fault = RIBOS_VM_FAULT_HELPER_CONTRACT;
+        }
+    } else if (execution->effect !=
+                   RIBOS_VM_HELPER_EFFECT_JOURNALED &&
+               call.journal_receipt_set != 0 &&
+               call.budget_fault == RIBOS_VM_FAULT_NONE) {
+        call.budget_fault = RIBOS_VM_FAULT_HELPER_CONTRACT;
+    }
     if (call.budget_fault == RIBOS_VM_FAULT_NONE) {
         status = ribos_vm_helper_commit_result(
             &call,
@@ -1413,6 +1461,53 @@ ribos_vm_helper_dispatch_internal_v1(
         &snapshot);
     if (status != RIBOS_VM_STATUS_OK) {
         return status;
+    }
+    if ((execution->effect == RIBOS_VM_HELPER_EFFECT_TERMINAL ||
+         (execution->effect == RIBOS_VM_HELPER_EFFECT_JOURNALED &&
+          call.journal_receipt_set == 1)) &&
+        call.budget_fault == RIBOS_VM_FAULT_NONE) {
+        RibosVmTerminalHelperReceiptInternal terminal_receipt;
+
+        memset(&terminal_receipt, 0, sizeof(terminal_receipt));
+        terminal_receipt.helper_id = request->stable_id;
+        terminal_receipt.function_id = request->function_id;
+        terminal_receipt.instruction_id = request->instruction_id;
+        terminal_receipt.source_map_id = request->source_map_id;
+        terminal_receipt.result_slot_id = request->result.slot_id;
+        terminal_receipt.result_type_id = request->result.type_id;
+        terminal_receipt.result_byte_size = request->result.byte_size;
+        terminal_receipt.result_kind = call.result_kind;
+        terminal_receipt.callback_status = callback_status;
+        terminal_receipt.effect = execution->effect;
+        terminal_receipt.durability = execution->durability;
+        terminal_receipt.journal_state = call.journal_state;
+        terminal_receipt.frame_base = request->frame_base;
+        terminal_receipt.receipt_sequence =
+            snapshot.receipt_sequence;
+        memcpy(
+            terminal_receipt.journal_receipt_digest,
+            call.journal_receipt_digest,
+            RIBOS_VM_DIGEST_BYTES);
+        status = ribos_vm_terminal_record_helper_internal_v1(
+            prepared_program,
+            context,
+            storage,
+            arena_size,
+            &terminal_receipt);
+        if (status != RIBOS_VM_STATUS_OK) {
+            snapshot.state = RIBOS_VM_HELPER_EXECUTION_FAULTED;
+            if (ribos_vm_storage_helper_execution_store_internal_v1(
+                    prepared_program,
+                    storage,
+                    arena_size,
+                    &snapshot) != RIBOS_VM_STATUS_OK) {
+                return RIBOS_VM_STATUS_INTERNAL_ERROR;
+            }
+            call.budget_fault =
+                execution->effect == RIBOS_VM_HELPER_EFFECT_TERMINAL ?
+                    RIBOS_VM_FAULT_TERMINAL_ACTION :
+                    RIBOS_VM_FAULT_HELPER_CONTRACT;
+        }
     }
     if (call.budget_fault != RIBOS_VM_FAULT_NONE ||
         callback_status ==

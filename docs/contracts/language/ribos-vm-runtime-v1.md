@@ -9,10 +9,12 @@ code_paths:
   - language/ribos/vm/include/ribos/vm/storage.h
   - language/ribos/vm/include/ribos/vm/helpers.h
   - language/ribos/vm/include/ribos/vm/interpreter.h
+  - language/ribos/vm/include/ribos/vm/terminal.h
   - language/ribos/vm/src/prepared.c
   - language/ribos/vm/src/runtime/storage.c
   - language/ribos/vm/src/runtime/helpers.c
   - language/ribos/vm/src/runtime/interpreter.c
+  - language/ribos/vm/src/runtime/terminal.c
   - language/ribos/vm/tests/runtime_contract_tests.c
   - language/ribos/vm/tests/check_runtime_header.py
   - Makefile
@@ -24,6 +26,8 @@ tests:
   - make check-ribos-vm-calls
   - make check-ribos-vm-loops
   - make check-ribos-vm-helpers
+  - make check-ribos-vm-terminal
+  - make check-ribos-vm-faults
   - make check-ribos-schema
   - make check-ribos-verifier
   - make check-ribos-host-boundary
@@ -171,8 +175,9 @@ loop counter는 {doc}`ribos-bounded-calls-loops-v1`이 소유한다. 이 engine�
 소유한다. Generation handle, dynamic ownership과 bounded cleanup은
 {doc}`ribos-generation-handles-v1`이 소유한다. Typed synchronous product helper
 dispatch는 {doc}`ribos-typed-helper-dispatch-v1`이 소유한다. Terminal BootAction
-sealing과 recovery notification이 닫히기 전에는 production execute entry로
-사용하지 않는다.
+sealing, durable receipt chain과 recovery notification은
+{doc}`ribos-terminal-outcome-recovery-v1`이 소유한다. Low-level interpreter
+`RETURNED`를 production outcome으로 사용하지 않는다.
 
 | Field | 집행 지점 |
 | --- | --- |
@@ -367,7 +372,8 @@ artifact byte를 받지 않고 opaque `RibosPreparedProgram`만 받는다. Execu
 - Generation과 receipt digest는 nonzero다.
 - Product consumer만 action을 한 번 consume해 Ribon boot transaction으로 변환할 수
   있다.
-- VM과 helper callback은 action 생성 뒤 다른 instruction이나 effect를 실행하지 않는다.
+- Terminal helper 결과는 pending intent이며 pure `Result` packaging 뒤 entry return에서
+  봉인한다. Sealed action 뒤에는 instruction이나 helper effect를 실행하지 않는다.
 
 ### PolicyError
 
@@ -398,8 +404,16 @@ context와 세 outcome tag의 fail-closed validation을 host C unit으로 검사
 header scan은 packed layout, native-width field, host/firmware/OS include와 Ribon service
 type 유입을 거부한다.
 
+```sh
+make check-ribos-vm-terminal
+make check-ribos-vm-faults
+```
+
+두 gate는 entry Result 재검증, single-consume action, PolicyError 분리, journal receipt
+chain과 recovery-once closure를 host unit으로 추가 검증한다.
+
 이 성공은 ABI와 host compile/unit 증거다.
 {doc}`ribos-prepared-program-v1`과 `make check-ribos-prepared-program`은 별도로
 authorization, two-stage verification과 immutable binding 수명을 검증한다. 이 두
-gate와 `make check-ribos-runtime-storage` 모두 opcode interpreter, helper 실행,
-Ribon service adapter, QEMU와 hardware policy 실행을 증명하지 않는다.
+gate와 `make check-ribos-runtime-storage`는 Ribon Core action 적용, product service
+adapter, QEMU transfer와 hardware policy 실행을 증명하지 않는다.

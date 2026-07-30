@@ -219,6 +219,11 @@ Entry policy는 schema context parameter 하나와
 result type은 Stage-1에서 확인하고 Stage-2는 ownership/transition/terminal 의미를
 같은 schema row에서 해석한다.
 
+Verifier는 성공 경로의 존재 자체를 요구하지 않는다. 존재하는 모든 `Ok` 경로는
+정확히 하나의 terminal boot action을 반환해야 하고 `Err` 또는 trap 경로는 terminal
+action을 반환할 수 없다. 따라서 모든 경로가 typed `PolicyError` 또는 trap으로
+끝나는 정책도 유효하다.
+
 ## Reachable capability
 
 각 function의 entry에서 도달 가능한 block과 direct callee만 capability closure에

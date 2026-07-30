@@ -4886,7 +4886,6 @@ ribos_verifier_validate_terminal_actions(
     uint32_t function_id;
     uint32_t iteration;
     int changed = 0;
-    int success_seen = 0;
 
     for (function_id = 0;
          function_id < context->functions->count;
@@ -5047,7 +5046,6 @@ ribos_verifier_validate_terminal_actions(
                         block_id,
                         outgoing);
                 }
-                success_seen = 1;
             } else if (outgoing != 1u) {
                 return ribos_verifier_fail(
                     context,
@@ -5057,14 +5055,6 @@ ribos_verifier_validate_terminal_actions(
                     outgoing);
             }
         }
-    }
-    if (!success_seen) {
-        return ribos_verifier_fail(
-            context,
-            RIBOS_VERIFIER_TERMINAL_ACTION_VIOLATION,
-            RIBOS_VERIFIER_SUBJECT_FUNCTION,
-            entry_id,
-            0);
     }
     return RIBOS_VERIFIER_OK;
 }

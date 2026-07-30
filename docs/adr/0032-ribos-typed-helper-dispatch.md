@@ -72,8 +72,10 @@ embedder에 그대로 넘기면 다음 경계가 열린다.
 - Callback은 heap, architecture, board와 OS에 중립인 C ABI 뒤에 남는다.
 - Product helper가 operation/poll accessor를 우회한 외부 effect는 VM 보장의 범위
   밖이다.
-- 이 결정은 typed helper execution까지 닫지만 terminal BootAction sealing, journal
-  receipt chain, recovery notification과 product service adapter는 닫지 않는다.
+- 이 결정의 terminal BootAction sealing, journal receipt chain과 recovery
+  notification 후속 경계는 ADR 0033과
+  {doc}`../contracts/language/ribos-terminal-outcome-recovery-v1`이 닫는다. Product
+  service adapter는 계속 별도 경계다.
 
 ## 기각한 대안
 

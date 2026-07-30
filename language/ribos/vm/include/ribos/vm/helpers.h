@@ -19,7 +19,7 @@ extern "C" {
  */
 
 #define RIBOS_VM_HELPERS_V1_MAJOR 1u
-#define RIBOS_VM_HELPERS_V1_MINOR 0u
+#define RIBOS_VM_HELPERS_V1_MINOR 1u
 
 /** Arena helper state의 stable lifecycle다. */
 typedef enum RibosVmHelperExecutionState {
@@ -92,7 +92,8 @@ typedef struct RibosVmHelperCallInfo {
  * Outcome region에 field-wise encoding되는 pointer-free execution snapshot이다.
  *
  * 마지막 call receipt는 effect/durability와 실제 callback-local I/O/operation/poll
- * count를 보존한다. Journal receipt chain과 terminal action seal은 별도 계약이다.
+ * count를 보존한다. Journal receipt chain과 terminal action seal은 terminal
+ * 계층에서 별도로 field-wise encoding한다.
  */
 typedef struct RibosVmHelperExecutionSnapshot {
     uint32_t size;
@@ -224,6 +225,18 @@ RibosVmStatus ribos_vm_helper_call_set_policy_error_v1(
     uint32_t error_type_id,
     const uint8_t *bytes,
     size_t byte_size);
+
+/**
+ * Journaled helper가 남긴 product-owned durable receipt identity를 기록한다.
+ *
+ * `journal_state`는 `RibosVmJournalReceiptState` registry 값이다. Digest는 secret이나
+ * pointer를 포함하지 않는 product receipt의 canonical identity여야 한다.
+ * Journaled helper만 호출할 수 있고 한 callback에서 정확히 한 번만 설정한다.
+ */
+RibosVmStatus ribos_vm_helper_call_set_journal_receipt_v1(
+    RibosVmHelperCall *call,
+    uint32_t journal_state,
+    const uint8_t receipt_digest[RIBOS_VM_DIGEST_BYTES]);
 
 /**
  * Consume callback이 source object authority를 외부로 이전했음을 표시한다.

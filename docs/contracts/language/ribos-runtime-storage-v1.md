@@ -117,7 +117,7 @@ overflow하면 plan을 반환하지 않는다.
 | 5 | helper counters | helper import count | 16 bytes |
 | 6 | handle records | product handle cap | 32 bytes |
 | 7 | aggregate scratch | maximum value가 있으면 1 | maximum value bytes |
-| 8 | outcome state | 1 | 256 bytes |
+| 8 | helper + terminal outcome state | 1 | 512 bytes |
 | 9 | outcome/helper output | output cap이 있으면 1 | product output cap |
 | 10 | sealed fault state | 1 | 160 bytes |
 | 11 | diagnostic trace | product trace cap | 32 bytes |
@@ -136,10 +136,13 @@ context generation/type/digest가 들어간다. Native pointer와 C structure im
 Frame record는 direct-call interpreter가 실제로 push/pop하는 bounded control
 record다. Handle record는 {doc}`ribos-generation-handles-v1`의 pointer-free
 generation/lifecycle/type/ownership record로 사용한다. Trusted pointer와 drop
-callback은 arena가 아닌 caller-owned host table에만 있다. Outcome state의 256
+callback은 arena가 아닌 caller-owned host table에만 있다. Outcome state의 첫 256
 bytes는 {doc}`ribos-typed-helper-dispatch-v1`이 helper execution identity, cumulative
-budget과 마지막 effect receipt로 사용한다. Output region은 terminal executor가
-사용할 reservation이고 trace는 optional diagnostic record다.
+budget과 마지막 effect receipt로 사용한다. 두 번째 256 bytes는
+{doc}`ribos-terminal-outcome-recovery-v1`의 terminal lifecycle, action/error identity,
+journal chain과 closure digest를 사용한다. Output region은 exact action/error payload를
+보존하며 action consume 또는 fault closure에서 zeroize한다. Trace는 optional
+diagnostic record다.
 Fault region의 첫 152 bytes는 stable receipt field와 artifact/trace digest이고 마지막
 8 bytes는 seal과 recovery-notified state다. Public `RibosVmFaultReceipt`의 native
 padding이나 reserved word는 arena에 복사하지 않는다. Storage v1 API는 opcode,

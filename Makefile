@@ -96,6 +96,7 @@ RIBOS_RUNTIME_STORAGE_TEST := $(TEST_BUILD_DIR)/ribos_runtime_storage_tests
 RIBOS_VM_SCALAR_TEST := $(TEST_BUILD_DIR)/ribos_vm_scalar_tests
 RIBOS_VM_CALLS_LOOPS_TEST := $(TEST_BUILD_DIR)/ribos_vm_calls_loops_tests
 RIBOS_VM_HANDLES_TEST := $(TEST_BUILD_DIR)/ribos_vm_handles_tests
+RIBOS_VM_TERMINAL_TEST := $(TEST_BUILD_DIR)/ribos_vm_terminal_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
@@ -130,7 +131,8 @@ RIBOS_TARGET_CORE_OBJS := \
 	$(RIBOS_OBJECT_DIR)/target/runtime_storage.o \
 	$(RIBOS_OBJECT_DIR)/target/runtime_handles.o \
 	$(RIBOS_OBJECT_DIR)/target/runtime_helpers.o \
-	$(RIBOS_OBJECT_DIR)/target/runtime_interpreter.o
+	$(RIBOS_OBJECT_DIR)/target/runtime_interpreter.o \
+	$(RIBOS_OBJECT_DIR)/target/runtime_terminal.o
 RIBOS_HOST_SUPPORT_OBJS := \
 	$(RIBOS_OBJECT_DIR)/host-support/allocator.o \
 	$(RIBOS_OBJECT_DIR)/host-support/format.o \
@@ -172,6 +174,7 @@ RIBOS_HEADERS := \
 	language/ribos/vm/include/ribos/vm/handles.h \
 	language/ribos/vm/include/ribos/vm/helpers.h \
 	language/ribos/vm/include/ribos/vm/interpreter.h \
+	language/ribos/vm/include/ribos/vm/terminal.h \
 	language/ribos/vm/include/ribos/vm/verifier.h \
 	language/ribos/vm/src/prepared_internal.h \
 	language/ribos/vm/src/runtime/storage_internal.h \
@@ -468,7 +471,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-runtime-storage check-ribos-vm-scalar \
 	check-ribos-vm-calls check-ribos-vm-loops \
 	check-ribos-vm-aggregates check-ribos-vm-handles \
-	check-ribos-vm-helpers \
+	check-ribos-vm-helpers check-ribos-vm-terminal \
+	check-ribos-vm-faults \
 	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
@@ -519,6 +523,7 @@ $(eval $(call RIBOS_TARGET_OBJECT,runtime_storage,language/ribos/vm/src/runtime/
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_handles,language/ribos/vm/src/runtime/handles.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_helpers,language/ribos/vm/src/runtime/helpers.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_interpreter,language/ribos/vm/src/runtime/interpreter.c))
+$(eval $(call RIBOS_TARGET_OBJECT,runtime_terminal,language/ribos/vm/src/runtime/terminal.c))
 
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,allocator,language/ribos/host/src/allocator.c))
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,format,language/ribos/host/src/format.c))
@@ -803,6 +808,36 @@ check-ribos-vm-handles: check-ribos-vm-aggregates \
 check-ribos-vm-helpers: check-ribos-vm-handles
 	@echo "RIBOS-VM-HELPERS-OK dispatch=stable-id signature=typed \
 budgets=bounded handles=generation-checked evidence=host-fake"
+
+$(RIBOS_VM_TERMINAL_TEST): \
+		language/ribos/vm/tests/terminal_runtime_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		-Ilanguage/ribos/vm/src/runtime \
+		language/ribos/vm/tests/terminal_runtime_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+check-ribos-vm-terminal: check-ribos-vm-helpers \
+		$(RIBOS_VM_TERMINAL_TEST)
+	@tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/action.rba" \
+			language/ribos/vm/tests/runtime_storage.rbs; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/error.rba" \
+			language/ribos/vm/tests/terminal_policy_error.rbs; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/journal.rba" \
+			language/ribos/vm/tests/terminal_journal.rbs; \
+		$(RIBOS_VM_TERMINAL_TEST) \
+			"$$tmp/action.rba" "$$tmp/error.rba" \
+			"$$tmp/journal.rba"
+
+check-ribos-vm-faults: check-ribos-vm-terminal
+	@echo "RIBOS-VM-FAULT-CLOSURE-OK receipt=fixed-size \
+recovery=once authority=revoked rollback-claim=none evidence=host-unit"
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1517,6 +1552,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-vm-scalar check-ribos-vm-calls \
 	check-ribos-vm-loops check-ribos-vm-aggregates \
 	check-ribos-vm-handles check-ribos-vm-helpers \
+	check-ribos-vm-terminal check-ribos-vm-faults \
 	check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \

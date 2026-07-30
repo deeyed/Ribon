@@ -11,10 +11,13 @@ ROOT = Path(__file__).resolve().parents[4]
 FILES = (
     ROOT / "language/ribos/vm/include/ribos/vm/interpreter.h",
     ROOT / "language/ribos/vm/include/ribos/vm/helpers.h",
+    ROOT / "language/ribos/vm/include/ribos/vm/terminal.h",
     ROOT / "language/ribos/vm/src/runtime/interpreter.c",
     ROOT / "language/ribos/vm/src/runtime/helpers.c",
+    ROOT / "language/ribos/vm/src/runtime/terminal.c",
     ROOT / "language/ribos/vm/src/runtime/helpers_internal.h",
     ROOT / "language/ribos/vm/src/runtime/storage_internal.h",
+    ROOT / "language/ribos/vm/src/runtime/terminal_internal.h",
 )
 
 FORBIDDEN_PATTERNS = (
@@ -36,6 +39,10 @@ REQUIRED_SURFACE = (
     "ribos_vm_helper_dispatch_internal_v1",
     "ribos_vm_helper_call_consume_operations_v1",
     "ribos_vm_helper_call_consume_polls_v1",
+    "ribos_vm_helper_call_set_journal_receipt_v1",
+    "ribos_vm_policy_execute_v1",
+    "ribos_vm_terminal_snapshot_v1",
+    "ribos_vm_boot_action_consume_v1",
 )
 
 
@@ -66,7 +73,8 @@ def main() -> int:
         return 1
     print(
         "RIBOS-INTERPRETER-BOUNDARY-OK "
-        "target-neutral=yes allocation-free=yes dispatch=switch helpers=typed"
+        "target-neutral=yes allocation-free=yes dispatch=switch helpers=typed "
+        "terminal=sealed"
     )
     return 0
 

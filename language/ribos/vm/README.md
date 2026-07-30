@@ -33,6 +33,7 @@ include/ribos/vm/storage.h
 include/ribos/vm/handles.h
 include/ribos/vm/helpers.h
 include/ribos/vm/interpreter.h
+include/ribos/vm/terminal.h
 ```
 
 Runtime ABI 1.0은 product schema 1.1과 helper execution contract 1.0을 분리한다.
@@ -80,7 +81,14 @@ callback lifetime을 집행한다. Helper authority가 없는 base interpreter A
 
 Execute의 terminal 결과는 sealed `BootAction`, typed `PolicyError`, catch 불가능한
 `VmFault` 세 class뿐이다. BootAction은 실제 jump가 아닌 single-consume intent이며
-fault recovery callback은 sealed receipt를 통지할 뿐 outcome을 바꾸지 않는다.
+`terminal.h`의 고수준 executor만 full-policy success를 봉인한다. Terminal helper의
+결과는 entry 함수가 `Result::Ok`로 같은 action handle을 반환한 뒤에만 action
+receipt가 되며, `Result::Err`는 typed PolicyError로 닫힌다. Journaled helper는
+product callback이 제공한 committed receipt를 먼저 저장하고 terminal journal
+chain에 포함한다. 이후 fault가 나더라도 이미 발생한 외부 effect를 rollback했다고
+주장하지 않고 `PARTIAL` transaction state와 receipt chain을 보존한다. Fault recovery
+callback은 handle cleanup, output zero, trace digest와 terminal snapshot을 먼저
+봉인한 뒤 정확히 한 번 통지할 뿐 outcome을 바꾸거나 policy를 재실행하지 않는다.
 
 ```sh
 make check-ribos-runtime-contract
@@ -92,6 +100,8 @@ make check-ribos-vm-loops
 make check-ribos-vm-aggregates
 make check-ribos-vm-handles
 make check-ribos-vm-helpers
+make check-ribos-vm-terminal
+make check-ribos-vm-faults
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
 ```
@@ -119,6 +129,6 @@ Structural reader가 envelope, payload hash와 section range를 통과시킨 art
 
 이 README와 host gate는 runtime ABI, verifier, host-side
 scalar/direct-call/loop/aggregate dispatch, generation handle defense, fake-embedder
-typed helper execution과 execution eligibility 경계만 설명한다. Terminal BootAction
-sealing, production signature/rollback provider, Ribon product service linkage, QEMU
-또는 hardware policy 실행 증거가 아니다.
+typed helper execution, terminal action sealing과 fail-closed recovery를 설명한다.
+이는 실제 실행 권한 이전, production signature/rollback provider, Ribon product
+service linkage, QEMU 또는 hardware policy 실행 증거가 아니다.
