@@ -9,6 +9,7 @@ code_paths:
   - language/ribos/vm/include/ribos/vm/storage.h
   - language/ribos/vm/src/runtime/storage_internal.h
   - language/ribos/vm/src/runtime/storage.c
+  - language/ribos/vm/include/ribos/vm/helpers.h
   - language/ribos/vm/tests/runtime_storage_tests.c
   - Makefile
 tests:
@@ -135,8 +136,10 @@ context generation/type/digest가 들어간다. Native pointer와 C structure im
 Frame record는 direct-call interpreter가 실제로 push/pop하는 bounded control
 record다. Handle record는 {doc}`ribos-generation-handles-v1`의 pointer-free
 generation/lifecycle/type/ownership record로 사용한다. Trusted pointer와 drop
-callback은 arena가 아닌 caller-owned host table에만 있다. Outcome와 trace는 후속
-executor가 사용할 reservation이다.
+callback은 arena가 아닌 caller-owned host table에만 있다. Outcome state의 256
+bytes는 {doc}`ribos-typed-helper-dispatch-v1`이 helper execution identity, cumulative
+budget과 마지막 effect receipt로 사용한다. Output region은 terminal executor가
+사용할 reservation이고 trace는 optional diagnostic record다.
 Fault region의 첫 152 bytes는 stable receipt field와 artifact/trace digest이고 마지막
 8 bytes는 seal과 recovery-notified state다. Public `RibosVmFaultReceipt`의 native
 padding이나 reserved word는 arena에 복사하지 않는다. Storage v1 API는 opcode,

@@ -1,4 +1,5 @@
 #include "ribos/vm/handles.h"
+#include "ribos/vm/helpers.h"
 #include "ribos/vm/interpreter.h"
 
 #include "internal.h"
@@ -40,6 +41,31 @@ typedef struct TestArena {
     RibosVmHandleHostTable table;
 } TestArena;
 
+typedef struct TestHelperEmbedder {
+    const RibosPreparedProgram *prepared;
+    const RibosVmContext *context;
+    const RibosVmHelperEnvironment *environment;
+    RibosVmStorage *storage;
+    size_t arena_size;
+    uint32_t slot_type;
+    uint32_t image_type;
+    uint32_t verified_type;
+    uint32_t boot_action_type;
+    uint32_t boot_error_type;
+    uint32_t boot_action_size;
+    uint32_t boot_error_size;
+    uint64_t now_ns;
+    uint32_t callback_count;
+    uint32_t reentry_rejected;
+    uint32_t base_reentry_rejected;
+    uint32_t policy_error;
+    uint32_t fault_injection;
+    RibosVmHelperCall *retained_call;
+    int slot_object;
+    int image_object;
+    DropProbe drops;
+} TestHelperEmbedder;
+
 static uint16_t
 read_u16(const uint8_t *bytes)
 {
@@ -57,14 +83,6 @@ read_u32(const uint8_t *bytes)
 }
 
 static uint32_t
-invoke_helper(void *context, RibosVmHelperCall *call)
-{
-    (void)context;
-    (void)call;
-    return RIBOS_VM_HELPER_CALLBACK_OK;
-}
-
-static uint32_t
 drop_probe(void *context, void *trusted_object)
 {
     DropProbe *probe = context;
@@ -76,6 +94,180 @@ drop_probe(void *context, void *trusted_object)
     return probe->fail ?
         RIBOS_VM_HANDLE_DROP_FAILED :
         RIBOS_VM_HANDLE_DROP_COMPLETE;
+}
+
+static uint32_t
+helper_now(void *context, uint64_t *now_ns)
+{
+    TestHelperEmbedder *embedder = context;
+
+    if (embedder == NULL || now_ns == NULL ||
+        embedder->now_ns > UINT64_MAX - 10) {
+        return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+    }
+    embedder->now_ns += 10;
+    *now_ns = embedder->now_ns;
+    return RIBOS_VM_HELPER_CALLBACK_OK;
+}
+
+static void
+factory_recovery(
+    void *context,
+    const RibosVmFaultReceipt *receipt)
+{
+    (void)context;
+    (void)receipt;
+}
+
+static uint32_t
+invoke_helper(void *context, RibosVmHelperCall *call)
+{
+    TestHelperEmbedder *embedder = context;
+    RibosVmHelperCallInfo info;
+    RibosVmInterpreterSnapshot reentry;
+    uint8_t value[16] = {0x2a};
+    void *trusted = NULL;
+
+    if (embedder == NULL ||
+        ribos_vm_helper_call_info_v1(call, &info) !=
+            RIBOS_VM_STATUS_OK) {
+        return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+    }
+    ++embedder->callback_count;
+    embedder->retained_call = call;
+    if (embedder->callback_count == 1 &&
+        ribos_vm_interpreter_step_with_helpers_v1(
+            embedder->prepared,
+            embedder->context,
+            embedder->environment,
+            embedder->storage,
+            embedder->arena_size,
+            &reentry) == RIBOS_VM_STATUS_INVALID_STATE) {
+        embedder->reentry_rejected = 1;
+    }
+    if (embedder->callback_count == 1 &&
+        ribos_vm_interpreter_step_v1(
+            embedder->prepared,
+            embedder->context,
+            embedder->storage,
+            embedder->arena_size,
+            &reentry) == RIBOS_VM_STATUS_INVALID_STATE) {
+        embedder->base_reentry_rejected = 1;
+    }
+    if (embedder->fault_injection == 1 &&
+        info.stable_id == 2) {
+        (void)ribos_vm_helper_call_consume_operations_v1(
+            call,
+            5);
+        return RIBOS_VM_HELPER_CALLBACK_OK;
+    }
+    if (ribos_vm_helper_call_consume_operations_v1(
+            call,
+            1) != RIBOS_VM_STATUS_OK ||
+        ribos_vm_helper_call_consume_polls_v1(
+            call,
+            1) != RIBOS_VM_STATUS_OK) {
+        return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+    }
+    if (info.stable_id == 2) {
+        if (embedder->fault_injection == 2) {
+            embedder->now_ns += 200000;
+        } else if (embedder->fault_injection == 3) {
+            return RIBOS_VM_HELPER_CALLBACK_OK;
+        }
+        return ribos_vm_helper_call_set_success_handle_v1(
+                call,
+                embedder->slot_type,
+                &embedder->slot_object,
+                NULL,
+                NULL) == RIBOS_VM_STATUS_OK ?
+            RIBOS_VM_HELPER_CALLBACK_OK :
+            RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+    }
+    if (info.stable_id == 8) {
+        if (ribos_vm_helper_call_argument_handle_v1(
+                call,
+                0,
+                embedder->slot_type,
+                &trusted) != RIBOS_VM_STATUS_OK ||
+            trusted != &embedder->slot_object) {
+            return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+        }
+        return ribos_vm_helper_call_set_success_handle_v1(
+                call,
+                embedder->image_type,
+                &embedder->image_object,
+                drop_probe,
+                &embedder->drops) == RIBOS_VM_STATUS_OK ?
+            RIBOS_VM_HELPER_CALLBACK_OK :
+            RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+    }
+    if (info.stable_id == 11) {
+        if (ribos_vm_helper_call_argument_handle_v1(
+                call,
+                0,
+                embedder->image_type,
+                &trusted) != RIBOS_VM_STATUS_OK ||
+            trusted != &embedder->image_object) {
+            return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+        }
+        if (embedder->policy_error != 0) {
+            return ribos_vm_helper_call_set_policy_error_v1(
+                    call,
+                    embedder->boot_error_type,
+                    value,
+                    embedder->boot_error_size) ==
+                    RIBOS_VM_STATUS_OK ?
+                RIBOS_VM_HELPER_CALLBACK_POLICY_ERROR :
+                RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+        }
+        return ribos_vm_helper_call_set_success_handle_v1(
+                call,
+                embedder->verified_type,
+                &embedder->image_object,
+                drop_probe,
+                &embedder->drops) == RIBOS_VM_STATUS_OK ?
+            RIBOS_VM_HELPER_CALLBACK_OK :
+            RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+    }
+    if (info.stable_id == 21) {
+        void *slot = NULL;
+        void *verified = NULL;
+
+        if (ribos_vm_helper_call_argument_handle_v1(
+                call,
+                0,
+                embedder->slot_type,
+                &slot) != RIBOS_VM_STATUS_OK ||
+            ribos_vm_helper_call_argument_handle_v1(
+                call,
+                1,
+                embedder->verified_type,
+                &verified) != RIBOS_VM_STATUS_OK ||
+            slot != &embedder->slot_object ||
+            verified != &embedder->image_object ||
+            ribos_vm_helper_call_mark_consumed_transferred_v1(
+                call) != RIBOS_VM_STATUS_OK) {
+            return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+        }
+    } else if (info.stable_id != 22) {
+        return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+    }
+    return ribos_vm_helper_call_set_success_value_v1(
+            call,
+            embedder->boot_action_type,
+            value,
+            embedder->boot_action_size) == RIBOS_VM_STATUS_OK ?
+        RIBOS_VM_HELPER_CALLBACK_OK :
+        RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
+}
+
+static uint32_t
+replaced_helper(void *context, RibosVmHelperCall *call)
+{
+    (void)context;
+    (void)call;
+    return RIBOS_VM_HELPER_CALLBACK_CONTRACT_FAULT;
 }
 
 static uint32_t
@@ -369,6 +561,25 @@ find_named_type(
         }
     }
     return RIBOS_VM_INVALID_ID;
+}
+
+static uint32_t
+type_byte_size(
+    const RibosPreparedProgram *prepared,
+    uint32_t type_id)
+{
+    const RibosArtifactView *view =
+        ribos_prepared_program_artifact_view_v1(prepared);
+    const RibosArtifactSectionView *types =
+        ribos_artifact_find_section(
+            view,
+            RIBOS_ARTIFACT_SECTION_TYPES);
+
+    if (types == NULL || type_id >= types->count) {
+        return 0;
+    }
+    return read_u32(
+        types->bytes + (size_t)type_id * types->row_size + 40);
 }
 
 static uint32_t
@@ -1180,6 +1391,342 @@ test_interpreter_aggregate_ownership(const char *path)
     return passed;
 }
 
+static int
+run_helper_policy(
+    TestPrepared *test,
+    TestArena *arena,
+    uint32_t policy_error,
+    uint32_t fault_injection,
+    uint32_t expected_state,
+    uint32_t expected_fault)
+{
+    RibosVmContext context;
+    RibosVmInterpreterSnapshot interpreter_snapshot;
+    RibosVmHelperExecutionSnapshot helper_snapshot;
+    RibosVmFaultReceipt fault;
+    RibosVmHelperCallInfo retained_info;
+    RibosVmEmbedder embedder;
+    RibosVmHelperEnvironment environment;
+    TestHelperEmbedder fake;
+    uint8_t context_bytes[256] = {0};
+    int passed;
+
+    if (!initialize_interpreter_context(
+            test,
+            &context,
+            context_bytes) ||
+        !reset_test_arena(test, arena)) {
+        return 0;
+    }
+    memset(&fake, 0, sizeof(fake));
+    fake.prepared = test->prepared;
+    fake.context = &context;
+    fake.storage = arena->storage;
+    fake.arena_size = arena->arena_size;
+    fake.slot_type = find_named_type(test->prepared, "Slot");
+    fake.image_type = find_named_type(test->prepared, "Image");
+    fake.verified_type =
+        find_named_type(test->prepared, "VerifiedImage");
+    fake.boot_action_type =
+        find_named_type(test->prepared, "BootAction");
+    fake.boot_error_type =
+        find_named_type(test->prepared, "BootError");
+    fake.boot_action_size =
+        type_byte_size(test->prepared, fake.boot_action_type);
+    fake.boot_error_size =
+        type_byte_size(test->prepared, fake.boot_error_type);
+    fake.now_ns = 100;
+    fake.policy_error = policy_error;
+    fake.fault_injection = fault_injection;
+    embedder = (RibosVmEmbedder){
+        .size = sizeof(embedder),
+        .runtime_abi_major = RIBOS_VM_RUNTIME_ABI_V1_MAJOR,
+        .runtime_abi_minor = RIBOS_VM_RUNTIME_ABI_V1_MINOR,
+        .selected_mode = 0,
+        .selected_phase = 0,
+        .granted_capabilities =
+            RIBOS_CAPABILITY_INSPECT | RIBOS_CAPABILITY_BOOT,
+        .helper_contract = &test->contract,
+        .embedder_context = &fake,
+        .monotonic_now_ns = helper_now,
+        .factory_recovery = factory_recovery,
+    };
+    environment = (RibosVmHelperEnvironment){
+        .size = sizeof(environment),
+        .helpers_major = RIBOS_VM_HELPERS_V1_MAJOR,
+        .helpers_minor = RIBOS_VM_HELPERS_V1_MINOR,
+        .embedder = &embedder,
+        .handle_table = &arena->table,
+    };
+    fake.environment = &environment;
+    passed = expect_true(
+        "helper fixture type sizes",
+        fake.slot_type != RIBOS_VM_INVALID_ID &&
+            fake.image_type != RIBOS_VM_INVALID_ID &&
+            fake.verified_type != RIBOS_VM_INVALID_ID &&
+            fake.boot_action_type != RIBOS_VM_INVALID_ID &&
+            fake.boot_error_type != RIBOS_VM_INVALID_ID &&
+            fake.boot_action_size <= 16 &&
+            fake.boot_error_size <= 16);
+    passed = passed && expect_status(
+        "initialize helper interpreter",
+        ribos_vm_interpreter_initialize_v1(
+            test->prepared,
+            &context,
+            arena->storage,
+            arena->arena_size),
+        RIBOS_VM_STATUS_OK);
+    passed = passed && expect_status(
+        "initialize helper execution",
+        ribos_vm_helper_execution_initialize_v1(
+            test->prepared,
+            &context,
+            &environment,
+            arena->storage,
+            arena->arena_size),
+        RIBOS_VM_STATUS_OK);
+    passed = passed && expect_status(
+        "run typed helper policy",
+        ribos_vm_interpreter_run_with_helpers_v1(
+            test->prepared,
+            &context,
+            &environment,
+            arena->storage,
+            arena->arena_size,
+            &interpreter_snapshot),
+        RIBOS_VM_STATUS_OK);
+    passed = passed && expect_true(
+        "typed helper terminal state",
+        interpreter_snapshot.state == expected_state &&
+            interpreter_snapshot.fault_code == expected_fault);
+    passed = passed && expect_status(
+        "read helper execution receipt",
+        ribos_vm_helper_execution_snapshot_v1(
+            test->prepared,
+            arena->storage,
+            arena->arena_size,
+            &helper_snapshot),
+        RIBOS_VM_STATUS_OK);
+    passed = passed && expect_true(
+        "callback reentry rejected",
+        fake.reentry_rejected == 1 &&
+            fake.base_reentry_rejected == 1);
+    passed = passed && expect_status(
+        "retained helper call invalid",
+        ribos_vm_helper_call_info_v1(
+            fake.retained_call,
+            &retained_info),
+        RIBOS_VM_STATUS_INVALID_STATE);
+    if (expected_fault == RIBOS_VM_FAULT_NONE) {
+        passed = passed && expect_true(
+            "bounded helper receipt complete",
+            fake.callback_count == 4 &&
+                helper_snapshot.state ==
+                    RIBOS_VM_HELPER_EXECUTION_READY &&
+                helper_snapshot.consumed_helper_calls == 4 &&
+                helper_snapshot.consumed_operations == 4 &&
+                helper_snapshot.consumed_polls == 4 &&
+                helper_snapshot.last_effect ==
+                    RIBOS_VM_HELPER_EFFECT_TERMINAL &&
+                helper_snapshot.last_result_kind ==
+                    RIBOS_VM_HELPER_RESULT_SUCCESS_VALUE);
+        passed = passed && expect_true(
+            "policy error consumes failed image",
+            fake.drops.calls == (policy_error != 0 ? 1u : 0u));
+    } else {
+        passed = passed && expect_true(
+            "hostile helper faults before result",
+            fake.callback_count == 1 &&
+                helper_snapshot.state ==
+                    RIBOS_VM_HELPER_EXECUTION_FAULTED &&
+                helper_snapshot.last_helper_id == 2);
+        passed = passed && expect_status(
+            "read helper fault receipt",
+            ribos_vm_interpreter_fault_v1(
+                test->prepared,
+                arena->storage,
+                arena->arena_size,
+                &fault),
+            RIBOS_VM_STATUS_OK);
+        passed = passed && expect_true(
+            "helper fault receipt identifies effect",
+            fault.fault_code == expected_fault &&
+                fault.subject == RIBOS_VM_FAULT_SUBJECT_HELPER &&
+                fault.helper_id == 2 &&
+                fault.last_effect == RIBOS_VM_HELPER_EFFECT_PURE);
+    }
+    return passed;
+}
+
+static int
+test_typed_helper_dispatch(
+    TestPrepared *test,
+    TestArena *arena)
+{
+    RibosVmContext context;
+    RibosVmEmbedder embedder;
+    RibosVmHelperEnvironment environment;
+    RibosVmInterpreterSnapshot interpreter_snapshot;
+    RibosVmFaultReceipt fault;
+    TestHelperEmbedder fake;
+    RibosVmHelperInvokeFn saved_callback;
+    uint8_t saved_digest_byte;
+    uint8_t context_bytes[256] = {0};
+    int passed;
+
+    saved_callback = test->bindings[0].invoke;
+    test->bindings[0].invoke = replaced_helper;
+    passed = run_helper_policy(
+        test,
+        arena,
+        0,
+        0,
+        RIBOS_VM_INTERPRETER_RETURNED,
+        RIBOS_VM_FAULT_NONE);
+    test->bindings[0].invoke = saved_callback;
+    passed = passed && run_helper_policy(
+        test,
+        arena,
+        1,
+        0,
+        RIBOS_VM_INTERPRETER_RETURNED,
+        RIBOS_VM_FAULT_NONE);
+    passed = passed && run_helper_policy(
+        test,
+        arena,
+        0,
+        1,
+        RIBOS_VM_INTERPRETER_FAULTED,
+        RIBOS_VM_FAULT_OPERATION_BUDGET);
+    passed = passed && run_helper_policy(
+        test,
+        arena,
+        0,
+        2,
+        RIBOS_VM_INTERPRETER_FAULTED,
+        RIBOS_VM_FAULT_DEADLINE);
+    passed = passed && run_helper_policy(
+        test,
+        arena,
+        0,
+        3,
+        RIBOS_VM_INTERPRETER_FAULTED,
+        RIBOS_VM_FAULT_HELPER_CONTRACT);
+    if (!passed ||
+        !initialize_interpreter_context(
+            test,
+            &context,
+            context_bytes) ||
+        !reset_test_arena(test, arena)) {
+        return 0;
+    }
+    memset(&fake, 0, sizeof(fake));
+    fake.now_ns = 100;
+    embedder = (RibosVmEmbedder){
+        .size = sizeof(embedder),
+        .runtime_abi_major = RIBOS_VM_RUNTIME_ABI_V1_MAJOR,
+        .runtime_abi_minor = RIBOS_VM_RUNTIME_ABI_V1_MINOR,
+        .selected_mode = 0,
+        .selected_phase = 0,
+        .granted_capabilities = RIBOS_CAPABILITY_INSPECT,
+        .helper_contract = &test->contract,
+        .embedder_context = &fake,
+        .monotonic_now_ns = helper_now,
+        .factory_recovery = factory_recovery,
+    };
+    environment = (RibosVmHelperEnvironment){
+        .size = sizeof(environment),
+        .helpers_major = RIBOS_VM_HELPERS_V1_MAJOR,
+        .helpers_minor = RIBOS_VM_HELPERS_V1_MINOR,
+        .embedder = &embedder,
+        .handle_table = &arena->table,
+    };
+    passed = expect_status(
+        "missing artifact capability rejected before callback",
+        ribos_vm_helper_execution_initialize_v1(
+            test->prepared,
+            &context,
+            &environment,
+            arena->storage,
+            arena->arena_size),
+        RIBOS_VM_STATUS_EMBEDDER_REJECTED) &&
+        fake.callback_count == 0;
+    embedder.granted_capabilities =
+        RIBOS_CAPABILITY_INSPECT | RIBOS_CAPABILITY_BOOT;
+    saved_digest_byte = test->contract.digest[0];
+    test->contract.digest[0] ^= 0x80;
+    passed = passed && expect_status(
+        "replaced helper contract digest rejected",
+        ribos_vm_helper_execution_initialize_v1(
+            test->prepared,
+            &context,
+            &environment,
+            arena->storage,
+            arena->arena_size),
+        RIBOS_VM_STATUS_DIGEST_MISMATCH);
+    test->contract.digest[0] = saved_digest_byte;
+    if (!passed || !reset_test_arena(test, arena)) {
+        return 0;
+    }
+    passed = expect_status(
+        "helper execution requires initialized interpreter",
+        ribos_vm_helper_execution_initialize_v1(
+            test->prepared,
+            &context,
+            &environment,
+            arena->storage,
+            arena->arena_size),
+        RIBOS_VM_STATUS_INVALID_STATE);
+    context.selected_mode = 1;
+    embedder.selected_mode = 1;
+    fake.prepared = test->prepared;
+    fake.context = &context;
+    fake.environment = &environment;
+    fake.storage = arena->storage;
+    fake.arena_size = arena->arena_size;
+    passed = expect_status(
+        "initialize mode-mismatch interpreter",
+        ribos_vm_interpreter_initialize_v1(
+            test->prepared,
+            &context,
+            arena->storage,
+            arena->arena_size),
+        RIBOS_VM_STATUS_OK);
+    passed = passed && expect_status(
+        "initialize mode-mismatch helper execution",
+        ribos_vm_helper_execution_initialize_v1(
+            test->prepared,
+            &context,
+            &environment,
+            arena->storage,
+            arena->arena_size),
+        RIBOS_VM_STATUS_OK);
+    passed = passed && expect_status(
+        "mode mask faults before callback",
+        ribos_vm_interpreter_run_with_helpers_v1(
+            test->prepared,
+            &context,
+            &environment,
+            arena->storage,
+            arena->arena_size,
+            &interpreter_snapshot),
+        RIBOS_VM_STATUS_OK);
+    passed = passed && expect_status(
+        "read mode mismatch fault",
+        ribos_vm_interpreter_fault_v1(
+            test->prepared,
+            arena->storage,
+            arena->arena_size,
+            &fault),
+        RIBOS_VM_STATUS_OK);
+    return passed &&
+        interpreter_snapshot.state ==
+            RIBOS_VM_INTERPRETER_FAULTED &&
+        fault.fault_code == RIBOS_VM_FAULT_MODE_PHASE &&
+        fault.helper_id == 2 &&
+        fake.callback_count == 0;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1238,6 +1785,9 @@ main(int argc, char **argv)
         &test,
         &arena,
         image_type);
+    passed = passed && test_typed_helper_dispatch(
+        &test,
+        &arena);
     passed = passed &&
         test_interpreter_aggregate_ownership(argv[2]);
     release_test_arena(&arena);
@@ -1249,6 +1799,6 @@ main(int argc, char **argv)
     puts(
         "RIBOS-VM-HANDLES-OK "
         "token=generation-index ownership=sealed typestate=checked "
-        "cleanup=bounded evidence=host-unit");
+        "cleanup=bounded helpers=typed-bounded evidence=host-unit");
     return 0;
 }

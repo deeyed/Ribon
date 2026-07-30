@@ -836,11 +836,37 @@ ribos_prepared_validate_helper_schema(
                 execution->stable_id);
         uint32_t expected_transition;
         uint32_t expected_parameter = RIBOS_VM_INVALID_ID;
+        uint32_t parameter_index;
 
         if (helper == NULL ||
             execution->required_capabilities !=
                 helper->capabilities) {
             return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+        }
+        for (parameter_index = 0;
+             parameter_index < helper->parameter_count;
+             ++parameter_index) {
+            const RibosSchemaParameter *parameter =
+                &helper->parameters[parameter_index];
+
+            if (parameter->mode == RIBOS_SCHEMA_PARAMETER_CONSUME) {
+                const RibosSchemaType *parameter_type =
+                    ribos_schema_find_type(
+                        schema,
+                        parameter->type,
+                        strlen(parameter->type));
+
+                if ((helper->flags &
+                     RIBOS_SCHEMA_HELPER_TYPESTATE_TRANSITION) == 0 ||
+                    helper->transition_parameter != parameter_index ||
+                    parameter_type == NULL ||
+                    parameter_type->type_class !=
+                        RIBOS_SCHEMA_TYPE_OPAQUE_HANDLE ||
+                    parameter_type->ownership <=
+                        RIBOS_SCHEMA_OWNERSHIP_COPY) {
+                    return RIBOS_VM_STATUS_INVALID_DESCRIPTOR;
+                }
+            }
         }
         expected_transition =
             ribos_prepared_expected_transition(schema, helper);

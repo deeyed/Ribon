@@ -5,10 +5,12 @@ authority: normative
 last_verified: 2026-07-31
 code_paths:
   - language/ribos/vm/include/ribos/vm/handles.h
+  - language/ribos/vm/include/ribos/vm/helpers.h
   - language/ribos/vm/include/ribos/vm/prepared.h
   - language/ribos/vm/src/prepared_internal.h
   - language/ribos/vm/src/prepared.c
   - language/ribos/vm/src/runtime/handles.c
+  - language/ribos/vm/src/runtime/helpers.c
   - language/ribos/vm/src/runtime/interpreter.c
   - language/ribos/vm/src/verifier.c
   - language/ribos/vm/tests/handle_runtime_tests.c
@@ -17,6 +19,7 @@ code_paths:
   - Makefile
 tests:
   - make check-ribos-vm-handles
+  - make check-ribos-vm-helpers
   - make check-ribos-vm-aggregates
   - make check-ribos-verifier
   - make check-ribos-schema
@@ -151,8 +154,9 @@ stale다. Generation이나 move count가 wrap되면 이동하지 않고 실패�
 
 Interpreter의 aggregate/direct-call move는 verified slot 전체 bytes를 먼저 복사한 뒤
 non-copy source slot을 `MOVED`로 바꾼다. 이 규칙은 token이 없는 `None`과 error
-variant에도 적용된다. Helper runtime과 결합하기 전 interpreter 단독 경계는 nested
-token generation을 회전시키지 않으며 source slot 접근 차단만 증명한다.
+variant에도 적용된다. Typed helper dispatch는 opaque consume 전에 token generation을
+회전시키고 source slot도 `MOVED`로 바꾼다. Helper authority가 없는 base
+interpreter의 aggregate 이동은 nested token generation을 회전시키지 않는다.
 
 ### Consume과 typestate
 
@@ -218,6 +222,7 @@ artifact를 `typestate-violation`으로 거부한다. Copy result만 default loo
 
 ```sh
 make check-ribos-vm-handles
+make check-ribos-vm-helpers
 ```
 
 Gate는 canonical token, stale/forged generation, wrong typestate, borrow exclusion,
@@ -226,3 +231,6 @@ consume-replace, capacity exhaustion, poisoned record와 bounded cleanup을 검�
 `aggregate_ownership.rbs`는 빈 `Option[Image]` 이동도 source slot 전체를
 `MOVED`로 만드는지 확인하고 `noncopy_map_default.rbs`는 모호한 conditional move를
 독립 verifier가 거부하는지 확인한다.
+Helper gate는 실제 `Slot -> Image -> VerifiedImage` borrow/consume/replace와 terminal
+consume을 fake embedder에서 실행한다. 자세한 범위는
+{doc}`ribos-typed-helper-dispatch-v1`이 소유한다.

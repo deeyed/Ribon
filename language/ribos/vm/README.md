@@ -31,6 +31,7 @@ include/ribos/vm/runtime.h
 include/ribos/vm/prepared.h
 include/ribos/vm/storage.h
 include/ribos/vm/handles.h
+include/ribos/vm/helpers.h
 include/ribos/vm/interpreter.h
 ```
 
@@ -71,8 +72,11 @@ generation/type/digest와 fault receipt도 arena에 fixed-offset byte로 봉인�
 engine의 entry `RETURNED`는 내부 함수 반환이며 `BootAction`이나 full-policy success가
 아니다. `handles.h`는 fixed arena record와 process-local host table을 결합한
 generation token, synchronous borrow, irreversible consume/replace/revoke와 bounded
-fault cleanup을 제공한다. 실제 helper callback dispatch는 후속 실행 계층이 닫기
-전까지 fail closed한다.
+fault cleanup을 제공한다. `helpers.h`와 helper-aware interpreter API는
+PreparedProgram의 copied stable-ID binding을 typed synchronous callback에 연결하고
+generation handle, total/per-helper call, input/output, operation/poll, deadline과
+callback lifetime을 집행한다. Helper authority가 없는 base interpreter API는
+`CALL_HELPER`를 계속 fail closed한다.
 
 Execute의 terminal 결과는 sealed `BootAction`, typed `PolicyError`, catch 불가능한
 `VmFault` 세 class뿐이다. BootAction은 실제 jump가 아닌 single-consume intent이며
@@ -87,6 +91,7 @@ make check-ribos-vm-calls
 make check-ribos-vm-loops
 make check-ribos-vm-aggregates
 make check-ribos-vm-handles
+make check-ribos-vm-helpers
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
 ```
@@ -113,7 +118,7 @@ Structural reader가 envelope, payload hash와 section range를 통과시킨 art
 허가 전에 별도로 통과해야 한다.
 
 이 README와 host gate는 runtime ABI, verifier, host-side
-scalar/direct-call/loop/aggregate dispatch, generation handle defense와 execution
-eligibility 경계만 설명한다. Full policy execution, production signature/rollback
-provider, product helper execution, boot product linkage, QEMU 또는 hardware policy
-실행 증거가 아니다.
+scalar/direct-call/loop/aggregate dispatch, generation handle defense, fake-embedder
+typed helper execution과 execution eligibility 경계만 설명한다. Terminal BootAction
+sealing, production signature/rollback provider, Ribon product service linkage, QEMU
+또는 hardware policy 실행 증거가 아니다.

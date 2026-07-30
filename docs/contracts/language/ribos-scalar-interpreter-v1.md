@@ -161,9 +161,11 @@ expected type을 다시 검사해야 한다.
 `CALL_DIRECT`의 explicit frame stack과 loop bound는
 {doc}`ribos-bounded-calls-loops-v1`에 따라 실행한다. Aggregate, member/index,
 variant와 collection opcode는 {doc}`ribos-bounded-aggregate-runtime-v1`에 따라
-실행한다. `CALL_HELPER`는 유효 artifact에 존재해도 이 incremental engine에서
-성공하지 않으며 도달하면 `VmFault(INVALID_STATE)`를 봉인한다. Partial opcode
-engine을 production policy executor로 해석하거나 boot transfer에 연결할 수 없다.
+실행한다. Helper authority를 받지 않는 base step/run API에서는 `CALL_HELPER`가
+유효 artifact에 존재해도 성공하지 않고 `VmFault(INVALID_STATE)`를 봉인한다.
+명시적인 helper-aware API의 typed dispatch 의미는
+{doc}`ribos-typed-helper-dispatch-v1`이 소유한다. Entry `RETURNED`를 production
+BootAction이나 boot transfer로 해석할 수 없다.
 
 ## Checked integer 의미
 

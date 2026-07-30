@@ -14,14 +14,15 @@ extern "C" {
  * @file interpreter.h
  * @brief PreparedProgram만 실행하는 architecture-neutral Ribos interpreter v1.
  *
- * v1.3 API는 scalar/control-flow, bounded direct call/loop, heap-free bounded
- * aggregate engine과 verified whole-value ownership transfer를 제공한다. Full
- * policy success나 BootAction을 만들지 않으며 지원 범위 밖 opcode는 fail
- * closed한다.
+ * v1.4 API는 scalar/control-flow, bounded direct call/loop, heap-free bounded
+ * aggregate engine, verified whole-value ownership transfer와 opt-in typed helper
+ * dispatch를 제공한다. Full policy success나 sealed BootAction을 만들지는 않는다.
  */
 
 #define RIBOS_VM_INTERPRETER_V1_MAJOR 1u
-#define RIBOS_VM_INTERPRETER_V1_MINOR 3u
+#define RIBOS_VM_INTERPRETER_V1_MINOR 4u
+
+struct RibosVmHelperEnvironment;
 
 /** Caller가 관찰할 수 있는 bounded interpreter 상태다. */
 typedef enum RibosVmInterpreterState {
@@ -94,6 +95,29 @@ RibosVmStatus ribos_vm_interpreter_step_v1(
 RibosVmStatus ribos_vm_interpreter_run_v1(
     const RibosPreparedProgram *prepared_program,
     const RibosVmContext *context,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    RibosVmInterpreterSnapshot *snapshot);
+
+/**
+ * Helper execution이 초기화된 arena에서 정확히 한 instruction을 dispatch한다.
+ *
+ * `CALL_HELPER`는 PreparedProgram의 copied binding만 사용한다. 다른 opcode의 의미는
+ * `ribos_vm_interpreter_step_v1`과 같다.
+ */
+RibosVmStatus ribos_vm_interpreter_step_with_helpers_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmContext *context,
+    const struct RibosVmHelperEnvironment *environment,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    RibosVmInterpreterSnapshot *snapshot);
+
+/** Helper-aware step을 terminal interpreter state까지 bounded 반복한다. */
+RibosVmStatus ribos_vm_interpreter_run_with_helpers_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmContext *context,
+    const struct RibosVmHelperEnvironment *environment,
     RibosVmStorage *storage,
     size_t arena_size,
     RibosVmInterpreterSnapshot *snapshot);

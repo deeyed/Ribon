@@ -7,9 +7,11 @@ code_paths:
   - language/ribos/vm/include/ribos/vm/runtime.h
   - language/ribos/vm/include/ribos/vm/prepared.h
   - language/ribos/vm/include/ribos/vm/storage.h
+  - language/ribos/vm/include/ribos/vm/helpers.h
   - language/ribos/vm/include/ribos/vm/interpreter.h
   - language/ribos/vm/src/prepared.c
   - language/ribos/vm/src/runtime/storage.c
+  - language/ribos/vm/src/runtime/helpers.c
   - language/ribos/vm/src/runtime/interpreter.c
   - language/ribos/vm/tests/runtime_contract_tests.c
   - language/ribos/vm/tests/check_runtime_header.py
@@ -21,6 +23,7 @@ tests:
   - make check-ribos-vm-scalar
   - make check-ribos-vm-calls
   - make check-ribos-vm-loops
+  - make check-ribos-vm-helpers
   - make check-ribos-schema
   - make check-ribos-verifier
   - make check-ribos-host-boundary
@@ -166,8 +169,10 @@ loop counter는 {doc}`ribos-bounded-calls-loops-v1`이 소유한다. 이 engine�
 `RETURNED`는 entry 함수 반환이며 sealed `BootAction`이나 full-policy outcome이
 아니다. Bounded aggregate 실행은 {doc}`ribos-bounded-aggregate-runtime-v1`이
 소유한다. Generation handle, dynamic ownership과 bounded cleanup은
-{doc}`ribos-generation-handles-v1`이 소유한다. Product helper dispatch와 recovery
-notification이 닫히기 전에는 production execute entry로 사용하지 않는다.
+{doc}`ribos-generation-handles-v1`이 소유한다. Typed synchronous product helper
+dispatch는 {doc}`ribos-typed-helper-dispatch-v1`이 소유한다. Terminal BootAction
+sealing과 recovery notification이 닫히기 전에는 production execute entry로
+사용하지 않는다.
 
 | Field | 집행 지점 |
 | --- | --- |

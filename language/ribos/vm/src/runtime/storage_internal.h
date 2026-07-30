@@ -6,6 +6,8 @@
 
 #include "ribos/vm/storage.h"
 
+#include "ribos/vm/helpers.h"
+
 /*
  * 이 header는 VM runtime 구현 전용이다. Arena control bytes를 해석하는 권한은
  * storage.c에만 남기고 interpreter는 이 typed internal API만 사용한다.
@@ -112,6 +114,42 @@ RibosVmStatus ribos_vm_storage_consume_instruction_internal_v1(
     size_t arena_size,
     uint64_t *remaining_instructions,
     uint64_t *consumed_instructions);
+
+RibosVmStatus ribos_vm_storage_helper_execution_initialize_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmHelperExecutionSnapshot *snapshot);
+
+RibosVmStatus ribos_vm_storage_helper_execution_load_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    const RibosVmStorage *storage,
+    size_t arena_size,
+    RibosVmHelperExecutionSnapshot *snapshot);
+
+RibosVmStatus ribos_vm_storage_helper_execution_store_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    const RibosVmHelperExecutionSnapshot *snapshot);
+
+RibosVmStatus ribos_vm_storage_consume_helper_call_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint32_t stable_id);
+
+RibosVmStatus ribos_vm_storage_consume_operations_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint64_t count);
+
+RibosVmStatus ribos_vm_storage_consume_polls_internal_v1(
+    const RibosPreparedProgram *prepared_program,
+    RibosVmStorage *storage,
+    size_t arena_size,
+    uint64_t count);
 
 RibosVmStatus ribos_vm_storage_slot_zero_internal_v1(
     const RibosPreparedProgram *prepared_program,

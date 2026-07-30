@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce the target-neutral Ribos scalar interpreter boundary."""
+"""Enforce the target-neutral Ribos interpreter and helper boundary."""
 
 from __future__ import annotations
 
@@ -10,7 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 FILES = (
     ROOT / "language/ribos/vm/include/ribos/vm/interpreter.h",
+    ROOT / "language/ribos/vm/include/ribos/vm/helpers.h",
     ROOT / "language/ribos/vm/src/runtime/interpreter.c",
+    ROOT / "language/ribos/vm/src/runtime/helpers.c",
+    ROOT / "language/ribos/vm/src/runtime/helpers_internal.h",
     ROOT / "language/ribos/vm/src/runtime/storage_internal.h",
 )
 
@@ -29,6 +32,10 @@ REQUIRED_SURFACE = (
     "ribos_vm_interpreter_run_v1",
     "ribos_vm_interpreter_snapshot_v1",
     "ribos_vm_interpreter_fault_v1",
+    "ribos_vm_helper_execution_initialize_v1",
+    "ribos_vm_helper_dispatch_internal_v1",
+    "ribos_vm_helper_call_consume_operations_v1",
+    "ribos_vm_helper_call_consume_polls_v1",
 )
 
 
@@ -59,7 +66,7 @@ def main() -> int:
         return 1
     print(
         "RIBOS-INTERPRETER-BOUNDARY-OK "
-        "target-neutral=yes allocation-free=yes dispatch=switch"
+        "target-neutral=yes allocation-free=yes dispatch=switch helpers=typed"
     )
     return 0
 

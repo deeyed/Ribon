@@ -129,6 +129,7 @@ RIBOS_TARGET_CORE_OBJS := \
 	$(RIBOS_OBJECT_DIR)/target/prepared.o \
 	$(RIBOS_OBJECT_DIR)/target/runtime_storage.o \
 	$(RIBOS_OBJECT_DIR)/target/runtime_handles.o \
+	$(RIBOS_OBJECT_DIR)/target/runtime_helpers.o \
 	$(RIBOS_OBJECT_DIR)/target/runtime_interpreter.o
 RIBOS_HOST_SUPPORT_OBJS := \
 	$(RIBOS_OBJECT_DIR)/host-support/allocator.o \
@@ -169,10 +170,12 @@ RIBOS_HEADERS := \
 	language/ribos/vm/include/ribos/vm/prepared.h \
 	language/ribos/vm/include/ribos/vm/storage.h \
 	language/ribos/vm/include/ribos/vm/handles.h \
+	language/ribos/vm/include/ribos/vm/helpers.h \
 	language/ribos/vm/include/ribos/vm/interpreter.h \
 	language/ribos/vm/include/ribos/vm/verifier.h \
 	language/ribos/vm/src/prepared_internal.h \
 	language/ribos/vm/src/runtime/storage_internal.h \
+	language/ribos/vm/src/runtime/helpers_internal.h \
 	language/ribos/frontend/src/parser_internal.h \
 	language/ribos/frontend/src/semantic_internal.h \
 	language/ribos/frontend/generated/tokens.h
@@ -465,6 +468,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-runtime-storage check-ribos-vm-scalar \
 	check-ribos-vm-calls check-ribos-vm-loops \
 	check-ribos-vm-aggregates check-ribos-vm-handles \
+	check-ribos-vm-helpers \
 	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
@@ -513,6 +517,7 @@ $(eval $(call RIBOS_TARGET_OBJECT,verifier,language/ribos/vm/src/verifier.c))
 $(eval $(call RIBOS_TARGET_OBJECT,prepared,language/ribos/vm/src/prepared.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_storage,language/ribos/vm/src/runtime/storage.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_handles,language/ribos/vm/src/runtime/handles.c))
+$(eval $(call RIBOS_TARGET_OBJECT,runtime_helpers,language/ribos/vm/src/runtime/helpers.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_interpreter,language/ribos/vm/src/runtime/interpreter.c))
 
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,allocator,language/ribos/host/src/allocator.c))
@@ -794,6 +799,10 @@ check-ribos-vm-handles: check-ribos-vm-aggregates \
 		$(RIBOS_VM_HANDLES_TEST) \
 			"$$tmp/handle-runtime.rba" \
 			"$$tmp/aggregate-ownership.rba"
+
+check-ribos-vm-helpers: check-ribos-vm-handles
+	@echo "RIBOS-VM-HELPERS-OK dispatch=stable-id signature=typed \
+budgets=bounded handles=generation-checked evidence=host-fake"
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1507,7 +1516,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-prepared-program check-ribos-runtime-storage \
 	check-ribos-vm-scalar check-ribos-vm-calls \
 	check-ribos-vm-loops check-ribos-vm-aggregates \
-	check-ribos-vm-handles \
+	check-ribos-vm-handles check-ribos-vm-helpers \
 	check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
