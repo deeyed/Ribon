@@ -40,4 +40,5 @@ build/tools/ribos-parse --emit-artifact policy.rba policy.rbs
 이 계층은 Ed25519 signature의 크기와 canonical signing message를 고정하지만
 암호학적 signature verification은 수행하지 않는다. 또한 structural reader 성공은
 bytecode type/CFG/helper semantics가 검증되었다는 뜻이 아니다. 독립 hostile-byte
-verifier, key policy와 VM dispatch는 `vm/` 계층의 후속 책임이다.
+Stage-1 verifier는 `vm/` 계층에 있고 `make check-ribos-verifier`로 검사한다. Key
+policy, exact resource upper-bound verifier와 VM dispatch는 별도 후속 책임이다.

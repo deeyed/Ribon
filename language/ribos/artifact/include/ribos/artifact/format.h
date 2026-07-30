@@ -113,6 +113,100 @@ typedef enum RibosBytecodeOpcode {
     RIBOS_BC_TRAP = 0x18
 } RibosBytecodeOpcode;
 
+/** Type table `kind` field의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeTypeKind {
+    RIBOS_BC_TYPE_ERROR = 0,
+    RIBOS_BC_TYPE_UNKNOWN = 1,
+    RIBOS_BC_TYPE_UNIT = 2,
+    RIBOS_BC_TYPE_BOOL = 3,
+    RIBOS_BC_TYPE_UNSIGNED = 4,
+    RIBOS_BC_TYPE_SIGNED = 5,
+    RIBOS_BC_TYPE_STRING_LITERAL = 6,
+    RIBOS_BC_TYPE_NAMED = 7,
+    RIBOS_BC_TYPE_ARRAY = 8,
+    RIBOS_BC_TYPE_LIST = 9,
+    RIBOS_BC_TYPE_FROZEN_MAP = 10,
+    RIBOS_BC_TYPE_DICT = 11,
+    RIBOS_BC_TYPE_OPTION = 12,
+    RIBOS_BC_TYPE_RESULT = 13,
+    RIBOS_BC_TYPE_STRUCT = 14,
+    RIBOS_BC_TYPE_ENUM = 15
+} RibosBytecodeTypeKind;
+
+/** Type table `storage kind` field의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeStorageKind {
+    RIBOS_BC_STORAGE_SCALAR = 0,
+    RIBOS_BC_STORAGE_OPAQUE = 1,
+    RIBOS_BC_STORAGE_INLINE_ARRAY = 2,
+    RIBOS_BC_STORAGE_INLINE_LIST = 3,
+    RIBOS_BC_STORAGE_SORTED_MAP = 4,
+    RIBOS_BC_STORAGE_TAGGED_UNION = 5,
+    RIBOS_BC_STORAGE_INLINE_STRUCT = 6
+} RibosBytecodeStorageKind;
+
+/** Shape table `kind` field의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeShapeKind {
+    RIBOS_BC_SHAPE_STRUCT_FIELD = 0,
+    RIBOS_BC_SHAPE_ENUM_VARIANT = 1,
+    RIBOS_BC_SHAPE_ENUM_PAYLOAD = 2
+} RibosBytecodeShapeKind;
+
+/** Constant table `kind` field의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeConstantKind {
+    RIBOS_BC_CONSTANT_STRING = 0,
+    RIBOS_BC_CONSTANT_SYMBOL = 1
+} RibosBytecodeConstantKind;
+
+/** Checked unary/binary instruction `target` field의 ISA v1 registry다. */
+typedef enum RibosBytecodeCheckedOperator {
+    RIBOS_BC_CHECK_NOT = 1,
+    RIBOS_BC_CHECK_EQUAL = 2,
+    RIBOS_BC_CHECK_NOT_EQUAL = 3,
+    RIBOS_BC_CHECK_LESS = 4,
+    RIBOS_BC_CHECK_LESS_EQUAL = 5,
+    RIBOS_BC_CHECK_GREATER = 6,
+    RIBOS_BC_CHECK_GREATER_EQUAL = 7,
+    RIBOS_BC_CHECK_IN = 8,
+    RIBOS_BC_CHECK_NOT_IN = 9,
+    RIBOS_BC_CHECK_BIT_OR = 10,
+    RIBOS_BC_CHECK_BIT_XOR = 11,
+    RIBOS_BC_CHECK_BIT_AND = 12,
+    RIBOS_BC_CHECK_SHIFT_LEFT = 13,
+    RIBOS_BC_CHECK_SHIFT_RIGHT = 14,
+    RIBOS_BC_CHECK_ADD = 15,
+    RIBOS_BC_CHECK_SUBTRACT = 16,
+    RIBOS_BC_CHECK_MULTIPLY = 17,
+    RIBOS_BC_CHECK_DIVIDE = 18,
+    RIBOS_BC_CHECK_REMAINDER = 19,
+    RIBOS_BC_CHECK_POSITIVE = 20,
+    RIBOS_BC_CHECK_NEGATIVE = 21,
+    RIBOS_BC_CHECK_BIT_NOT = 22
+} RibosBytecodeCheckedOperator;
+
+/** Function descriptor flag의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeFunctionFlags {
+    RIBOS_BC_FUNCTION_POLICY = 1u << 0,
+    RIBOS_BC_FUNCTION_PURE = 1u << 1
+} RibosBytecodeFunctionFlags;
+
+/** Slot descriptor flag의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeSlotFlags {
+    RIBOS_BC_SLOT_PARAMETER = 1u << 0,
+    RIBOS_BC_SLOT_BINDING = 1u << 1,
+    RIBOS_BC_SLOT_MUTABLE = 1u << 2
+} RibosBytecodeSlotFlags;
+
+/** Block descriptor flag의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeBlockFlags {
+    RIBOS_BC_BLOCK_ENTRY = 1u << 0
+} RibosBytecodeBlockFlags;
+
+/** Function terminal mask의 VM ABI v1 wire registry다. */
+typedef enum RibosBytecodeTerminalMask {
+    RIBOS_BC_TERMINAL_RETURN = 1u << 0,
+    RIBOS_BC_TERMINAL_TRAP = 1u << 1
+} RibosBytecodeTerminalMask;
+
 /** Payload section directory의 canonical 순서와 kind다. */
 typedef enum RibosArtifactSectionKind {
     RIBOS_ARTIFACT_SECTION_TYPES = 1,

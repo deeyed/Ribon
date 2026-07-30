@@ -129,7 +129,12 @@ RibosSchemaStatus ribos_schema_encode(
     size_t output_capacity,
     size_t *required_size);
 
-/** Canonical schema byte sequence의 SHA-256 identity를 계산한다. */
+/**
+ * Canonical schema byte sequence의 SHA-256 identity를 allocation 없이 계산한다.
+ *
+ * Encoder와 같은 byte order를 streaming하므로 intermediate schema buffer를 만들지
+ * 않는다.
+ */
 RibosSchemaStatus ribos_schema_compute_identity(
     const RibosProductSchema *schema,
     uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES]);

@@ -9,6 +9,7 @@ code_paths:
   - language/ribos/schema/include/ribos/schema/schema.h
   - language/ribos/ir/include/ribos/ir/
   - language/ribos/artifact/include/ribos/artifact/
+  - language/ribos/vm/include/ribos/vm/
   - include/Ribon/plugin/
   - src/core/
   - src/plugins/
@@ -22,6 +23,7 @@ tests:
   - ribos-product-schema-identity
   - ribos-policy-ir-v1
   - make check-ribos-artifact
+  - make check-ribos-verifier
   - ribon-docs
 hardware:
   - none
@@ -113,7 +115,7 @@ canonical VM ABI 1.0/ISA 1.0 artifact
         +--> little-endian section table, payload SHA-256와 signature envelope
         |
         v
-Ribon structural reader, signature verifier와 static verifier
+Ribon structural reader와 compiler-independent Stage-1 verifier
         |
         v
 Ribos VM
@@ -136,7 +138,7 @@ language/ribos/frontend  source, token/trivia, AST, type/effect와 IR lowering
 language/ribos/schema    product-generated type/helper/handoff schema identity
 language/ribos/ir        VM 독립 typed CFG와 structural validator
 language/ribos/artifact  VM ABI/ISA와 canonical signed wire envelope
-language/ribos/vm        bytecode verifier와 runtime의 후속 ownership
+language/ribos/vm        Stage-1 bytecode verifier와 runtime ownership
 ```
 
 Frontend private AST와 Pegen runtime은 VM dependency가 아니다. VM backend는 Policy IR
@@ -154,8 +156,10 @@ bound를 계산한다. Bytecode instruction upper bound는 Policy IR lowering �
 Policy IR resource analyzer는 parser나 typed AST를 사용하지 않고 reachable block,
 bounded loop, terminal path, direct call graph, type/slot layout, frame/stack byte와
 instruction/helper upper bound를 다시 계산한다. Compiler는 이 결과로 source의
-`instruction_budget`과 `helper_budget`을 집행한다. Artifact verifier와 VM은 같은
-계약을 독립적으로 재검사하고 runtime counter를 감소시켜야 한다.
+`instruction_budget`과 `helper_budget`을 집행한다. Stage-1 artifact verifier는 type,
+direct CFG, definite initialization과 frame/stack을 독립적으로 재검사한다. 후속
+resource verifier와 VM은 exact instruction/helper upper bound를 다시 닫고 runtime
+counter를 감소시켜야 한다.
 
 Policy IR은 function-owned typed virtual slot, explicit basic block, direct branch/call,
 phi-free explicit move, aggregate shape, source map과 helper call-site table을 가진다.

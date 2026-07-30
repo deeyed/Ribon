@@ -92,6 +92,18 @@ typedef enum RibosIrFunctionFlags {
     RIBOS_IR_FUNCTION_PURE = 1u << 1
 } RibosIrFunctionFlags;
 
+/** Function-owned virtual slot의 안정된 의미 비트다. */
+typedef enum RibosIrSlotFlags {
+    RIBOS_IR_SLOT_PARAMETER = 1u << 0,
+    RIBOS_IR_SLOT_BINDING = 1u << 1,
+    RIBOS_IR_SLOT_MUTABLE = 1u << 2
+} RibosIrSlotFlags;
+
+/** Explicit basic block descriptor의 안정된 의미 비트다. */
+typedef enum RibosIrBlockFlags {
+    RIBOS_IR_BLOCK_ENTRY = 1u << 0
+} RibosIrBlockFlags;
+
 /** Frontend type table에서 복사한 VM 독립 type 분류다. */
 typedef enum RibosIrTypeKind {
     RIBOS_IR_TYPE_ERROR = 0,

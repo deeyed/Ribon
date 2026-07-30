@@ -347,37 +347,271 @@ ribos_artifact_prepare_context(
 static RibosBytecodeOpcode
 ribos_artifact_opcode(RibosIrOpcode opcode)
 {
-    static const RibosBytecodeOpcode mapping[] = {
-        RIBOS_BC_PARAMETER,
-        RIBOS_BC_CONST_UNIT,
-        RIBOS_BC_CONST_BOOL,
-        RIBOS_BC_CONST_INTEGER,
-        RIBOS_BC_CONST_STRING,
-        RIBOS_BC_CONST_SYMBOL,
-        RIBOS_BC_MOVE,
-        RIBOS_BC_CHECKED_UNARY,
-        RIBOS_BC_CHECKED_BINARY,
-        RIBOS_BC_BUILD_LIST,
-        RIBOS_BC_BUILD_MAP,
-        RIBOS_BC_BUILD_STRUCT,
-        RIBOS_BC_BUILD_VARIANT,
-        RIBOS_BC_MEMBER,
-        RIBOS_BC_INDEX,
-        RIBOS_BC_COLLECTION_LENGTH,
-        RIBOS_BC_VARIANT_TAG,
-        RIBOS_BC_VARIANT_PAYLOAD,
-        RIBOS_BC_CALL_DIRECT,
-        RIBOS_BC_CALL_HELPER,
-        RIBOS_BC_JUMP,
-        RIBOS_BC_BRANCH,
-        RIBOS_BC_RETURN,
-        RIBOS_BC_TRAP,
-    };
-
-    if ((size_t)opcode >= sizeof(mapping) / sizeof(mapping[0])) {
+    switch (opcode) {
+    case RIBOS_IR_OP_PARAMETER:
+        return RIBOS_BC_PARAMETER;
+    case RIBOS_IR_OP_CONST_UNIT:
+        return RIBOS_BC_CONST_UNIT;
+    case RIBOS_IR_OP_CONST_BOOL:
+        return RIBOS_BC_CONST_BOOL;
+    case RIBOS_IR_OP_CONST_INTEGER:
+        return RIBOS_BC_CONST_INTEGER;
+    case RIBOS_IR_OP_CONST_STRING:
+        return RIBOS_BC_CONST_STRING;
+    case RIBOS_IR_OP_CONST_SYMBOL:
+        return RIBOS_BC_CONST_SYMBOL;
+    case RIBOS_IR_OP_MOVE:
+        return RIBOS_BC_MOVE;
+    case RIBOS_IR_OP_CHECKED_UNARY:
+        return RIBOS_BC_CHECKED_UNARY;
+    case RIBOS_IR_OP_CHECKED_BINARY:
+        return RIBOS_BC_CHECKED_BINARY;
+    case RIBOS_IR_OP_BUILD_LIST:
+        return RIBOS_BC_BUILD_LIST;
+    case RIBOS_IR_OP_BUILD_MAP:
+        return RIBOS_BC_BUILD_MAP;
+    case RIBOS_IR_OP_BUILD_STRUCT:
+        return RIBOS_BC_BUILD_STRUCT;
+    case RIBOS_IR_OP_BUILD_VARIANT:
+        return RIBOS_BC_BUILD_VARIANT;
+    case RIBOS_IR_OP_MEMBER:
+        return RIBOS_BC_MEMBER;
+    case RIBOS_IR_OP_INDEX:
+        return RIBOS_BC_INDEX;
+    case RIBOS_IR_OP_COLLECTION_LENGTH:
+        return RIBOS_BC_COLLECTION_LENGTH;
+    case RIBOS_IR_OP_VARIANT_TAG:
+        return RIBOS_BC_VARIANT_TAG;
+    case RIBOS_IR_OP_VARIANT_PAYLOAD:
+        return RIBOS_BC_VARIANT_PAYLOAD;
+    case RIBOS_IR_OP_CALL_DIRECT:
+        return RIBOS_BC_CALL_DIRECT;
+    case RIBOS_IR_OP_CALL_HELPER:
+        return RIBOS_BC_CALL_HELPER;
+    case RIBOS_IR_OP_JUMP:
+        return RIBOS_BC_JUMP;
+    case RIBOS_IR_OP_BRANCH:
+        return RIBOS_BC_BRANCH;
+    case RIBOS_IR_OP_RETURN:
+        return RIBOS_BC_RETURN;
+    case RIBOS_IR_OP_TRAP:
+        return RIBOS_BC_TRAP;
+    default:
         return 0;
     }
-    return mapping[opcode];
+}
+
+static uint16_t
+ribos_artifact_type_kind(RibosIrTypeKind kind)
+{
+    switch (kind) {
+    case RIBOS_IR_TYPE_ERROR:
+        return RIBOS_BC_TYPE_ERROR;
+    case RIBOS_IR_TYPE_UNKNOWN:
+        return RIBOS_BC_TYPE_UNKNOWN;
+    case RIBOS_IR_TYPE_UNIT:
+        return RIBOS_BC_TYPE_UNIT;
+    case RIBOS_IR_TYPE_BOOL:
+        return RIBOS_BC_TYPE_BOOL;
+    case RIBOS_IR_TYPE_UNSIGNED:
+        return RIBOS_BC_TYPE_UNSIGNED;
+    case RIBOS_IR_TYPE_SIGNED:
+        return RIBOS_BC_TYPE_SIGNED;
+    case RIBOS_IR_TYPE_STRING_LITERAL:
+        return RIBOS_BC_TYPE_STRING_LITERAL;
+    case RIBOS_IR_TYPE_NAMED:
+        return RIBOS_BC_TYPE_NAMED;
+    case RIBOS_IR_TYPE_ARRAY:
+        return RIBOS_BC_TYPE_ARRAY;
+    case RIBOS_IR_TYPE_LIST:
+        return RIBOS_BC_TYPE_LIST;
+    case RIBOS_IR_TYPE_FROZEN_MAP:
+        return RIBOS_BC_TYPE_FROZEN_MAP;
+    case RIBOS_IR_TYPE_DICT:
+        return RIBOS_BC_TYPE_DICT;
+    case RIBOS_IR_TYPE_OPTION:
+        return RIBOS_BC_TYPE_OPTION;
+    case RIBOS_IR_TYPE_RESULT:
+        return RIBOS_BC_TYPE_RESULT;
+    case RIBOS_IR_TYPE_STRUCT:
+        return RIBOS_BC_TYPE_STRUCT;
+    case RIBOS_IR_TYPE_ENUM:
+        return RIBOS_BC_TYPE_ENUM;
+    default:
+        return UINT16_MAX;
+    }
+}
+
+static uint32_t
+ribos_artifact_storage_kind(RibosIrStorageKind kind)
+{
+    switch (kind) {
+    case RIBOS_IR_STORAGE_SCALAR:
+        return RIBOS_BC_STORAGE_SCALAR;
+    case RIBOS_IR_STORAGE_OPAQUE:
+        return RIBOS_BC_STORAGE_OPAQUE;
+    case RIBOS_IR_STORAGE_INLINE_ARRAY:
+        return RIBOS_BC_STORAGE_INLINE_ARRAY;
+    case RIBOS_IR_STORAGE_INLINE_LIST:
+        return RIBOS_BC_STORAGE_INLINE_LIST;
+    case RIBOS_IR_STORAGE_SORTED_MAP:
+        return RIBOS_BC_STORAGE_SORTED_MAP;
+    case RIBOS_IR_STORAGE_TAGGED_UNION:
+        return RIBOS_BC_STORAGE_TAGGED_UNION;
+    case RIBOS_IR_STORAGE_INLINE_STRUCT:
+        return RIBOS_BC_STORAGE_INLINE_STRUCT;
+    default:
+        return UINT32_MAX;
+    }
+}
+
+static uint32_t
+ribos_artifact_shape_kind(RibosIrShapeKind kind)
+{
+    switch (kind) {
+    case RIBOS_IR_SHAPE_STRUCT_FIELD:
+        return RIBOS_BC_SHAPE_STRUCT_FIELD;
+    case RIBOS_IR_SHAPE_ENUM_VARIANT:
+        return RIBOS_BC_SHAPE_ENUM_VARIANT;
+    case RIBOS_IR_SHAPE_ENUM_PAYLOAD:
+        return RIBOS_BC_SHAPE_ENUM_PAYLOAD;
+    default:
+        return UINT32_MAX;
+    }
+}
+
+static uint16_t
+ribos_artifact_constant_kind(RibosIrConstantKind kind)
+{
+    switch (kind) {
+    case RIBOS_IR_CONSTANT_STRING:
+        return RIBOS_BC_CONSTANT_STRING;
+    case RIBOS_IR_CONSTANT_SYMBOL:
+        return RIBOS_BC_CONSTANT_SYMBOL;
+    default:
+        return UINT16_MAX;
+    }
+}
+
+static uint32_t
+ribos_artifact_checked_operator(uint32_t target)
+{
+    switch ((RibosIrCheckedOperator)target) {
+    case RIBOS_IR_CHECK_NOT:
+        return RIBOS_BC_CHECK_NOT;
+    case RIBOS_IR_CHECK_EQUAL:
+        return RIBOS_BC_CHECK_EQUAL;
+    case RIBOS_IR_CHECK_NOT_EQUAL:
+        return RIBOS_BC_CHECK_NOT_EQUAL;
+    case RIBOS_IR_CHECK_LESS:
+        return RIBOS_BC_CHECK_LESS;
+    case RIBOS_IR_CHECK_LESS_EQUAL:
+        return RIBOS_BC_CHECK_LESS_EQUAL;
+    case RIBOS_IR_CHECK_GREATER:
+        return RIBOS_BC_CHECK_GREATER;
+    case RIBOS_IR_CHECK_GREATER_EQUAL:
+        return RIBOS_BC_CHECK_GREATER_EQUAL;
+    case RIBOS_IR_CHECK_IN:
+        return RIBOS_BC_CHECK_IN;
+    case RIBOS_IR_CHECK_NOT_IN:
+        return RIBOS_BC_CHECK_NOT_IN;
+    case RIBOS_IR_CHECK_BIT_OR:
+        return RIBOS_BC_CHECK_BIT_OR;
+    case RIBOS_IR_CHECK_BIT_XOR:
+        return RIBOS_BC_CHECK_BIT_XOR;
+    case RIBOS_IR_CHECK_BIT_AND:
+        return RIBOS_BC_CHECK_BIT_AND;
+    case RIBOS_IR_CHECK_SHIFT_LEFT:
+        return RIBOS_BC_CHECK_SHIFT_LEFT;
+    case RIBOS_IR_CHECK_SHIFT_RIGHT:
+        return RIBOS_BC_CHECK_SHIFT_RIGHT;
+    case RIBOS_IR_CHECK_ADD:
+        return RIBOS_BC_CHECK_ADD;
+    case RIBOS_IR_CHECK_SUBTRACT:
+        return RIBOS_BC_CHECK_SUBTRACT;
+    case RIBOS_IR_CHECK_MULTIPLY:
+        return RIBOS_BC_CHECK_MULTIPLY;
+    case RIBOS_IR_CHECK_DIVIDE:
+        return RIBOS_BC_CHECK_DIVIDE;
+    case RIBOS_IR_CHECK_REMAINDER:
+        return RIBOS_BC_CHECK_REMAINDER;
+    case RIBOS_IR_CHECK_POSITIVE:
+        return RIBOS_BC_CHECK_POSITIVE;
+    case RIBOS_IR_CHECK_NEGATIVE:
+        return RIBOS_BC_CHECK_NEGATIVE;
+    case RIBOS_IR_CHECK_BIT_NOT:
+        return RIBOS_BC_CHECK_BIT_NOT;
+    default:
+        return UINT32_MAX;
+    }
+}
+
+static uint32_t
+ribos_artifact_function_flags(uint32_t flags)
+{
+    uint32_t wire = 0;
+
+    if ((flags & ~(RIBOS_IR_FUNCTION_POLICY |
+            RIBOS_IR_FUNCTION_PURE)) != 0) {
+        return UINT32_MAX;
+    }
+    if ((flags & RIBOS_IR_FUNCTION_POLICY) != 0) {
+        wire |= RIBOS_BC_FUNCTION_POLICY;
+    }
+    if ((flags & RIBOS_IR_FUNCTION_PURE) != 0) {
+        wire |= RIBOS_BC_FUNCTION_PURE;
+    }
+    return wire;
+}
+
+static uint32_t
+ribos_artifact_slot_flags(uint32_t flags)
+{
+    uint32_t wire = 0;
+
+    if ((flags & ~(RIBOS_IR_SLOT_PARAMETER |
+            RIBOS_IR_SLOT_BINDING |
+            RIBOS_IR_SLOT_MUTABLE)) != 0) {
+        return UINT32_MAX;
+    }
+    if ((flags & RIBOS_IR_SLOT_PARAMETER) != 0) {
+        wire |= RIBOS_BC_SLOT_PARAMETER;
+    }
+    if ((flags & RIBOS_IR_SLOT_BINDING) != 0) {
+        wire |= RIBOS_BC_SLOT_BINDING;
+    }
+    if ((flags & RIBOS_IR_SLOT_MUTABLE) != 0) {
+        wire |= RIBOS_BC_SLOT_MUTABLE;
+    }
+    return wire;
+}
+
+static uint32_t
+ribos_artifact_block_flags(uint32_t flags)
+{
+    if ((flags & ~RIBOS_IR_BLOCK_ENTRY) != 0) {
+        return UINT32_MAX;
+    }
+    return (flags & RIBOS_IR_BLOCK_ENTRY) != 0 ?
+        RIBOS_BC_BLOCK_ENTRY : 0;
+}
+
+static uint32_t
+ribos_artifact_terminal_mask(uint32_t mask)
+{
+    uint32_t wire = 0;
+
+    if ((mask & ~(RIBOS_IR_TERMINAL_RETURN |
+            RIBOS_IR_TERMINAL_TRAP)) != 0) {
+        return UINT32_MAX;
+    }
+    if ((mask & RIBOS_IR_TERMINAL_RETURN) != 0) {
+        wire |= RIBOS_BC_TERMINAL_RETURN;
+    }
+    if ((mask & RIBOS_IR_TERMINAL_TRAP) != 0) {
+        wire |= RIBOS_BC_TERMINAL_TRAP;
+    }
+    return wire;
 }
 
 static void
@@ -555,20 +789,25 @@ ribos_artifact_write_types(
             ribos_ir_resource_type_layout(
                 context->resources,
                 (uint32_t)index);
+        uint16_t wire_kind = ribos_artifact_type_kind(type->kind);
+        uint32_t wire_storage = layout == NULL ?
+            UINT32_MAX :
+            ribos_artifact_storage_kind(layout->storage_kind);
         size_t name_length =
             ribos_artifact_bounded_name_length(type->name);
         size_t row =
             payload_base + section->offset +
             index * section->row_size;
 
-        if (layout == NULL || name_length == SIZE_MAX ||
+        if (layout == NULL || wire_kind == UINT16_MAX ||
+            wire_storage == UINT32_MAX || name_length == SIZE_MAX ||
             name_length > 63) {
             writer->failed = 1;
             return;
         }
         ribos_artifact_writer_u32(writer, row, type->id);
         ribos_artifact_writer_u16(
-            writer, row + 4, (uint16_t)type->kind);
+            writer, row + 4, wire_kind);
         ribos_artifact_writer_u16(writer, row + 6, type->bits);
         ribos_artifact_writer_u32(writer, row + 8, type->first_type);
         ribos_artifact_writer_u32(writer, row + 12, type->second_type);
@@ -581,7 +820,7 @@ ribos_artifact_write_types(
         ribos_artifact_writer_u32(
             writer,
             row + 36,
-            (uint32_t)layout->storage_kind);
+            wire_storage);
         ribos_artifact_writer_u32(
             writer, row + 40, layout->byte_size);
         ribos_artifact_writer_u32(
@@ -612,13 +851,19 @@ ribos_artifact_write_shapes(
 
     for (index = 0; index < context->module.shape_count; ++index) {
         const RibosIrShape *shape = &context->module.shapes[index];
+        uint32_t wire_kind =
+            ribos_artifact_shape_kind(shape->kind);
         size_t row =
             payload_base + section->offset +
             index * section->row_size;
 
+        if (wire_kind == UINT32_MAX) {
+            writer->failed = 1;
+            return;
+        }
         ribos_artifact_writer_u32(writer, row, shape->id);
         ribos_artifact_writer_u32(
-            writer, row + 4, (uint32_t)shape->kind);
+            writer, row + 4, wire_kind);
         ribos_artifact_writer_u32(
             writer, row + 8, shape->owner_type);
         ribos_artifact_writer_u32(
@@ -645,13 +890,19 @@ ribos_artifact_write_constants(
     for (index = 0; index < context->module.constant_count; ++index) {
         const RibosIrConstant *constant =
             &context->module.constants[index];
+        uint16_t wire_kind =
+            ribos_artifact_constant_kind(constant->kind);
         size_t row =
             payload_base + section->offset +
             index * section->row_size;
 
+        if (wire_kind == UINT16_MAX) {
+            writer->failed = 1;
+            return;
+        }
         ribos_artifact_writer_u32(writer, row, constant->id);
         ribos_artifact_writer_u16(
-            writer, row + 4, (uint16_t)constant->kind);
+            writer, row + 4, wire_kind);
         ribos_artifact_writer_u32(
             writer, row + 8, constant->byte_offset);
         ribos_artifact_writer_u32(
@@ -683,16 +934,22 @@ ribos_artifact_write_functions(
             ribos_ir_resource_function(
                 context->resources,
                 (uint32_t)index);
+        uint32_t wire_flags =
+            ribos_artifact_function_flags(function->flags);
+        uint32_t wire_terminal = resource == NULL ?
+            UINT32_MAX :
+            ribos_artifact_terminal_mask(resource->terminal_mask);
         size_t row =
             payload_base + section->offset +
             index * section->row_size;
 
-        if (resource == NULL) {
+        if (resource == NULL || wire_flags == UINT32_MAX ||
+            wire_terminal == UINT32_MAX) {
             writer->failed = 1;
             return;
         }
         ribos_artifact_writer_u32(writer, row, function->id);
-        ribos_artifact_writer_u32(writer, row + 4, function->flags);
+        ribos_artifact_writer_u32(writer, row + 4, wire_flags);
         ribos_artifact_writer_u32(
             writer, row + 8, function->return_type);
         ribos_artifact_writer_u32(
@@ -738,7 +995,7 @@ ribos_artifact_write_functions(
         ribos_artifact_writer_u32(
             writer, row + 92, resource->maximum_call_depth);
         ribos_artifact_writer_u32(
-            writer, row + 96, resource->terminal_mask);
+            writer, row + 96, wire_terminal);
     }
 }
 
@@ -756,10 +1013,16 @@ ribos_artifact_write_blocks_and_loops(
 
     for (index = 0; index < context->module.block_count; ++index) {
         const RibosIrBlock *block = &context->module.blocks[index];
+        uint32_t wire_flags =
+            ribos_artifact_block_flags(block->flags);
         size_t row =
             payload_base + blocks->offset +
             index * blocks->row_size;
 
+        if (wire_flags == UINT32_MAX) {
+            writer->failed = 1;
+            return;
+        }
         ribos_artifact_writer_u32(writer, row, block->id);
         ribos_artifact_writer_u32(
             writer, row + 4, block->function_id);
@@ -773,7 +1036,7 @@ ribos_artifact_write_blocks_and_loops(
             writer, row + 20, block->parameter_start);
         ribos_artifact_writer_u32(
             writer, row + 24, block->parameter_count);
-        ribos_artifact_writer_u32(writer, row + 28, block->flags);
+        ribos_artifact_writer_u32(writer, row + 28, wire_flags);
     }
     for (index = 0; index < context->module.loop_count; ++index) {
         const RibosIrLoop *loop = &context->module.loops[index];
@@ -819,11 +1082,13 @@ ribos_artifact_write_slots(
             ribos_ir_resource_slot(
                 context->resources,
                 (uint32_t)index);
+        uint32_t wire_flags =
+            ribos_artifact_slot_flags(slot->flags);
         size_t row =
             payload_base + section->offset +
             index * section->row_size;
 
-        if (layout == NULL) {
+        if (layout == NULL || wire_flags == UINT32_MAX) {
             writer->failed = 1;
             return;
         }
@@ -843,7 +1108,7 @@ ribos_artifact_write_slots(
             context->options.include_source_map ?
                 slot->source_map_id :
                 RIBOS_ARTIFACT_INVALID_ID);
-        ribos_artifact_writer_u32(writer, row + 28, slot->flags);
+        ribos_artifact_writer_u32(writer, row + 28, wire_flags);
     }
 }
 
@@ -867,11 +1132,19 @@ ribos_artifact_write_instructions_and_operands(
             &context->module.instructions[index];
         RibosBytecodeOpcode opcode =
             ribos_artifact_opcode(instruction->opcode);
+        uint32_t target = instruction->target;
+        int invalid_target = 0;
         size_t row =
             payload_base + instructions->offset +
             index * instructions->row_size;
 
-        if (opcode == 0 || instruction->operand_count > UINT16_MAX) {
+        if (opcode == RIBOS_BC_CHECKED_UNARY ||
+            opcode == RIBOS_BC_CHECKED_BINARY) {
+            target = ribos_artifact_checked_operator(target);
+            invalid_target = target == UINT32_MAX;
+        }
+        if (opcode == 0 || invalid_target ||
+            instruction->operand_count > UINT16_MAX) {
             writer->failed = 1;
             return;
         }
@@ -886,7 +1159,7 @@ ribos_artifact_write_instructions_and_operands(
         ribos_artifact_writer_u32(
             writer, row + 16, instruction->operand_start);
         ribos_artifact_writer_u32(
-            writer, row + 20, instruction->target);
+            writer, row + 20, target);
         ribos_artifact_writer_u32(
             writer, row + 24, instruction->alternate);
         ribos_artifact_writer_u32(

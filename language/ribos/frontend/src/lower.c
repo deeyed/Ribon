@@ -7,10 +7,10 @@
 
 #define RIBOS_LOWER_MAX_BLOCKS 4096u
 #define RIBOS_LOWER_MAX_BINDINGS 512u
-#define RIBOS_LOWER_SLOT_PARAMETER (1u << 0)
-#define RIBOS_LOWER_SLOT_BINDING (1u << 1)
-#define RIBOS_LOWER_SLOT_MUTABLE (1u << 2)
-#define RIBOS_LOWER_BLOCK_ENTRY (1u << 0)
+#define RIBOS_LOWER_SLOT_PARAMETER RIBOS_IR_SLOT_PARAMETER
+#define RIBOS_LOWER_SLOT_BINDING RIBOS_IR_SLOT_BINDING
+#define RIBOS_LOWER_SLOT_MUTABLE RIBOS_IR_SLOT_MUTABLE
+#define RIBOS_LOWER_BLOCK_ENTRY RIBOS_IR_BLOCK_ENTRY
 
 typedef struct RibosLowerBinding {
     Token *name;
@@ -133,6 +133,35 @@ ribos_lower_path_component(const RibosAstNode *path, size_t index)
         return NULL;
     }
     return path->items->elements[index - 1];
+}
+
+static uint32_t
+ribos_lower_struct_field_ordinal(
+    RibosLowerContext *context,
+    uint32_t owner_type,
+    Token *field)
+{
+    RibosType *type;
+    Py_ssize_t index;
+
+    if (owner_type >= context->semantic->type_count) {
+        return RIBOS_IR_INVALID_ID;
+    }
+    type = &context->semantic->types[owner_type];
+    if (type->declaration == NULL ||
+        type->declaration->kind != RIBOS_AST_STRUCT ||
+        type->declaration->items == NULL) {
+        return RIBOS_IR_INVALID_ID;
+    }
+    for (index = 0; index < type->declaration->items->size; ++index) {
+        RibosAstNode *member =
+            type->declaration->items->elements[index];
+
+        if (ribos_lower_tokens_equal(member->token, field)) {
+            return (uint32_t)index;
+        }
+    }
+    return RIBOS_IR_INVALID_ID;
 }
 
 static int
@@ -1205,6 +1234,14 @@ ribos_lower_expression(RibosLowerContext *context, RibosAstNode *node)
             return binding->slot;
         }
         if (binding != NULL) {
+            size_t path_count = ribos_lower_path_count(node);
+            uint32_t field_ordinal = path_count == 2 ?
+                ribos_lower_struct_field_ordinal(
+                    context,
+                    binding->type,
+                    ribos_lower_path_component(node, 1)) :
+                RIBOS_IR_INVALID_ID;
+
             operands[0] = binding->slot;
             return ribos_lower_emit_value(
                 context,
@@ -1214,7 +1251,7 @@ ribos_lower_expression(RibosLowerContext *context, RibosAstNode *node)
                 operands,
                 1,
                 ribos_lower_add_path_constant(context, node),
-                RIBOS_IR_INVALID_ID,
+                field_ordinal,
                 0);
         }
         if (ribos_lower_token_equals(node->token, "Unit") &&
@@ -1339,7 +1376,10 @@ ribos_lower_expression(RibosLowerContext *context, RibosAstNode *node)
             operands,
             1,
             ribos_lower_add_token_constant(context, node, node->token),
-            RIBOS_IR_INVALID_ID,
+            ribos_lower_struct_field_ordinal(
+                context,
+                node->first->inferred_type,
+                node->token),
             0);
     case RIBOS_AST_INDEX:
         operands[0] = ribos_lower_expression(context, node->first);

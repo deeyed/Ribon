@@ -1,24 +1,26 @@
 #include "ribos/schema/schema.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 #define RIBOS_SCHEMA_MAGIC "RBSCHM1"
 #define RIBOS_SCHEMA_MAGIC_BYTES 7u
+
+typedef struct RibosSha256 RibosSha256;
 
 typedef struct RibosSchemaWriter {
     uint8_t *output;
     size_t capacity;
     size_t size;
     int overflow;
+    RibosSha256 *hash;
 } RibosSchemaWriter;
 
-typedef struct RibosSha256 {
+struct RibosSha256 {
     uint32_t state[8];
     uint64_t bit_count;
     uint8_t block[64];
     size_t block_size;
-} RibosSha256;
+};
 
 static const RibosSchemaType ribos_reference_types[] = {
     {1, RIBOS_SCHEMA_TYPE_FACT, "BootContext"},
@@ -359,6 +361,9 @@ ribos_schema_write_bytes(
         } else if (length != 0) {
             memcpy(writer->output + writer->size, bytes, length);
         }
+    }
+    if (writer->hash != NULL && length != 0) {
+        ribos_sha256_update(writer->hash, bytes, length);
     }
     writer->size += length;
 }
@@ -710,39 +715,23 @@ ribos_schema_compute_identity(
     const RibosProductSchema *schema,
     uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES])
 {
-    uint8_t *encoded;
-    size_t encoded_size = 0;
+    RibosSchemaWriter writer;
     RibosSchemaStatus status;
     RibosSha256 hash;
 
     if (schema == NULL || digest == NULL) {
         return RIBOS_SCHEMA_INVALID_ARGUMENT;
     }
-    status = ribos_schema_encode(
-        schema,
-        NULL,
-        0,
-        &encoded_size);
-    if (status != RIBOS_SCHEMA_OK) {
-        return status;
-    }
-    encoded = malloc(encoded_size == 0 ? 1 : encoded_size);
-    if (encoded == NULL) {
-        return RIBOS_SCHEMA_CAPACITY_EXCEEDED;
-    }
-    status = ribos_schema_encode(
-        schema,
-        encoded,
-        encoded_size,
-        &encoded_size);
-    if (status != RIBOS_SCHEMA_OK) {
-        free(encoded);
-        return status;
-    }
     ribos_sha256_initialize(&hash);
-    ribos_sha256_update(&hash, encoded, encoded_size);
+    writer = (RibosSchemaWriter){
+        .hash = &hash,
+    };
+    status = ribos_schema_encode_into(schema, &writer);
+    if (status != RIBOS_SCHEMA_OK || writer.overflow) {
+        return status == RIBOS_SCHEMA_OK ?
+            RIBOS_SCHEMA_CAPACITY_EXCEEDED : status;
+    }
     ribos_sha256_finish(&hash, digest);
-    free(encoded);
     return RIBOS_SCHEMA_OK;
 }
 

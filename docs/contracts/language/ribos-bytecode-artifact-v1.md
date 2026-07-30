@@ -9,6 +9,7 @@ code_paths:
   - language/ribos/ir/include/ribos/ir/
 tests:
   - make check-ribos-artifact
+  - make check-ribos-verifier
   - make check-ribos-ir
   - make check-ribos-resources
   - make check
@@ -301,7 +302,7 @@ operand table로 표현한다.
 | 12 | 4 | result slot ID 또는 invalid |
 | 16 | 4 | operand-table start |
 | 20 | 4 | direct target function/block/helper ID |
-| 24 | 4 | alternate direct block ID |
+| 24 | 4 | alternate block ID, struct field ordinal 또는 variant payload ordinal |
 | 28 | 4 | source-map ID 또는 invalid |
 | 32 | 4 | next instruction in block 또는 invalid |
 | 36 | 4 | reserved, zero |
@@ -310,6 +311,11 @@ operand table로 표현한다.
 Operand table의 각 row는 slot ID 하나다. `operand start + operand count` range는
 overflow 없이 operand table 안에 있어야 한다. Direct branch/call target 외의 address,
 pointer와 indirect dispatch는 표현할 수 없다.
+
+`MEMBER`가 user struct를 읽으면 `alternate`는 declaration-order field ordinal이고
+`target` constant는 source/debug spelling이다. Product fact path는 selected schema가
+resolve하므로 `alternate=INVALID_ID`다. VM은 user struct field를 source string이나
+hash로 dispatch하지 않고 verifier가 type table과 대조한 ordinal로 접근한다.
 
 Opcode registry는 다음과 같다.
 
@@ -394,6 +400,11 @@ Allocation-free v1 reader는 다음만 보장한다.
 - helper schema/signature/capability
 - instruction, stack, call-depth와 helper upper bound
 - entry function의 terminal action
+
+`language/ribos/vm` Stage-1은 table ID/reference, type/slot/frame, instruction ownership,
+direct CFG/call, reachable terminal, definite initialization, opcode type와 stack/call
+depth를 구현한다. Exact instruction/helper worst-case upper bound와 runtime counter는
+후속 verifier/VM gate이며 Stage-1 report는 실행 certificate가 아니다.
 
 Production verifier는 그 뒤 signature와 rollback/product policy를 확인한다. Structural
 reader 성공, host emitter 성공 또는 valid signature 중 어느 하나만으로 artifact를

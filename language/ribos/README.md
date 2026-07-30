@@ -1,6 +1,6 @@
 # Ribos language project
 
-이 디렉터리는 Ribos source compiler, Policy IR, product schema와 향후 VM backend를
+이 디렉터리는 Ribos source compiler, Policy IR, product schema와 VM backend를
 서로 독립된 project boundary로 유지한다. 공식 source 확장자는 `.rbs`다. `.ribos`
 확장자와 호환 alias는 없다.
 
@@ -32,6 +32,10 @@ language/ribos/
     tests/
   vm/
     README.md
+    include/ribos/vm/
+    src/
+    tools/
+    tests/
 ```
 
 경계는 다음과 같다.
@@ -42,7 +46,7 @@ language/ribos/
 | `schema` | immutable product/plugin descriptor | canonical schema bytes와 SHA-256 identity | parser AST와 VM opcode |
 | `ir` | resolved type, CFG, helper stable ID | typed module과 resource closure | Pegen, source token과 product C pointer |
 | `artifact` | validated Policy IR와 resource closure | canonical `.rba`, borrowed structural view | frontend AST, packed C wire image와 VM dispatch |
-| `vm` | 향후 verified executable artifact | bounded policy execution | `.rbs`, Pegen과 frontend AST |
+| `vm` | untrusted `.rba`, selected product schema | Stage-1 verification report, 향후 bounded execution | `.rbs`, Pegen, frontend AST와 Policy IR |
 
 `frontend/src/lower.c`는 frontend-private AST를 public `ribos/ir` builder API로
 변환하는 bridge다. IR module, validator, CFG/resource analyzer와 deterministic
@@ -94,6 +98,7 @@ make check-ribos-schema
 make check-ribos-ir
 make check-ribos-resources
 make check-ribos-artifact
+make check-ribos-verifier
 ```
 
 - parser gate는 `.rbs` syntax acceptance/rejection만 증명한다.
@@ -107,6 +112,9 @@ make check-ribos-artifact
   VM 독립 type/slot/frame layout을 증명한다.
 - artifact gate는 VM ABI 1.0/ISA 1.0 little-endian serialization, payload SHA-256,
   canonical section range, optional source map과 deterministic emission을 증명한다.
+- verifier gate는 compiler를 링크하지 않고 type/constant, instruction boundary,
+  direct CFG/call, definite slot initialization, operand/result type와 frame/stack을
+  artifact byte에서 재도출하고 hostile mutation을 거부함을 증명한다.
 
 CLI는 host inspection을 위해 다음 mode를 제공한다.
 
@@ -121,9 +129,11 @@ build/tools/ribos-parse --emit-artifact policy.rba policy.rbs
 ```
 
 Host compiler와 IR module은 hard capacity를 가진 heap-backed 도구다. Artifact
-structural reader는 allocation하지 않지만 아직 hostile bytecode semantic verifier나
-Ed25519 trust verifier는 아니다. 이 구현은 firmware VM, verified bytecode, no-heap
-runtime parser 또는 Ribon boot product 안의 policy 실행을 증명하지 않는다.
+structural reader와 Stage-1 verifier는 allocation하지 않는다. Stage-1 verifier는
+caller-owned workspace에서 hostile bytecode semantics를 검사하지만 Ed25519 trust,
+rollback, exact instruction/helper resource bound와 VM runtime counter를 증명하지
+않는다. 이 구현은 firmware VM, Ribon boot product 안의 policy dispatch, QEMU 또는
+hardware 실행을 증명하지 않는다.
 Production boot product는 `.rbs`, Pegen과 host compiler를 링크하지 않는다.
 
 Generated C source는 Python Software Foundation License Version 2로 제공된 CPython
