@@ -1,5 +1,5 @@
-#ifndef RIBOS_ARTIFACT_EMITTER_H
-#define RIBOS_ARTIFACT_EMITTER_H
+#ifndef RIBOS_HOST_ARTIFACT_EMITTER_H
+#define RIBOS_HOST_ARTIFACT_EMITTER_H
 
 #include "ribos/artifact/format.h"
 #include "ribos/ir/ir.h"
@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /**
- * @file emitter.h
+ * @file artifact_emitter.h
  * @brief Validated Policy IR에서 canonical Ribos artifact를 생성하는 host API.
  */
 

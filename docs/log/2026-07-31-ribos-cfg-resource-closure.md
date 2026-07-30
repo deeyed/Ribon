@@ -7,7 +7,7 @@ code_paths:
   - language/ribos/ir/include/ribos/ir/analysis.h
   - language/ribos/ir/src/analysis.c
   - language/ribos/frontend/src/lower.c
-  - language/ribos/frontend/tools/parse.c
+  - language/ribos/host/tools/parse.c
   - Makefile
 tests:
   - make check-ribos-resources

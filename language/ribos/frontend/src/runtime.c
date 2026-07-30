@@ -209,7 +209,10 @@ PyMem_Malloc(size_t size)
         }
         return NULL;
     }
-    allocation = malloc(sizeof(*allocation) + size);
+    allocation = ribos_allocator_allocate(
+        parser->allocator,
+        sizeof(*allocation) + size,
+        _Alignof(RibosTransientAllocation));
     if (allocation == NULL) {
         parser->failure_status = RIBOS_PARSE_NO_MEMORY;
         parser->error_indicator = 1;
@@ -246,7 +249,12 @@ PyMem_Realloc(void *allocation, size_t size)
         parser->error_indicator = 1;
         return NULL;
     }
-    replacement = realloc(header, sizeof(*replacement) + size);
+    replacement = ribos_allocator_resize(
+        parser->allocator,
+        header,
+        sizeof(*header) + header->size,
+        sizeof(*replacement) + size,
+        _Alignof(RibosTransientAllocation));
     if (replacement == NULL) {
         parser->failure_status = RIBOS_PARSE_NO_MEMORY;
         parser->error_indicator = 1;
@@ -272,11 +280,19 @@ PyMem_Free(void *allocation)
     header = (RibosTransientAllocation *)(
         (unsigned char *)allocation -
         offsetof(RibosTransientAllocation, bytes));
-    if (header->owner != NULL &&
-        header->owner->transient_bytes >= header->size) {
-        header->owner->transient_bytes -= header->size;
+    if (header->owner != NULL) {
+        Parser *parser = header->owner;
+        size_t size = header->size;
+
+        if (parser->transient_bytes >= size) {
+            parser->transient_bytes -= size;
+        }
+        ribos_allocator_release(
+            parser->allocator,
+            header,
+            sizeof(*header) + size,
+            _Alignof(RibosTransientAllocation));
     }
-    free(header);
 }
 
 void

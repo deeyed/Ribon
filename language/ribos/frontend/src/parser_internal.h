@@ -4,12 +4,13 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
+#include "ribos/base/allocator.h"
+#include "ribos/base/writer.h"
 #include "ribos/frontend/parser.h"
 #include "ribos/frontend/compiler.h"
+#include "ribos/host/format.h"
 #include "tokens.h"
 
 #define MAXSTACK 512
@@ -68,6 +69,7 @@ typedef struct asdl_seq {
 
 typedef struct RibosArenaAllocation {
     struct RibosArenaAllocation *next;
+    size_t size;
     max_align_t alignment;
     unsigned char bytes[];
 } RibosArenaAllocation;
@@ -153,8 +155,10 @@ typedef struct RibosAstNode {
 } RibosAstNode;
 
 typedef struct Parser {
+    const RibosAllocator *allocator;
     Token *tokens;
     size_t token_count;
+    size_t token_capacity;
     int mark;
     int level;
     int error_indicator;
@@ -171,6 +175,7 @@ typedef struct Parser {
     size_t ast_node_count;
     RibosTrivia *trivia;
     size_t trivia_count;
+    size_t trivia_capacity;
     RibosAstNode *root;
     RibosParseSummary result;
     RibosParseStatus failure_status;
@@ -257,31 +262,40 @@ RibosCompileStatus ribos_compile_parser_tree(
     RibosIrModule *ir_module,
     RibosCompileSummary *summary,
     RibosCompileDiagnostic *diagnostic,
-    FILE *dump,
+    RibosWriter *dump,
     unsigned dump_flags);
 RibosCompileStatus ribos_compile_source_with_dump(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     const RibosProductSchema *schema,
     RibosIrModule *ir_module,
     RibosCompileSummary *summary,
     RibosCompileDiagnostic *diagnostic,
-    FILE *dump,
+    RibosWriter *dump,
     unsigned dump_flags);
 void ribos_dump_parser_model(
     const Parser *parser,
-    FILE *output,
+    RibosWriter *output,
     unsigned dump_flags);
 
 RibosParseStatus ribos_lex_source(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     Token **tokens,
     size_t *token_count,
+    size_t *token_capacity,
     RibosTrivia **trivia,
     size_t *trivia_count,
+    size_t *trivia_capacity,
     RibosDiagnostic *diagnostic);
-void ribos_free_token_stream(Token *tokens, RibosTrivia *trivia);
+void ribos_free_token_stream(
+    const RibosAllocator *allocator,
+    Token *tokens,
+    size_t token_capacity,
+    RibosTrivia *trivia,
+    size_t trivia_capacity);
 const char *ribos_token_name(int token_type);
 int ribos_token_is_reserved(const Token *token);
 

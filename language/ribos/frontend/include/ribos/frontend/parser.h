@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "ribos/base/allocator.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -79,6 +81,7 @@ typedef struct RibosParseSummary {
  * @return A stable parser status.
  */
 RibosParseStatus ribos_parse_source(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     RibosParseSummary *summary,

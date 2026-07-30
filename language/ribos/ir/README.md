@@ -29,5 +29,6 @@ linear search layout을 사용한다. Compiler는 분석값으로 source budget�
 read-only view로 공개한다. 이 view와 host structure layout은 wire ABI가 아니다.
 `language/ribos/artifact`만 explicit little-endian `.rba` serialization을 소유한다.
 
-현재 module과 closure storage는 host compiler용 bounded heap object다. Independent
-hostile-byte verifier와 VM counter dispatch는 `vm/` 계층의 책임이다.
+현재 module과 closure storage는 caller-supplied allocator를 사용하는 host compiler용
+bounded object다. IR dump도 explicit writer를 받는다. Independent hostile-byte
+verifier와 VM counter dispatch는 `vm/` 계층의 책임이다.

@@ -3,22 +3,22 @@
 #include <inttypes.h>
 
 RibosIrStatus
-ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
+ribos_ir_dump_v1(const RibosIrModule *module, RibosWriter *output)
 {
     size_t index;
 
     if (module == NULL || output == NULL) {
         return RIBOS_IR_INVALID_ARGUMENT;
     }
-    (void)fprintf(
+    (void)ribos_writer_printf(
         output,
         "IR-MODULE version=%u.%u schema=",
         module->format_major,
         module->format_minor);
     for (index = 0; index < RIBOS_SCHEMA_DIGEST_BYTES; ++index) {
-        (void)fprintf(output, "%02x", module->schema_digest[index]);
+        (void)ribos_writer_printf(output, "%02x", module->schema_digest[index]);
     }
-    (void)fprintf(
+    (void)ribos_writer_printf(
         output,
         " types=%zu shapes=%zu constants=%zu constant-bytes=%zu functions=%zu "
         "blocks=%zu loops=%zu slots=%zu instructions=%zu operands=%zu "
@@ -38,7 +38,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
     for (index = 0; index < module->type_count; ++index) {
         const RibosIrType *type = &module->types[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-TYPE id=%u kind=%u name=%s first=%u second=%u "
             "bound=%u shape=%u+%u abi=%u/%u bits=%u\n",
@@ -57,7 +57,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
     for (index = 0; index < module->shape_count; ++index) {
         const RibosIrShape *shape = &module->shapes[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-SHAPE id=%u kind=%u owner=%u tag=%u ordinal=%u "
             "type=%u name=%s\n",
@@ -73,25 +73,25 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
         const RibosIrConstant *constant = &module->constants[index];
         size_t byte;
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-CONSTANT id=c%u kind=%u hash=%016" PRIx64 " bytes=",
             constant->id,
             (unsigned)constant->kind,
             constant->stable_hash);
         for (byte = 0; byte < constant->byte_length; ++byte) {
-            (void)fprintf(
+            (void)ribos_writer_printf(
                 output,
                 "%02x",
                 module->constant_bytes[
                     constant->byte_offset + byte]);
         }
-        (void)fprintf(output, "\n");
+        (void)ribos_writer_printf(output, "\n");
     }
     for (index = 0; index < module->function_count; ++index) {
         const RibosIrFunction *function = &module->functions[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-FUNCTION id=%u name=%s return=%u entry=b%u "
             "blocks=%u+%u slots=%u+%u params=%u+%u "
@@ -120,7 +120,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
         const RibosIrBlock *block = &module->blocks[index];
         uint32_t instruction = block->first_instruction;
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-BLOCK id=b%u function=%u params=%u+%u instructions=%u "
             "flags=0x%x\n",
@@ -135,28 +135,28 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
                 &module->instructions[instruction];
             size_t operand;
 
-            (void)fprintf(
+            (void)ribos_writer_printf(
                 output,
                 "IR-INSTRUCTION id=i%u block=b%u op=%s result=",
                 value->id,
                 value->block_id,
                 ribos_ir_opcode_name(value->opcode));
             if (value->result_slot == RIBOS_IR_INVALID_ID) {
-                (void)fprintf(output, "-");
+                (void)ribos_writer_printf(output, "-");
             } else {
-                (void)fprintf(output, "s%u", value->result_slot);
+                (void)ribos_writer_printf(output, "s%u", value->result_slot);
             }
-            (void)fprintf(output, " operands=[");
+            (void)ribos_writer_printf(output, " operands=[");
             for (operand = 0; operand < value->operand_count; ++operand) {
                 if (operand != 0) {
-                    (void)fprintf(output, ",");
+                    (void)ribos_writer_printf(output, ",");
                 }
-                (void)fprintf(
+                (void)ribos_writer_printf(
                     output,
                     "s%u",
                     module->operands[value->operand_start + operand]);
             }
-            (void)fprintf(
+            (void)ribos_writer_printf(
                 output,
                 "] target=%u alternate=%u immediate=%" PRIu64
                 " source=m%u\n",
@@ -170,7 +170,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
     for (index = 0; index < module->loop_count; ++index) {
         const RibosIrLoop *loop = &module->loops[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-LOOP id=l%u function=%u header=b%u body=b%u exit=b%u "
             "latch=",
@@ -180,11 +180,11 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
             loop->body_block,
             loop->exit_block);
         if (loop->latch_block == RIBOS_IR_INVALID_ID) {
-            (void)fprintf(output, "-");
+            (void)ribos_writer_printf(output, "-");
         } else {
-            (void)fprintf(output, "b%u", loop->latch_block);
+            (void)ribos_writer_printf(output, "b%u", loop->latch_block);
         }
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             " trips=%u source=m%u\n",
             loop->trip_count,
@@ -193,7 +193,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
     for (index = 0; index < module->slot_count; ++index) {
         const RibosIrSlot *slot = &module->slots[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-SLOT id=s%u function=%u type=%u source=m%u flags=0x%x\n",
             slot->id,
@@ -205,7 +205,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
     for (index = 0; index < module->source_map_count; ++index) {
         const RibosIrSourceMap *map = &module->source_maps[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-SOURCE id=m%u ast=%u bytes=%zu..%zu "
             "start=%u:%u end=%u:%u\n",
@@ -221,7 +221,7 @@ ribos_ir_dump_v1(const RibosIrModule *module, FILE *output)
     for (index = 0; index < module->helper_call_count; ++index) {
         const RibosIrHelperCallSite *site = &module->helper_calls[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-HELPER id=%u instruction=i%u helper=%u caps=0x%08x "
             "result=%u arguments=%u source=m%u\n",

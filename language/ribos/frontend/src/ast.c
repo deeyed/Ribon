@@ -34,13 +34,17 @@ ribos_arena_allocate(Parser *parser, size_t size)
         }
         return NULL;
     }
-    allocation = malloc(sizeof(*allocation) + size);
+    allocation = ribos_allocator_allocate(
+        parser->allocator,
+        sizeof(*allocation) + size,
+        _Alignof(RibosArenaAllocation));
     if (allocation == NULL) {
         parser->failure_status = RIBOS_PARSE_NO_MEMORY;
         parser->error_indicator = 1;
         return NULL;
     }
     allocation->next = parser->arena_allocations;
+    allocation->size = size;
     parser->arena_allocations = allocation;
     parser->arena_bytes += size;
     return allocation->bytes;

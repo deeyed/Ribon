@@ -13,7 +13,8 @@ code_paths:
   - language/ribos/frontend/src/semantic.c
   - language/ribos/schema/
   - language/ribos/ir/
-  - language/ribos/frontend/tools/
+  - language/ribos/host/pegen/
+  - language/ribos/host/tools/parse.c
   - src/policy/
 tests:
   - ribos-grammar-generation

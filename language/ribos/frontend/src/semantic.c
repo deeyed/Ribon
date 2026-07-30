@@ -254,36 +254,36 @@ ribos_type_name(
     }
     switch (type->kind) {
     case RIBOS_TYPE_ARRAY:
-        (void)snprintf(buffer, buffer_size, "Array[...,%u]", type->bound);
+        (void)ribos_host_snprintf(buffer, buffer_size, "Array[...,%u]", type->bound);
         break;
     case RIBOS_TYPE_LIST:
-        (void)snprintf(buffer, buffer_size, "List[...,%u]", type->bound);
+        (void)ribos_host_snprintf(buffer, buffer_size, "List[...,%u]", type->bound);
         break;
     case RIBOS_TYPE_FROZEN_MAP:
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             buffer,
             buffer_size,
             "FrozenMap[...,%u]",
             type->bound);
         break;
     case RIBOS_TYPE_DICT:
-        (void)snprintf(buffer, buffer_size, "Dict[...,%u]", type->bound);
+        (void)ribos_host_snprintf(buffer, buffer_size, "Dict[...,%u]", type->bound);
         break;
     case RIBOS_TYPE_OPTION:
-        (void)snprintf(buffer, buffer_size, "Option[...]");
+        (void)ribos_host_snprintf(buffer, buffer_size, "Option[...]");
         break;
     case RIBOS_TYPE_RESULT:
-        (void)snprintf(buffer, buffer_size, "Result[...,...]");
+        (void)ribos_host_snprintf(buffer, buffer_size, "Result[...,...]");
         break;
     case RIBOS_TYPE_STRING_LITERAL:
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             buffer,
             buffer_size,
             "StringLiteral[%u]",
             type->bound);
         break;
     default:
-        (void)snprintf(buffer, buffer_size, "<type-%u>", type_id);
+        (void)ribos_host_snprintf(buffer, buffer_size, "<type-%u>", type_id);
         break;
     }
     return buffer;
@@ -3410,14 +3410,14 @@ ribos_type_kind_name(RibosTypeKind kind)
 static void
 ribos_dump_semantic_model(
     const RibosSemanticContext *context,
-    FILE *output)
+    RibosWriter *output)
 {
     size_t index;
 
     for (index = 0; index < context->type_count; ++index) {
         const RibosType *type = &context->types[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "TYPE id=%zu kind=%s name=%.*s first=%u second=%u "
             "bound=%u bits=%u\n",
@@ -3433,7 +3433,7 @@ ribos_dump_semantic_model(
     for (index = 0; index < context->function_count; ++index) {
         const RibosFunctionInfo *function = &context->functions[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "FUNCTION id=%zu name=%.*s policy=%u pure=%u return=%u "
             "declared=0x%08x required=0x%08x helper-sites=%zu "
@@ -3489,7 +3489,7 @@ ribos_compile_parser_tree(
     RibosIrModule *ir_module,
     RibosCompileSummary *summary,
     RibosCompileDiagnostic *diagnostic,
-    FILE *dump,
+    RibosWriter *dump,
     unsigned dump_flags)
 {
     RibosIrModule *owned_ir_module = NULL;
@@ -3508,7 +3508,7 @@ ribos_compile_parser_tree(
             summary->schema_digest) != RIBOS_SCHEMA_OK) {
         context.status = RIBOS_COMPILE_SCHEMA_ERROR;
         context.diagnostic->code = RIBOS_E_SCHEMA_INVALID;
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             context.diagnostic->message,
             sizeof(context.diagnostic->message),
             "selected product schema is invalid or cannot be identified");
@@ -3529,11 +3529,11 @@ ribos_compile_parser_tree(
         ribos_check_policy_effects(&context);
     }
     if (context.status == RIBOS_COMPILE_OK && ir_module == NULL) {
-        owned_ir_module = ribos_ir_module_create();
+        owned_ir_module = ribos_ir_module_create(parser->allocator);
         if (owned_ir_module == NULL) {
             context.status = RIBOS_COMPILE_NO_MEMORY;
             context.diagnostic->code = RIBOS_E_RESOURCE_LIMIT;
-            (void)snprintf(
+            (void)ribos_host_snprintf(
                 context.diagnostic->message,
                 sizeof(context.diagnostic->message),
                 "Policy IR validation module allocation failed");

@@ -61,25 +61,25 @@ ribos_parser_set_syntax_diagnostic(
         sizeof(diagnostic->token));
     if (ribos_token_is_reserved(token)) {
         diagnostic->kind = RIBOS_DIAGNOSTIC_RESERVED_FEATURE;
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             diagnostic->message,
             sizeof(diagnostic->message),
             "reserved feature is not part of Ribos");
     } else if (parser->failure_status == RIBOS_PARSE_LIMIT_EXCEEDED) {
         diagnostic->kind = RIBOS_DIAGNOSTIC_RESOURCE_LIMIT;
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             diagnostic->message,
             sizeof(diagnostic->message),
             "parser nesting limit exceeded");
     } else if (parser->failure_status == RIBOS_PARSE_NO_MEMORY) {
         diagnostic->kind = RIBOS_DIAGNOSTIC_RESOURCE_LIMIT;
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             diagnostic->message,
             sizeof(diagnostic->message),
             "host parser allocation failed");
     } else {
         diagnostic->kind = RIBOS_DIAGNOSTIC_SYNTAX;
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             diagnostic->message,
             sizeof(diagnostic->message),
             "unexpected token in Ribos source");
@@ -93,38 +93,54 @@ ribos_parser_release(Parser *parser)
 
     while (allocation != NULL) {
         RibosArenaAllocation *next = allocation->next;
-        free(allocation);
+
+        ribos_allocator_release(
+            parser->allocator,
+            allocation,
+            sizeof(*allocation) + allocation->size,
+            _Alignof(RibosArenaAllocation));
         allocation = next;
     }
-    ribos_free_token_stream(parser->tokens, parser->trivia);
+    ribos_free_token_stream(
+        parser->allocator,
+        parser->tokens,
+        parser->token_capacity,
+        parser->trivia,
+        parser->trivia_capacity);
     memset(parser, 0, sizeof(*parser));
 }
 
 RibosParseStatus
 ribos_parse_source(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     RibosParseSummary *summary,
     RibosDiagnostic *diagnostic)
 {
     Parser parser = {
+        .allocator = allocator,
         .farthest_mark = 0,
         .failure_status = RIBOS_PARSE_SYNTAX_ERROR,
     };
     RibosAstNode *generated_result;
     RibosParseStatus status;
 
-    if (source == NULL || summary == NULL || diagnostic == NULL) {
+    if (allocator == NULL || source == NULL ||
+        summary == NULL || diagnostic == NULL) {
         return RIBOS_PARSE_INVALID_ARGUMENT;
     }
     ribos_clear_outputs(summary, diagnostic);
     status = ribos_lex_source(
+        allocator,
         source,
         source_length,
         &parser.tokens,
         &parser.token_count,
+        &parser.token_capacity,
         &parser.trivia,
         &parser.trivia_count,
+        &parser.trivia_capacity,
         diagnostic);
     if (status != RIBOS_PARSE_OK) {
         return status;

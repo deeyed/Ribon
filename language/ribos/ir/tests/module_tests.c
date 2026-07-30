@@ -1,3 +1,4 @@
+#include "ribos/host/allocator.h"
 #include "ribos/ir/builder.h"
 
 #include <stdio.h>
@@ -5,7 +6,8 @@
 static RibosIrModule *
 build_minimal_module(int use_unindexed_helper)
 {
-    RibosIrModule *module = ribos_ir_module_create();
+    RibosIrModule *module =
+        ribos_ir_module_create(ribos_host_allocator());
     uint8_t schema_digest[RIBOS_SCHEMA_DIGEST_BYTES] = {1};
     RibosIrType unit_type = {
         .kind = RIBOS_IR_TYPE_UNIT,

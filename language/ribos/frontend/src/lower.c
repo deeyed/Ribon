@@ -3,8 +3,6 @@
 #include "ribos/ir/analysis.h"
 #include "ribos/ir/builder.h"
 
-#include <stdlib.h>
-
 #define RIBOS_LOWER_MAX_BLOCKS 4096u
 #define RIBOS_LOWER_MAX_BINDINGS 512u
 #define RIBOS_LOWER_SLOT_PARAMETER RIBOS_IR_SLOT_PARAMETER
@@ -234,7 +232,7 @@ ribos_lower_fail(RibosLowerContext *context, const RibosAstNode *node)
     if (node != NULL) {
         context->semantic->diagnostic->span = node->span;
     }
-    (void)snprintf(
+    (void)ribos_host_snprintf(
         context->semantic->diagnostic->message,
         sizeof(context->semantic->diagnostic->message),
         "typed AST could not be lowered into bounded Policy IR v1");
@@ -618,7 +616,10 @@ ribos_lower_add_path_constant(
     for (index = 0; index < count; ++index) {
         length += ribos_lower_path_component(path, index)->length;
     }
-    bytes = length == 0 ? NULL : malloc(length);
+    bytes = length == 0 ? NULL : ribos_allocator_allocate(
+        context->semantic->parser->allocator,
+        length,
+        _Alignof(uint8_t));
     if (length != 0 && bytes == NULL) {
         ribos_lower_fail(context, path);
         return RIBOS_IR_INVALID_ID;
@@ -638,7 +639,11 @@ ribos_lower_add_path_constant(
         bytes,
         length,
         &constant);
-    free(bytes);
+    ribos_allocator_release(
+        context->semantic->parser->allocator,
+        bytes,
+        length,
+        _Alignof(uint8_t));
     if (context->ir_status != RIBOS_IR_OK) {
         ribos_lower_fail(context, path);
         return RIBOS_IR_INVALID_ID;
@@ -682,7 +687,10 @@ ribos_lower_add_string_constant(
     uint8_t *bytes;
     uint32_t constant;
 
-    bytes = malloc(token->length);
+    bytes = ribos_allocator_allocate(
+        context->semantic->parser->allocator,
+        token->length,
+        _Alignof(uint8_t));
     if (bytes == NULL) {
         ribos_lower_fail(context, node);
         return RIBOS_IR_INVALID_ID;
@@ -724,7 +732,11 @@ ribos_lower_add_string_constant(
         bytes,
         output,
         &constant);
-    free(bytes);
+    ribos_allocator_release(
+        context->semantic->parser->allocator,
+        bytes,
+        token->length,
+        _Alignof(uint8_t));
     if (context->ir_status != RIBOS_IR_OK) {
         ribos_lower_fail(context, node);
         return RIBOS_IR_INVALID_ID;
@@ -1297,8 +1309,12 @@ ribos_lower_expression(RibosLowerContext *context, RibosAstNode *node)
     case RIBOS_AST_LIST: {
         size_t item_count =
             node->items == NULL ? 0 : (size_t)node->items->size;
-        uint32_t *items =
-            item_count == 0 ? NULL : calloc(item_count, sizeof(*items));
+        uint32_t *items = item_count == 0 ? NULL :
+            ribos_allocator_allocate_zeroed(
+                context->semantic->parser->allocator,
+                item_count,
+                sizeof(*items),
+                _Alignof(uint32_t));
         uint32_t result;
 
         if (item_count != 0 && items == NULL) {
@@ -1321,7 +1337,11 @@ ribos_lower_expression(RibosLowerContext *context, RibosAstNode *node)
             context->semantic->types[node->inferred_type].bound,
             RIBOS_IR_INVALID_ID,
             0);
-        free(items);
+        ribos_allocator_release(
+            context->semantic->parser->allocator,
+            items,
+            item_count * sizeof(*items),
+            _Alignof(uint32_t));
         return result;
     }
     case RIBOS_AST_MAP: {
@@ -1336,8 +1356,12 @@ ribos_lower_expression(RibosLowerContext *context, RibosAstNode *node)
             return RIBOS_IR_INVALID_ID;
         }
         item_count = entry_count * 2;
-        items =
-            item_count == 0 ? NULL : calloc(item_count, sizeof(*items));
+        items = item_count == 0 ? NULL :
+            ribos_allocator_allocate_zeroed(
+                context->semantic->parser->allocator,
+                item_count,
+                sizeof(*items),
+                _Alignof(uint32_t));
         if (item_count != 0 && items == NULL) {
             ribos_lower_fail(context, node);
             return RIBOS_IR_INVALID_ID;
@@ -1361,7 +1385,11 @@ ribos_lower_expression(RibosLowerContext *context, RibosAstNode *node)
             context->semantic->types[node->inferred_type].bound,
             RIBOS_IR_INVALID_ID,
             0);
-        free(items);
+        ribos_allocator_release(
+            context->semantic->parser->allocator,
+            items,
+            item_count * sizeof(*items),
+            _Alignof(uint32_t));
         return result;
     }
     case RIBOS_AST_CALL:
@@ -2371,10 +2399,14 @@ ribos_lower_policy_ir(
     if (semantic == NULL || module == NULL) {
         return RIBOS_COMPILE_INVALID_ARGUMENT;
     }
-    context = calloc(1, sizeof(*context));
+    context = ribos_allocator_allocate_zeroed(
+        semantic->parser->allocator,
+        1,
+        sizeof(*context),
+        _Alignof(RibosLowerContext));
     if (context == NULL) {
         semantic->diagnostic->code = RIBOS_E_RESOURCE_LIMIT;
-        (void)snprintf(
+        (void)ribos_host_snprintf(
             semantic->diagnostic->message,
             sizeof(semantic->diagnostic->message),
             "Policy IR lowering context allocation failed");
@@ -2391,7 +2423,11 @@ ribos_lower_policy_ir(
         !ribos_lower_types(context) ||
         !ribos_lower_shapes(context) ||
         !ribos_lower_declare_functions(context)) {
-        free(context);
+        ribos_allocator_release(
+            semantic->parser->allocator,
+            context,
+            sizeof(*context),
+            _Alignof(RibosLowerContext));
         return semantic->status;
     }
     for (index = 0;
@@ -2405,11 +2441,12 @@ ribos_lower_policy_ir(
         ribos_lower_fail(context, semantic->parser->root);
     }
     if (semantic->status == RIBOS_COMPILE_OK) {
-        resources = ribos_ir_resource_closure_create();
+        resources = ribos_ir_resource_closure_create(
+            semantic->parser->allocator);
         if (resources == NULL) {
             semantic->status = RIBOS_COMPILE_NO_MEMORY;
             semantic->diagnostic->code = RIBOS_E_RESOURCE_LIMIT;
-            (void)snprintf(
+            (void)ribos_host_snprintf(
                 semantic->diagnostic->message,
                 sizeof(semantic->diagnostic->message),
                 "Policy IR resource-closure allocation failed");
@@ -2426,13 +2463,13 @@ ribos_lower_policy_ir(
                 semantic->status = RIBOS_COMPILE_BOUND_ERROR;
                 semantic->diagnostic->code =
                     RIBOS_E_INSTRUCTION_BUDGET_EXCEEDED;
-                (void)snprintf(
+                (void)ribos_host_snprintf(
                     semantic->diagnostic->message,
                     sizeof(semantic->diagnostic->message),
                     "Policy IR worst-case execution exceeds a declared budget");
             } else if (resource_status != RIBOS_IR_OK) {
                 ribos_lower_fail(context, semantic->parser->root);
-                (void)snprintf(
+                (void)ribos_host_snprintf(
                     semantic->diagnostic->message,
                     sizeof(semantic->diagnostic->message),
                     "Policy IR resource closure failed with status %u",
@@ -2473,6 +2510,10 @@ ribos_lower_policy_ir(
         }
     }
     ribos_ir_resource_closure_destroy(resources);
-    free(context);
+    ribos_allocator_release(
+        semantic->parser->allocator,
+        context,
+        sizeof(*context),
+        _Alignof(RibosLowerContext));
     return semantic->status;
 }

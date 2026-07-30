@@ -1,6 +1,8 @@
 #include "parser_internal.h"
 
-#include "ribos/artifact/emitter.h"
+#include "ribos/host/allocator.h"
+#include "ribos/host/artifact_emitter.h"
+#include "ribos/host/writer.h"
 #include "ribos/ir/analysis.h"
 
 #include <stdio.h>
@@ -89,6 +91,8 @@ main(int argc, char **argv)
     int resource_mode = 0;
     int artifact_mode = 0;
     const char *artifact_path = NULL;
+    const RibosAllocator *allocator = ribos_host_allocator();
+    RibosWriter stdout_writer = ribos_host_file_writer(stdout);
 
     if (argc == 2) {
         path = argv[1];
@@ -143,7 +147,7 @@ main(int argc, char **argv)
 
     if (compile_mode) {
         RibosIrModule *ir_module =
-            ir_mode ? ribos_ir_module_create() : NULL;
+            ir_mode ? ribos_ir_module_create(allocator) : NULL;
 
         if (ir_mode && ir_module == NULL) {
             free(source);
@@ -156,6 +160,7 @@ main(int argc, char **argv)
         }
         if (ir_mode) {
             compile_status = ribos_compile_source_to_ir(
+                allocator,
                 source,
                 source_length,
                 ribos_schema_reference_v1(),
@@ -164,13 +169,14 @@ main(int argc, char **argv)
                 &compile_diagnostic);
         } else {
             compile_status = ribos_compile_source_with_dump(
+                allocator,
                 source,
                 source_length,
                 ribos_schema_reference_v1(),
                 NULL,
                 &compile_summary,
                 &compile_diagnostic,
-                stdout,
+                &stdout_writer,
                 dump_flags);
         }
         free(source);
@@ -214,7 +220,9 @@ main(int argc, char **argv)
         }
         if (ir_mode && !resource_mode && !artifact_mode &&
             (ribos_ir_validate_v1(ir_module) != RIBOS_IR_OK ||
-             ribos_ir_dump_v1(ir_module, stdout) != RIBOS_IR_OK)) {
+             ribos_ir_dump_v1(
+                 ir_module,
+                 &stdout_writer) != RIBOS_IR_OK)) {
             ribos_ir_module_destroy(ir_module);
             (void)fprintf(
                 stderr,
@@ -225,7 +233,7 @@ main(int argc, char **argv)
         }
         if (resource_mode) {
             RibosIrResourceClosure *resources =
-                ribos_ir_resource_closure_create();
+                ribos_ir_resource_closure_create(allocator);
             RibosIrStatus resource_status =
                 resources == NULL ?
                     RIBOS_IR_RESOURCE_EXCEEDED :
@@ -236,7 +244,7 @@ main(int argc, char **argv)
             if (resource_status == RIBOS_IR_OK) {
                 resource_status = ribos_ir_dump_resources_v1(
                     resources,
-                    stdout);
+                    &stdout_writer);
             }
             ribos_ir_resource_closure_destroy(resources);
             if (resource_status != RIBOS_IR_OK) {
@@ -367,6 +375,7 @@ main(int argc, char **argv)
     }
 
     status = ribos_parse_source(
+        allocator,
         source,
         source_length,
         &summary,

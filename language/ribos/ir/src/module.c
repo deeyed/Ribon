@@ -1,6 +1,5 @@
 #include "ir_internal.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 static int
@@ -13,32 +12,62 @@ ribos_ir_is_terminator(RibosIrOpcode opcode)
 }
 
 RibosIrModule *
-ribos_ir_module_create(void)
+ribos_ir_module_create(const RibosAllocator *allocator)
 {
-    RibosIrModule *module = calloc(1, sizeof(*module));
+    RibosIrModule *module;
 
-    if (module != NULL) {
-        module->format_major = RIBOS_IR_V1_MAJOR;
-        module->format_minor = RIBOS_IR_V1_MINOR;
+    if (allocator == NULL) {
+        return NULL;
     }
+    module = ribos_allocator_allocate_zeroed(
+        allocator,
+        1,
+        sizeof(*module),
+        _Alignof(RibosIrModule));
+    if (module == NULL) {
+        return NULL;
+    }
+    module->allocator = allocator;
+    module->format_major = RIBOS_IR_V1_MAJOR;
+    module->format_minor = RIBOS_IR_V1_MINOR;
     return module;
 }
 
 void
 ribos_ir_module_destroy(RibosIrModule *module)
 {
-    free(module);
+    const RibosAllocator *allocator;
+
+    if (module == NULL) {
+        return;
+    }
+    allocator = module->allocator;
+    ribos_allocator_release(
+        allocator,
+        module,
+        sizeof(*module),
+        _Alignof(RibosIrModule));
 }
 
 void
 ribos_ir_module_reset(RibosIrModule *module)
 {
+    const RibosAllocator *allocator;
+
     if (module == NULL) {
         return;
     }
+    allocator = module->allocator;
     memset(module, 0, sizeof(*module));
+    module->allocator = allocator;
     module->format_major = RIBOS_IR_V1_MAJOR;
     module->format_minor = RIBOS_IR_V1_MINOR;
+}
+
+const RibosAllocator *
+ribos_ir_module_allocator(const RibosIrModule *module)
+{
+    return module == NULL ? NULL : module->allocator;
 }
 
 RibosIrStatus

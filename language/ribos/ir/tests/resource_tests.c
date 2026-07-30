@@ -1,3 +1,4 @@
+#include "ribos/host/allocator.h"
 #include "ribos/ir/analysis.h"
 #include "ribos/ir/builder.h"
 
@@ -6,7 +7,8 @@
 static RibosIrModule *
 build_linear_module(uint64_t instruction_budget)
 {
-    RibosIrModule *module = ribos_ir_module_create();
+    RibosIrModule *module =
+        ribos_ir_module_create(ribos_host_allocator());
     uint8_t schema_digest[RIBOS_SCHEMA_DIGEST_BYTES] = {1};
     RibosIrType unit_type = {
         .kind = RIBOS_IR_TYPE_UNIT,
@@ -116,7 +118,8 @@ build_linear_module(uint64_t instruction_budget)
 static RibosIrModule *
 build_unbounded_cycle(void)
 {
-    RibosIrModule *module = ribos_ir_module_create();
+    RibosIrModule *module =
+        ribos_ir_module_create(ribos_host_allocator());
     uint8_t schema_digest[RIBOS_SCHEMA_DIGEST_BYTES] = {1};
     RibosIrType unit_type = {
         .kind = RIBOS_IR_TYPE_UNIT,
@@ -223,7 +226,7 @@ main(void)
     RibosIrModule *over_budget = build_linear_module(1);
     RibosIrModule *cycle = build_unbounded_cycle();
     RibosIrResourceClosure *resources =
-        ribos_ir_resource_closure_create();
+        ribos_ir_resource_closure_create(ribos_host_allocator());
     const RibosIrFunctionResource *function;
     int passed =
         within_budget != NULL && over_budget != NULL &&

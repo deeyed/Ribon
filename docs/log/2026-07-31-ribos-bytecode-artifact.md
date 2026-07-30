@@ -5,7 +5,8 @@ authority: historical
 last_verified: 2026-07-31
 code_paths:
   - language/ribos/artifact/
-  - language/ribos/frontend/tools/parse.c
+  - language/ribos/host/tools/parse.c
+  - language/ribos/host/src/artifact_emitter.c
   - language/ribos/ir/include/ribos/ir/ir.h
   - language/ribos/ir/src/module.c
   - Makefile

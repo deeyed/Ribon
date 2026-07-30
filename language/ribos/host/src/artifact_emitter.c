@@ -1,9 +1,8 @@
-#include "ribos/artifact/emitter.h"
+#include "ribos/host/artifact_emitter.h"
 
 #include "internal.h"
 #include "ribos/ir/analysis.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 typedef struct RibosArtifactImport {
@@ -314,7 +313,8 @@ ribos_artifact_prepare_context(
         ribos_ir_module_view(module, &context->module) != RIBOS_IR_OK) {
         return RIBOS_ARTIFACT_INVALID_POLICY_IR;
     }
-    context->resources = ribos_ir_resource_closure_create();
+    context->resources = ribos_ir_resource_closure_create(
+        ribos_ir_module_allocator(module));
     if (context->resources == NULL) {
         return RIBOS_ARTIFACT_RESOURCE_CLOSURE_FAILED;
     }

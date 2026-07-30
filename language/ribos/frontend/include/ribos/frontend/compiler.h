@@ -117,6 +117,7 @@ typedef struct RibosCompileDiagnostic {
  * @return 정적 의미 분석 종료 상태.
  */
 RibosCompileStatus ribos_compile_source(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     RibosCompileSummary *summary,
@@ -128,6 +129,7 @@ RibosCompileStatus ribos_compile_source(
  * @param schema compiler와 verifier가 공유하는 immutable product schema.
  */
 RibosCompileStatus ribos_compile_source_with_schema(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     const RibosProductSchema *schema,
@@ -141,6 +143,7 @@ RibosCompileStatus ribos_compile_source_with_schema(
  * 빈 상태로 reset되어 부분 IR을 권위 있는 결과로 사용할 수 없다.
  */
 RibosCompileStatus ribos_compile_source_to_ir(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     const RibosProductSchema *schema,

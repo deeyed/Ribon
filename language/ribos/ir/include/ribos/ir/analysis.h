@@ -111,8 +111,13 @@ typedef struct RibosIrResourceSummary {
 /** 내부 storage를 숨기는 host resource-closure 결과다. */
 typedef struct RibosIrResourceClosure RibosIrResourceClosure;
 
-/** 비어 있는 host resource-closure 결과를 생성한다. */
-RibosIrResourceClosure *ribos_ir_resource_closure_create(void);
+/**
+ * 비어 있는 host resource-closure 결과를 생성한다.
+ *
+ * Allocator는 closure보다 오래 살아야 한다.
+ */
+RibosIrResourceClosure *ribos_ir_resource_closure_create(
+    const RibosAllocator *allocator);
 
 /** Resource-closure의 compiler-owned storage를 해제한다. */
 void ribos_ir_resource_closure_destroy(RibosIrResourceClosure *closure);
@@ -173,7 +178,7 @@ const RibosIrHelperBound *ribos_ir_resource_helper_bound(
 /** Pointer identity가 없는 deterministic resource dump를 기록한다. */
 RibosIrStatus ribos_ir_dump_resources_v1(
     const RibosIrResourceClosure *closure,
-    FILE *output);
+    RibosWriter *output);
 
 #ifdef __cplusplus
 }

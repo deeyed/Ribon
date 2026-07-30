@@ -6,6 +6,8 @@ last_verified: 2026-07-31
 code_paths:
   - language/ribos/artifact/include/ribos/artifact/
   - language/ribos/artifact/src/
+  - language/ribos/host/include/ribos/host/artifact_emitter.h
+  - language/ribos/host/src/artifact_emitter.c
   - language/ribos/ir/include/ribos/ir/
 tests:
   - make check-ribos-artifact

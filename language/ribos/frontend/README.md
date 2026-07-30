@@ -7,6 +7,11 @@ Python runtime object를 만들지 않는다.
 Frontend public API는 `include/ribos/frontend/`에 있다. `parser_internal.h`와
 `semantic_internal.h`는 frontend 밖에서 include할 수 없다.
 
+Frontend는 host compiler archive의 일부지만 C hosted allocation/I/O를 직접 선택하지
+않는다. Parser, AST, semantic context와 lowering scratch는 caller가 전달한
+`RibosAllocator`를 사용하고 dump는 `RibosWriter`를 사용한다. libc adapter, CLI와
+Pegen generator orchestration은 `language/ribos/host/`가 소유한다.
+
 `src/lower.c`는 typed AST를 public Policy IR builder로 내리는 유일한 bridge다.
 이 파일은 VM register, bytecode encoding, runtime stack과 dispatch를 알지 않는다.
 Bytecode artifact emitter는 frontend private AST 대신 `ribos/ir/ir.h`와

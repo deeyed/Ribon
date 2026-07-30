@@ -8,13 +8,14 @@ code_paths:
   - language/ribos/frontend/generated/
   - language/ribos/frontend/include/ribos/frontend/
   - language/ribos/frontend/src/
-  - language/ribos/frontend/tools/
   - language/ribos/frontend/tests/
+  - language/ribos/base/
+  - language/ribos/host/
   - language/ribos/schema/
   - language/ribos/ir/
   - language/ribos/artifact/
-  - build/generated/ribos/
-  - build/results/
+  - language/ribos/vm/
+  - build/ribos/
 tests:
   - ribos-grammar-generation
   - ribos-parser-conformance

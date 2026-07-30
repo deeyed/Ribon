@@ -1,8 +1,9 @@
 # Ribos bytecode artifact
 
-`artifact/`는 validated Policy IR v1.1을 VM ABI 1.0/bytecode ISA 1.0의
-canonical `.rba` 파일로 내리는 host emitter와 allocation-free structural reader를
-소유한다.
+`artifact/`는 VM ABI 1.0/bytecode ISA 1.0의 canonical `.rba` wire registry,
+allocation-free structural reader, codec와 hash를 소유한다. Validated Policy IR
+v1.1을 `.rba`로 내리는 emitter implementation은 host compiler 경계인
+`language/ribos/host/src/artifact_emitter.c`에 있다.
 
 ```text
 validated Policy IR + resource closure
@@ -12,9 +13,11 @@ validated Policy IR + resource closure
   -> borrowed structural view
 ```
 
-Public API는 `include/ribos/artifact/`에 있다.
+Target-safe public reader API는 `include/ribos/artifact/`에 있고 host emitter API는
+`language/ribos/host/include/ribos/host/artifact_emitter.h`에 있다.
 
-- `emitter.h`: Policy IR validation, resource closure, canonical size query와 encoding
+- `host/artifact_emitter.h`: Policy IR validation, resource closure, canonical size
+  query와 encoding
 - `format.h`: VM/ISA/envelope version, opcode·section registry와 allocation-free reader
 - `src/wire.c`: overflow-checked little-endian byte reader/writer
 - `src/sha256.c`: payload와 signature-message identity용 SHA-256

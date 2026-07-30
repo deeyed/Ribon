@@ -17,6 +17,7 @@
 #define RIBOS_IR_MAX_HELPER_CALLS 16384u
 
 struct RibosIrModule {
+    const RibosAllocator *allocator;
     uint16_t format_major;
     uint16_t format_minor;
     uint8_t schema_digest[RIBOS_SCHEMA_DIGEST_BYTES];

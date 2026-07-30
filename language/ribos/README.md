@@ -7,13 +7,21 @@
 ```text
 language/ribos/
   README.md
+  base/
+    include/ribos/base/
+    src/
+  host/
+    include/ribos/host/
+    pegen/
+    src/
+    tests/
+    tools/
   frontend/
     README.md
     grammar/
     generated/
     include/ribos/frontend/
     src/
-    tools/
     tests/
   schema/
     README.md
@@ -34,7 +42,6 @@ language/ribos/
     README.md
     include/ribos/vm/
     src/
-    tools/
     tests/
 ```
 
@@ -42,6 +49,8 @@ language/ribos/
 
 | 계층 | 입력 | 출력 | 금지된 의존 |
 | --- | --- | --- | --- |
+| `base` | allocator/writer callback | target-neutral service descriptor | libc, platform과 product |
+| `host` | C hosted runtime, validated IR | compiler adapters, emitter와 CLI | target dispatch와 boot product |
 | `frontend` | UTF-8 `.rbs`, product schema | typed AST, Policy IR v1 | VM bytecode와 runtime state |
 | `schema` | immutable product/plugin descriptor | canonical schema bytes와 SHA-256 identity | parser AST와 VM opcode |
 | `ir` | resolved type, CFG, helper stable ID | typed module과 resource closure | Pegen, source token과 product C pointer |
@@ -54,6 +63,23 @@ dump는 `ir/`가 소유한다.
 Artifact emitter는 IR public borrowed view와 resource analyzer만 소비하며 frontend
 private header를 include할 수 없다. VM은 artifact reader와 독립 verifier를 통해서만
 executable view를 얻는다.
+
+Object graph는 다음 세 archive로 hard cut한다.
+
+```text
+libribos-target-core.a
+  = base + schema + artifact reader/codec/hash + independent verifier
+
+libribos-host-support.a
+  = libc allocator + FILE writer + hosted format adapter
+
+libribos-host-compiler.a
+  = frontend + Policy IR/resource closure + artifact emitter
+```
+
+Frontend와 IR은 직접 hosted allocation 또는 `FILE`을 사용하지 않고 explicit
+`RibosAllocator`와 `RibosWriter` authority를 받는다. Target product는 host support와
+host compiler archive를 링크할 수 없다.
 
 Product schema는 type, fact/member, helper signature/capability와 typed handoff field를
 소유한다. Reference schema는 `schema/src/schema.c`에 있지만, 장기 product build는
@@ -74,6 +100,13 @@ language/ribos/frontend/grammar/Tokens
 language/ribos/frontend/generated/parser.c
 language/ribos/frontend/generated/parser.receipt.json
 language/ribos/frontend/generated/tokens.h
+```
+
+Pegen integration과 host CLI의 소유 경로는 다음과 같다.
+
+```text
+language/ribos/host/pegen/
+language/ribos/host/tools/
 ```
 
 문법이나 generator integration을 의도적으로 바꿀 때만 parser를 재생성한다.
@@ -99,6 +132,7 @@ make check-ribos-ir
 make check-ribos-resources
 make check-ribos-artifact
 make check-ribos-verifier
+make check-ribos-host-boundary
 ```
 
 - parser gate는 `.rbs` syntax acceptance/rejection만 증명한다.
@@ -115,6 +149,8 @@ make check-ribos-verifier
 - verifier gate는 compiler를 링크하지 않고 Stage-1 structural/type/CFG/frame과
   Stage-2 capability/ownership/typestate/resource/terminal closure를 artifact
   byte에서 재도출하고 hostile mutation을 거부함을 증명한다.
+- host-boundary gate는 freestanding target archive에서 hosted allocation/I/O,
+  frontend, Policy IR와 emitter dependency가 제거되었음을 증명한다.
 
 CLI는 host inspection을 위해 다음 mode를 제공한다.
 
@@ -128,7 +164,8 @@ build/tools/ribos-parse --dump-resources policy.rbs
 build/tools/ribos-parse --emit-artifact policy.rba policy.rbs
 ```
 
-Host compiler와 IR module은 hard capacity를 가진 heap-backed 도구다. Artifact
+Host compiler와 IR module은 caller-supplied allocator와 hard capacity를 가진 hosted
+도구다. Artifact
 structural reader와 two-stage verifier는 allocation하지 않는다. Stage-2 verifier는
 caller-owned workspace에서 exact instruction/helper resource bound까지 검사하지만
 Ed25519 trust, rollback과 VM runtime counter를 증명하지 않는다. 이 구현은 firmware

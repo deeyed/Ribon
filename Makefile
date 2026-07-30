@@ -89,28 +89,61 @@ RIBOS_SCHEMA_TEST := $(TEST_BUILD_DIR)/ribos_schema_tests
 RIBOS_IR_MODULE_TEST := $(TEST_BUILD_DIR)/ribos_ir_module_tests
 RIBOS_IR_RESOURCE_TEST := $(TEST_BUILD_DIR)/ribos_ir_resource_tests
 RIBOS_ARTIFACT_TEST := $(TEST_BUILD_DIR)/ribos_artifact_tests
+RIBOS_ALLOCATOR_TEST := $(TEST_BUILD_DIR)/ribos_allocator_boundary_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_PEGEN_ROOT ?=
-RIBOS_PARSER_SRCS := \
-	language/ribos/schema/src/schema.c \
-	language/ribos/ir/src/module.c \
-	language/ribos/ir/src/dump.c \
-	language/ribos/ir/src/analysis.c \
-	language/ribos/artifact/src/wire.c \
-	language/ribos/artifact/src/sha256.c \
-	language/ribos/artifact/src/codec.c \
-	language/ribos/artifact/src/emitter.c \
-	language/ribos/frontend/src/lexer.c \
-	language/ribos/frontend/src/runtime.c \
-	language/ribos/frontend/src/ast.c \
-	language/ribos/frontend/src/parser.c \
-	language/ribos/frontend/src/compiler.c \
-	language/ribos/frontend/src/semantic.c \
-	language/ribos/frontend/src/lower.c \
-	language/ribos/frontend/src/dump.c \
-	language/ribos/frontend/generated/parser.c \
-	language/ribos/frontend/tools/parse.c
-RIBOS_PARSER_HEADERS := \
+RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
+RIBOS_OBJECT_DIR := $(RIBOS_BUILD_DIR)/obj
+RIBOS_TARGET_CORE_LIB := $(RIBOS_BUILD_DIR)/libribos-target-core.a
+RIBOS_HOST_SUPPORT_LIB := $(RIBOS_BUILD_DIR)/libribos-host-support.a
+RIBOS_HOST_COMPILER_LIB := $(RIBOS_BUILD_DIR)/libribos-host-compiler.a
+RIBOS_TARGET_INCLUDE_FLAGS := \
+	-Ilanguage/ribos/base/include \
+	-Ilanguage/ribos/schema/include \
+	-Ilanguage/ribos/artifact/include \
+	-Ilanguage/ribos/artifact/src \
+	-Ilanguage/ribos/vm/include
+RIBOS_INCLUDE_FLAGS := \
+	$(RIBOS_TARGET_INCLUDE_FLAGS) \
+	-Ilanguage/ribos/host/include \
+	-Ilanguage/ribos/frontend/include \
+	-Ilanguage/ribos/frontend/src \
+	-Ilanguage/ribos/frontend/generated \
+	-Ilanguage/ribos/ir/include \
+	-Ilanguage/ribos/ir/src
+RIBOS_TARGET_CORE_OBJS := \
+	$(RIBOS_OBJECT_DIR)/target/base_allocator.o \
+	$(RIBOS_OBJECT_DIR)/target/base_writer.o \
+	$(RIBOS_OBJECT_DIR)/target/schema.o \
+	$(RIBOS_OBJECT_DIR)/target/artifact_wire.o \
+	$(RIBOS_OBJECT_DIR)/target/artifact_sha256.o \
+	$(RIBOS_OBJECT_DIR)/target/artifact_codec.o \
+	$(RIBOS_OBJECT_DIR)/target/verifier.o
+RIBOS_HOST_SUPPORT_OBJS := \
+	$(RIBOS_OBJECT_DIR)/host-support/allocator.o \
+	$(RIBOS_OBJECT_DIR)/host-support/format.o \
+	$(RIBOS_OBJECT_DIR)/host-support/writer.o
+RIBOS_HOST_COMPILER_OBJS := \
+	$(RIBOS_OBJECT_DIR)/host-compiler/ir_module.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/ir_dump.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/ir_analysis.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/artifact_emitter.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/lexer.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/runtime.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/ast.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/parser.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/compiler.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/semantic.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/lower.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/frontend_dump.o \
+	$(RIBOS_OBJECT_DIR)/host-compiler/generated_parser.o
+RIBOS_HEADERS := \
+	language/ribos/base/include/ribos/base/allocator.h \
+	language/ribos/base/include/ribos/base/writer.h \
+	language/ribos/host/include/ribos/host/allocator.h \
+	language/ribos/host/include/ribos/host/format.h \
+	language/ribos/host/include/ribos/host/writer.h \
+	language/ribos/host/include/ribos/host/artifact_emitter.h \
 	language/ribos/frontend/include/ribos/frontend/compiler.h \
 	language/ribos/frontend/include/ribos/frontend/parser.h \
 	language/ribos/schema/include/ribos/schema/schema.h \
@@ -119,8 +152,8 @@ RIBOS_PARSER_HEADERS := \
 	language/ribos/ir/include/ribos/ir/analysis.h \
 	language/ribos/ir/src/ir_internal.h \
 	language/ribos/artifact/include/ribos/artifact/format.h \
-	language/ribos/artifact/include/ribos/artifact/emitter.h \
 	language/ribos/artifact/src/internal.h \
+	language/ribos/vm/include/ribos/vm/verifier.h \
 	language/ribos/frontend/src/parser_internal.h \
 	language/ribos/frontend/src/semantic_internal.h \
 	language/ribos/frontend/generated/tokens.h
@@ -409,6 +442,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	ribos-parser-pilot check-ribos-parser-snapshot check-ribos-parser-pilot \
 	check-ribos-semantics check-ribos-schema check-ribos-ir \
 	check-ribos-resources check-ribos-artifact check-ribos-verifier \
+	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
@@ -426,23 +460,87 @@ lib: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB)
 
 host-reference: $(HOST_REFERENCE)
 
-$(RIBOS_PARSER_PILOT): $(RIBOS_PARSER_SRCS) $(RIBOS_PARSER_HEADERS) Makefile
+define RIBOS_TARGET_OBJECT
+$(RIBOS_OBJECT_DIR)/target/$(1).o: $(2) $(RIBOS_HEADERS) Makefile
+	@mkdir -p $$(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) -ffreestanding -fno-builtin \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $$< -o $$@
+endef
+
+define RIBOS_HOST_SUPPORT_OBJECT
+$(RIBOS_OBJECT_DIR)/host-support/$(1).o: $(2) $(RIBOS_HEADERS) Makefile
+	@mkdir -p $$(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) -c $$< -o $$@
+endef
+
+define RIBOS_HOST_COMPILER_OBJECT
+$(RIBOS_OBJECT_DIR)/host-compiler/$(1).o: $(2) $(RIBOS_HEADERS) Makefile
+	@mkdir -p $$(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) -c $$< -o $$@
+endef
+
+$(eval $(call RIBOS_TARGET_OBJECT,base_allocator,language/ribos/base/src/allocator.c))
+$(eval $(call RIBOS_TARGET_OBJECT,base_writer,language/ribos/base/src/writer.c))
+$(eval $(call RIBOS_TARGET_OBJECT,schema,language/ribos/schema/src/schema.c))
+$(eval $(call RIBOS_TARGET_OBJECT,artifact_wire,language/ribos/artifact/src/wire.c))
+$(eval $(call RIBOS_TARGET_OBJECT,artifact_sha256,language/ribos/artifact/src/sha256.c))
+$(eval $(call RIBOS_TARGET_OBJECT,artifact_codec,language/ribos/artifact/src/codec.c))
+$(eval $(call RIBOS_TARGET_OBJECT,verifier,language/ribos/vm/src/verifier.c))
+
+$(eval $(call RIBOS_HOST_SUPPORT_OBJECT,allocator,language/ribos/host/src/allocator.c))
+$(eval $(call RIBOS_HOST_SUPPORT_OBJECT,format,language/ribos/host/src/format.c))
+$(eval $(call RIBOS_HOST_SUPPORT_OBJECT,writer,language/ribos/host/src/writer.c))
+
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,ir_module,language/ribos/ir/src/module.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,ir_dump,language/ribos/ir/src/dump.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,ir_analysis,language/ribos/ir/src/analysis.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,artifact_emitter,language/ribos/host/src/artifact_emitter.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,lexer,language/ribos/frontend/src/lexer.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,runtime,language/ribos/frontend/src/runtime.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,ast,language/ribos/frontend/src/ast.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,parser,language/ribos/frontend/src/parser.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,compiler,language/ribos/frontend/src/compiler.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,semantic,language/ribos/frontend/src/semantic.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,lower,language/ribos/frontend/src/lower.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,frontend_dump,language/ribos/frontend/src/dump.c))
+$(eval $(call RIBOS_HOST_COMPILER_OBJECT,generated_parser,language/ribos/frontend/generated/parser.c))
+
+$(RIBOS_TARGET_CORE_LIB): $(RIBOS_TARGET_CORE_OBJS) Makefile
+	@mkdir -p $(@D)
+	$(RM) $@
+	$(AR) rcs $@ $(RIBOS_TARGET_CORE_OBJS)
+
+$(RIBOS_HOST_SUPPORT_LIB): $(RIBOS_HOST_SUPPORT_OBJS) Makefile
+	@mkdir -p $(@D)
+	$(RM) $@
+	$(AR) rcs $@ $(RIBOS_HOST_SUPPORT_OBJS)
+
+$(RIBOS_HOST_COMPILER_LIB): $(RIBOS_HOST_COMPILER_OBJS) Makefile
+	@mkdir -p $(@D)
+	$(RM) $@
+	$(AR) rcs $@ $(RIBOS_HOST_COMPILER_OBJS)
+
+ribos-libraries: $(RIBOS_TARGET_CORE_LIB) $(RIBOS_HOST_SUPPORT_LIB) \
+		$(RIBOS_HOST_COMPILER_LIB)
+
+$(RIBOS_OBJECT_DIR)/tools/parse.o: language/ribos/host/tools/parse.c \
+		$(RIBOS_HEADERS) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_PARSER_PILOT): $(RIBOS_OBJECT_DIR)/tools/parse.o \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/ribos/frontend/include \
-		-Ilanguage/ribos/frontend/src \
-		-Ilanguage/ribos/frontend/generated \
-		-Ilanguage/ribos/schema/include \
-		-Ilanguage/ribos/ir/include \
-		-Ilanguage/ribos/ir/src \
-		-Ilanguage/ribos/artifact/include \
-		-Ilanguage/ribos/artifact/src \
-		$(RIBOS_PARSER_SRCS) -o $@
+		$(RIBOS_OBJECT_DIR)/tools/parse.o \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) -o $@
 
 ribos-parser-pilot: $(RIBOS_PARSER_PILOT)
 
 check-ribos-parser-snapshot:
-	$(PYTHON) language/ribos/frontend/tools/check_parser_snapshot.py
+	$(PYTHON) language/ribos/host/pegen/check_parser_snapshot.py
 
 check-ribos-parser-pilot: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
 	$(PYTHON) language/ribos/frontend/tests/parser_pilot_tests.py \
@@ -454,46 +552,33 @@ check-ribos-semantics: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
 	$(PYTHON) language/ribos/frontend/tests/semantic_tests.py \
 		--parser $(RIBOS_PARSER_PILOT)
 
-$(RIBOS_SCHEMA_TEST): language/ribos/schema/src/schema.c \
-		language/ribos/schema/include/ribos/schema/schema.h \
-		language/ribos/schema/tests/schema_tests.c Makefile
+$(RIBOS_SCHEMA_TEST): language/ribos/schema/tests/schema_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/ribos/schema/include \
-		language/ribos/schema/src/schema.c \
-		language/ribos/schema/tests/schema_tests.c -o $@
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		language/ribos/schema/tests/schema_tests.c \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
 
 check-ribos-schema: $(RIBOS_SCHEMA_TEST)
 	$(RIBOS_SCHEMA_TEST)
 
-$(RIBOS_IR_MODULE_TEST): language/ribos/ir/src/module.c \
-		language/ribos/ir/src/ir_internal.h \
-		language/ribos/ir/include/ribos/ir/ir.h \
-		language/ribos/ir/include/ribos/ir/builder.h \
-		language/ribos/ir/tests/module_tests.c Makefile
+$(RIBOS_IR_MODULE_TEST): language/ribos/ir/tests/module_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/ribos/schema/include \
-		-Ilanguage/ribos/ir/include \
-		-Ilanguage/ribos/ir/src \
-		language/ribos/ir/src/module.c \
-		language/ribos/ir/tests/module_tests.c -o $@
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		language/ribos/ir/tests/module_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) -o $@
 
-$(RIBOS_IR_RESOURCE_TEST): language/ribos/ir/src/module.c \
-		language/ribos/ir/src/analysis.c \
-		language/ribos/ir/src/ir_internal.h \
-		language/ribos/ir/include/ribos/ir/ir.h \
-		language/ribos/ir/include/ribos/ir/builder.h \
-		language/ribos/ir/include/ribos/ir/analysis.h \
-		language/ribos/ir/tests/resource_tests.c Makefile
+$(RIBOS_IR_RESOURCE_TEST): language/ribos/ir/tests/resource_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/ribos/schema/include \
-		-Ilanguage/ribos/ir/include \
-		-Ilanguage/ribos/ir/src \
-		language/ribos/ir/src/module.c \
-		language/ribos/ir/src/analysis.c \
-		language/ribos/ir/tests/resource_tests.c -o $@
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		language/ribos/ir/tests/resource_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) -o $@
 
 check-ribos-ir: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT) \
 		$(RIBOS_IR_MODULE_TEST)
@@ -507,30 +592,14 @@ check-ribos-resources: check-ribos-parser-snapshot \
 	$(PYTHON) language/ribos/ir/tests/resource_tests.py \
 		--compiler $(RIBOS_PARSER_PILOT)
 
-$(RIBOS_ARTIFACT_TEST): language/ribos/ir/src/module.c \
-		language/ribos/ir/src/analysis.c \
-		language/ribos/artifact/src/wire.c \
-		language/ribos/artifact/src/sha256.c \
-		language/ribos/artifact/src/codec.c \
-		language/ribos/artifact/src/emitter.c \
-		language/ribos/artifact/src/internal.h \
-		language/ribos/artifact/include/ribos/artifact/format.h \
-		language/ribos/artifact/include/ribos/artifact/emitter.h \
-		language/ribos/artifact/tests/artifact_tests.c Makefile
+$(RIBOS_ARTIFACT_TEST): language/ribos/artifact/tests/artifact_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/ribos/schema/include \
-		-Ilanguage/ribos/ir/include \
-		-Ilanguage/ribos/ir/src \
-		-Ilanguage/ribos/artifact/include \
-		-Ilanguage/ribos/artifact/src \
-		language/ribos/ir/src/module.c \
-		language/ribos/ir/src/analysis.c \
-		language/ribos/artifact/src/wire.c \
-		language/ribos/artifact/src/sha256.c \
-		language/ribos/artifact/src/codec.c \
-		language/ribos/artifact/src/emitter.c \
-		language/ribos/artifact/tests/artifact_tests.c -o $@
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		language/ribos/artifact/tests/artifact_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) -o $@
 
 check-ribos-artifact: check-ribos-parser-snapshot \
 		$(RIBOS_PARSER_PILOT) $(RIBOS_ARTIFACT_TEST)
@@ -538,28 +607,27 @@ check-ribos-artifact: check-ribos-parser-snapshot \
 	$(PYTHON) language/ribos/artifact/tests/artifact_tests.py \
 		--compiler $(RIBOS_PARSER_PILOT)
 
-$(RIBOS_VERIFIER): language/ribos/schema/src/schema.c \
-		language/ribos/schema/include/ribos/schema/schema.h \
-		language/ribos/artifact/src/wire.c \
-		language/ribos/artifact/src/sha256.c \
-		language/ribos/artifact/src/codec.c \
-		language/ribos/artifact/src/internal.h \
-		language/ribos/artifact/include/ribos/artifact/format.h \
-		language/ribos/vm/include/ribos/vm/verifier.h \
-		language/ribos/vm/src/verifier.c \
-		language/ribos/vm/tools/verify.c Makefile
+$(RIBOS_VERIFIER): language/ribos/host/tools/verify.c \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) $(WARNFLAGS) \
-		-Ilanguage/ribos/schema/include \
-		-Ilanguage/ribos/artifact/include \
-		-Ilanguage/ribos/artifact/src \
-		-Ilanguage/ribos/vm/include \
-		language/ribos/schema/src/schema.c \
-		language/ribos/artifact/src/wire.c \
-		language/ribos/artifact/src/sha256.c \
-		language/ribos/artifact/src/codec.c \
-		language/ribos/vm/src/verifier.c \
-		language/ribos/vm/tools/verify.c -o $@
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		language/ribos/host/tools/verify.c \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+check-ribos-host-boundary: ribos-libraries $(RIBOS_ALLOCATOR_TEST)
+	$(PYTHON) language/ribos/host/tests/check_boundary.py \
+		--target-archive $(RIBOS_TARGET_CORE_LIB) \
+		--host-compiler-archive $(RIBOS_HOST_COMPILER_LIB)
+	$(RIBOS_ALLOCATOR_TEST)
+
+$(RIBOS_ALLOCATOR_TEST): language/ribos/host/tests/allocator_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
+		language/ribos/host/tests/allocator_tests.c \
+		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
+		$(RIBOS_HOST_SUPPORT_LIB) -o $@
 
 check-ribos-verifier: check-ribos-artifact $(RIBOS_VERIFIER)
 	$(PYTHON) language/ribos/vm/tests/verifier_tests.py \
@@ -571,13 +639,13 @@ check-ribos-verifier: check-ribos-artifact $(RIBOS_VERIFIER)
 ribos-parser-generate:
 	@test -n "$(RIBOS_PEGEN_ROOT)" || \
 		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
-	$(PYTHON) language/ribos/frontend/tools/generate_parser.py \
+	$(PYTHON) language/ribos/host/pegen/generate_parser.py \
 		--pegen-root $(RIBOS_PEGEN_ROOT)
 
 ribos-parser-regenerate-check:
 	@test -n "$(RIBOS_PEGEN_ROOT)" || \
 		{ echo "RIBOS_PEGEN_ROOT must name the pinned CPython Pegen root"; exit 2; }
-	$(PYTHON) language/ribos/frontend/tools/generate_parser.py \
+	$(PYTHON) language/ribos/host/pegen/generate_parser.py \
 		--pegen-root $(RIBOS_PEGEN_ROOT) --check
 
 $(BUILD_DIR)/obj/%.o: %.c
@@ -1274,7 +1342,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-parser-pilot check-ribos-semantics check-ribos-schema \
 	check-ribos-ir check-ribos-resources check-ribos-artifact \
-	check-ribos-verifier \
+	check-ribos-verifier check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

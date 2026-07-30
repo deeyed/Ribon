@@ -17,6 +17,7 @@ typedef struct RibosTokenBuffer {
 } RibosTokenBuffer;
 
 typedef struct RibosLexer {
+    const RibosAllocator *allocator;
     const char *source;
     size_t length;
     size_t offset;
@@ -93,7 +94,7 @@ ribos_set_diagnostic(
         memcpy(lexer->diagnostic->token, token, token_length);
     }
     lexer->diagnostic->token[token_length] = '\0';
-    (void)snprintf(
+    (void)ribos_host_snprintf(
         lexer->diagnostic->message,
         sizeof(lexer->diagnostic->message),
         "%s",
@@ -248,9 +249,13 @@ ribos_append_trivia(
         if (new_capacity > RIBOS_MAX_TRIVIA) {
             new_capacity = RIBOS_MAX_TRIVIA;
         }
-        replacement = realloc(
+        replacement = ribos_allocator_resize(
+            lexer->allocator,
             lexer->output.trivia,
-            new_capacity * sizeof(*replacement));
+            lexer->output.trivia_capacity *
+                sizeof(*replacement),
+            new_capacity * sizeof(*replacement),
+            _Alignof(RibosTrivia));
         if (replacement == NULL) {
             return RIBOS_PARSE_NO_MEMORY;
         }
@@ -303,9 +308,12 @@ ribos_append_token(
         if (new_capacity > RIBOS_MAX_TOKENS) {
             new_capacity = RIBOS_MAX_TOKENS;
         }
-        replacement = realloc(
+        replacement = ribos_allocator_resize(
+            lexer->allocator,
             lexer->output.tokens,
-            new_capacity * sizeof(*replacement));
+            lexer->output.capacity * sizeof(*replacement),
+            new_capacity * sizeof(*replacement),
+            _Alignof(Token));
         if (replacement == NULL) {
             return RIBOS_PARSE_NO_MEMORY;
         }
@@ -696,15 +704,19 @@ ribos_lex_punctuator(RibosLexer *lexer)
 
 RibosParseStatus
 ribos_lex_source(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     Token **tokens,
     size_t *token_count,
+    size_t *token_capacity,
     RibosTrivia **trivia,
     size_t *trivia_count,
+    size_t *trivia_capacity,
     RibosDiagnostic *diagnostic)
 {
     RibosLexer lexer = {
+        .allocator = allocator,
         .source = source,
         .length = source_length,
         .line = 1,
@@ -714,6 +726,12 @@ ribos_lex_source(
     RibosParseStatus status;
     unsigned char byte;
 
+    if (allocator == NULL || source == NULL || tokens == NULL ||
+        token_count == NULL || token_capacity == NULL ||
+        trivia == NULL || trivia_count == NULL ||
+        trivia_capacity == NULL || diagnostic == NULL) {
+        return RIBOS_PARSE_INVALID_ARGUMENT;
+    }
     if (source_length > RIBOS_MAX_SOURCE_BYTES) {
         ribos_set_diagnostic(
             &lexer,
@@ -885,21 +903,44 @@ ribos_lex_source(
     }
     *tokens = lexer.output.tokens;
     *token_count = lexer.output.count;
+    *token_capacity = lexer.output.capacity;
     *trivia = lexer.output.trivia;
     *trivia_count = lexer.output.trivia_count;
+    *trivia_capacity = lexer.output.trivia_capacity;
     return RIBOS_PARSE_OK;
 
 fail:
-    free(lexer.output.tokens);
-    free(lexer.output.trivia);
+    ribos_allocator_release(
+        allocator,
+        lexer.output.tokens,
+        lexer.output.capacity * sizeof(*lexer.output.tokens),
+        _Alignof(Token));
+    ribos_allocator_release(
+        allocator,
+        lexer.output.trivia,
+        lexer.output.trivia_capacity * sizeof(*lexer.output.trivia),
+        _Alignof(RibosTrivia));
     return status;
 }
 
 void
-ribos_free_token_stream(Token *tokens, RibosTrivia *trivia)
+ribos_free_token_stream(
+    const RibosAllocator *allocator,
+    Token *tokens,
+    size_t token_capacity,
+    RibosTrivia *trivia,
+    size_t trivia_capacity)
 {
-    free(tokens);
-    free(trivia);
+    ribos_allocator_release(
+        allocator,
+        tokens,
+        token_capacity * sizeof(*tokens),
+        _Alignof(Token));
+    ribos_allocator_release(
+        allocator,
+        trivia,
+        trivia_capacity * sizeof(*trivia),
+        _Alignof(RibosTrivia));
 }
 
 const char *

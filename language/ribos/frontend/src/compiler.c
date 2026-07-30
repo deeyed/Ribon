@@ -17,16 +17,18 @@ ribos_compile_status_from_parse(RibosParseStatus status)
 
 RibosCompileStatus
 ribos_compile_source_with_dump(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     const RibosProductSchema *schema,
     RibosIrModule *ir_module,
     RibosCompileSummary *summary,
     RibosCompileDiagnostic *diagnostic,
-    FILE *dump,
+    RibosWriter *dump,
     unsigned dump_flags)
 {
     Parser parser = {
+        .allocator = allocator,
         .farthest_mark = 0,
         .failure_status = RIBOS_PARSE_SYNTAX_ERROR,
     };
@@ -34,7 +36,7 @@ ribos_compile_source_with_dump(
     RibosParseStatus parse_status;
     RibosCompileStatus status;
 
-    if (source == NULL || schema == NULL ||
+    if (allocator == NULL || source == NULL || schema == NULL ||
         summary == NULL || diagnostic == NULL ||
         (dump_flags != 0 && dump == NULL)) {
         return RIBOS_COMPILE_INVALID_ARGUMENT;
@@ -48,12 +50,15 @@ ribos_compile_source_with_dump(
     diagnostic->span.end = diagnostic->span.start;
 
     parse_status = ribos_lex_source(
+        allocator,
         source,
         source_length,
         &parser.tokens,
         &parser.token_count,
+        &parser.token_capacity,
         &parser.trivia,
         &parser.trivia_count,
+        &parser.trivia_capacity,
         &diagnostic->parse);
     if (parse_status != RIBOS_PARSE_OK) {
         return ribos_compile_status_from_parse(parse_status);
@@ -91,12 +96,14 @@ ribos_compile_source_with_dump(
 
 RibosCompileStatus
 ribos_compile_source(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     RibosCompileSummary *summary,
     RibosCompileDiagnostic *diagnostic)
 {
     return ribos_compile_source_with_dump(
+        allocator,
         source,
         source_length,
         ribos_schema_reference_v1(),
@@ -109,6 +116,7 @@ ribos_compile_source(
 
 RibosCompileStatus
 ribos_compile_source_with_schema(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     const RibosProductSchema *schema,
@@ -116,6 +124,7 @@ ribos_compile_source_with_schema(
     RibosCompileDiagnostic *diagnostic)
 {
     return ribos_compile_source_with_dump(
+        allocator,
         source,
         source_length,
         schema,
@@ -128,6 +137,7 @@ ribos_compile_source_with_schema(
 
 RibosCompileStatus
 ribos_compile_source_to_ir(
+    const RibosAllocator *allocator,
     const char *source,
     size_t source_length,
     const RibosProductSchema *schema,
@@ -137,11 +147,13 @@ ribos_compile_source_to_ir(
 {
     RibosCompileStatus status;
 
-    if (module == NULL) {
+    if (allocator == NULL || module == NULL ||
+        ribos_ir_module_allocator(module) != allocator) {
         return RIBOS_COMPILE_INVALID_ARGUMENT;
     }
     ribos_ir_module_reset(module);
     status = ribos_compile_source_with_dump(
+        allocator,
         source,
         source_length,
         schema,

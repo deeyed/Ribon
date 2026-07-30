@@ -9,7 +9,7 @@ reader를 제공하지만 VM implementation이나 semantic verification을 소�
 ```text
 include/ribos/vm/verifier.h
 src/verifier.c
-tools/verify.c
+../host/tools/verify.c
 tests/verifier_tests.py
 ```
 
@@ -19,6 +19,10 @@ initialization, operand/result type와 frame/stack closure를 다시 계산한�
 helper ABI와 schema digest, reachable capability, opaque provenance, affine/linear
 ownership, typestate transition, exact instruction/helper bound, helper별 bound와
 terminal/fault closure를 artifact byte에서 다시 계산한다.
+
+Verifier, target-safe artifact codec, schema와 neutral base adapter는
+`libribos-target-core.a`에 들어간다. CLI만 host 계층에 있으며 target archive에는
+libc allocator, `FILE`, frontend, Policy IR와 artifact emitter가 들어갈 수 없다.
 
 ```sh
 make check-ribos-verifier

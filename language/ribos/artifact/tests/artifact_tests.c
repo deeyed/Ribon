@@ -1,4 +1,5 @@
-#include "ribos/artifact/emitter.h"
+#include "ribos/host/allocator.h"
+#include "ribos/host/artifact_emitter.h"
 #include "ribos/ir/builder.h"
 #include "internal.h"
 
@@ -9,7 +10,8 @@
 static RibosIrModule *
 build_policy_module(void)
 {
-    RibosIrModule *module = ribos_ir_module_create();
+    RibosIrModule *module =
+        ribos_ir_module_create(ribos_host_allocator());
     uint8_t schema_digest[RIBOS_SCHEMA_DIGEST_BYTES] = {1};
     RibosIrType unit_type = {
         .kind = RIBOS_IR_TYPE_UNIT,

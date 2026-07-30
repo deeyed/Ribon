@@ -3,8 +3,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
+#include "ribos/base/allocator.h"
+#include "ribos/base/writer.h"
 #include "ribos/schema/schema.h"
 
 #ifdef __cplusplus
@@ -335,14 +336,23 @@ typedef struct RibosIrModuleView {
 /** 내부 storage를 숨기는 host Policy IR module이다. */
 typedef struct RibosIrModule RibosIrModule;
 
-/** 고정 상한 storage를 가진 빈 Policy IR module을 생성한다. */
-RibosIrModule *ribos_ir_module_create(void);
+/**
+ * 고정 상한 storage를 가진 빈 Policy IR module을 생성한다.
+ *
+ * Allocator는 module보다 오래 살아야 하며 host compiler process 안에서만 사용된다.
+ */
+RibosIrModule *ribos_ir_module_create(
+    const RibosAllocator *allocator);
 
 /** Policy IR module의 모든 compiler-owned storage를 해제한다. */
 void ribos_ir_module_destroy(RibosIrModule *module);
 
 /** Module을 같은 capacity의 빈 v1 module로 되돌린다. */
 void ribos_ir_module_reset(RibosIrModule *module);
+
+/** Module을 생성한 host allocator authority를 borrowed pointer로 반환한다. */
+const RibosAllocator *ribos_ir_module_allocator(
+    const RibosIrModule *module);
 
 /** Module의 deterministic count와 bound summary를 반환한다. */
 RibosIrStatus ribos_ir_module_summary(
@@ -360,7 +370,7 @@ RibosIrStatus ribos_ir_validate_v1(const RibosIrModule *module);
 /** Pointer identity를 포함하지 않는 deterministic text dump를 기록한다. */
 RibosIrStatus ribos_ir_dump_v1(
     const RibosIrModule *module,
-    FILE *output);
+    RibosWriter *output);
 
 /** Policy IR opcode의 안정된 ASCII spelling을 반환한다. */
 const char *ribos_ir_opcode_name(RibosIrOpcode opcode);

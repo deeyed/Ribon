@@ -3,7 +3,6 @@
 #include "ir_internal.h"
 
 #include <inttypes.h>
-#include <stdlib.h>
 #include <string.h>
 
 typedef struct RibosPathBound {
@@ -22,6 +21,7 @@ typedef enum RibosMetricKind {
 } RibosMetricKind;
 
 struct RibosIrResourceClosure {
+    const RibosAllocator *allocator;
     RibosIrTypeLayout *types;
     size_t type_count;
     RibosIrFunctionResource *functions;
@@ -34,11 +34,43 @@ struct RibosIrResourceClosure {
     size_t slot_count;
     uint32_t *helper_ids;
     size_t helper_id_count;
+    size_t helper_id_capacity;
     uint64_t *helper_matrix;
+    size_t helper_matrix_count;
     RibosIrHelperBound *helper_bounds;
     size_t helper_bound_count;
     uint8_t complete;
 };
+
+static void *
+ribos_ir_allocate_zeroed(
+    const RibosIrResourceClosure *closure,
+    size_t count,
+    size_t element_size)
+{
+    return ribos_allocator_allocate_zeroed(
+        closure->allocator,
+        count,
+        element_size,
+        _Alignof(max_align_t));
+}
+
+static void
+ribos_ir_release(
+    const RibosIrResourceClosure *closure,
+    void *storage,
+    size_t count,
+    size_t element_size)
+{
+    size_t size = count != 0 && element_size <= SIZE_MAX / count ?
+        count * element_size : 0;
+
+    ribos_allocator_release(
+        closure->allocator,
+        storage,
+        size,
+        _Alignof(max_align_t));
+}
 
 typedef struct RibosPathContext {
     const RibosIrModule *module;
@@ -516,7 +548,10 @@ ribos_layout_all_types(
     RibosIrResourceClosure *closure)
 {
     uint8_t *state = module->type_count == 0 ? NULL :
-        calloc(module->type_count, sizeof(*state));
+        ribos_ir_allocate_zeroed(
+            closure,
+            module->type_count,
+            sizeof(*state));
     size_t index;
     int valid = module->type_count == 0 || state != NULL;
 
@@ -527,7 +562,11 @@ ribos_layout_all_types(
             (uint32_t)index,
             state);
     }
-    free(state);
+    ribos_ir_release(
+        closure,
+        state,
+        module->type_count,
+        sizeof(*state));
     return valid;
 }
 
@@ -606,7 +645,10 @@ ribos_mark_function_reachable(
     const RibosIrFunction *function = &module->functions[function_id];
     size_t stack_capacity =
         (size_t)function->block_count * 2 + 1;
-    uint32_t *stack = calloc(stack_capacity, sizeof(*stack));
+    uint32_t *stack = ribos_ir_allocate_zeroed(
+        closure,
+        stack_capacity,
+        sizeof(*stack));
     size_t stack_size = 0;
 
     if (stack == NULL) {
@@ -629,20 +671,32 @@ ribos_mark_function_reachable(
         terminal = &module->instructions[block->last_instruction];
         if (terminal->opcode == RIBOS_IR_OP_JUMP) {
             if (stack_size == stack_capacity) {
-                free(stack);
+                ribos_ir_release(
+                    closure,
+                    stack,
+                    stack_capacity,
+                    sizeof(*stack));
                 return 0;
             }
             stack[stack_size++] = terminal->target;
         } else if (terminal->opcode == RIBOS_IR_OP_BRANCH) {
             if (stack_size > stack_capacity - 2) {
-                free(stack);
+                ribos_ir_release(
+                    closure,
+                    stack,
+                    stack_capacity,
+                    sizeof(*stack));
                 return 0;
             }
             stack[stack_size++] = terminal->target;
             stack[stack_size++] = terminal->alternate;
         }
     }
-    free(stack);
+    ribos_ir_release(
+        closure,
+        stack,
+        stack_capacity,
+        sizeof(*stack));
     return 1;
 }
 
@@ -652,23 +706,45 @@ ribos_multiply_loop_region(
     RibosIrResourceClosure *closure,
     const RibosIrLoop *loop)
 {
-    uint8_t *seen = calloc(module->block_count, sizeof(*seen));
+    uint8_t *seen = ribos_ir_allocate_zeroed(
+        closure,
+        module->block_count,
+        sizeof(*seen));
     size_t stack_capacity = module->block_count * 2 + 1;
-    uint32_t *stack = calloc(stack_capacity, sizeof(*stack));
+    uint32_t *stack = ribos_ir_allocate_zeroed(
+        closure,
+        stack_capacity,
+        sizeof(*stack));
     size_t stack_size = 0;
     uint64_t header_factor = (uint64_t)loop->trip_count + 1;
 
     if (seen == NULL || stack == NULL) {
-        free(seen);
-        free(stack);
+        ribos_ir_release(
+            closure,
+            seen,
+            module->block_count,
+            sizeof(*seen));
+        ribos_ir_release(
+            closure,
+            stack,
+            stack_capacity,
+            sizeof(*stack));
         return 0;
     }
     if (!ribos_u64_multiply(
             closure->blocks[loop->header_block].execution_upper_bound,
             loop->latch_block == RIBOS_IR_INVALID_ID ? 1 : header_factor,
             &closure->blocks[loop->header_block].execution_upper_bound)) {
-        free(seen);
-        free(stack);
+        ribos_ir_release(
+            closure,
+            seen,
+            module->block_count,
+            sizeof(*seen));
+        ribos_ir_release(
+            closure,
+            stack,
+            stack_capacity,
+            sizeof(*stack));
         return 0;
     }
     stack[stack_size++] = loop->body_block;
@@ -688,41 +764,64 @@ ribos_multiply_loop_region(
                 loop->latch_block == RIBOS_IR_INVALID_ID ?
                     1 : loop->trip_count,
                 &closure->blocks[block_id].execution_upper_bound)) {
-            free(seen);
-            free(stack);
+            ribos_ir_release(
+                closure,
+                seen,
+                module->block_count,
+                sizeof(*seen));
+            ribos_ir_release(
+                closure,
+                stack,
+                stack_capacity,
+                sizeof(*stack));
             return 0;
         }
         block = &module->blocks[block_id];
         terminal = &module->instructions[block->last_instruction];
         if (terminal->opcode == RIBOS_IR_OP_JUMP) {
             if (stack_size == stack_capacity) {
-                free(seen);
-                free(stack);
+                ribos_ir_release(
+                    closure,
+                    seen,
+                    module->block_count,
+                    sizeof(*seen));
+                ribos_ir_release(
+                    closure,
+                    stack,
+                    stack_capacity,
+                    sizeof(*stack));
                 return 0;
             }
             stack[stack_size++] = terminal->target;
         } else if (terminal->opcode == RIBOS_IR_OP_BRANCH) {
             if (stack_size > stack_capacity - 2) {
-                free(seen);
-                free(stack);
+                ribos_ir_release(
+                    closure,
+                    seen,
+                    module->block_count,
+                    sizeof(*seen));
+                ribos_ir_release(
+                    closure,
+                    stack,
+                    stack_capacity,
+                    sizeof(*stack));
                 return 0;
             }
             stack[stack_size++] = terminal->target;
             stack[stack_size++] = terminal->alternate;
         }
     }
-    free(seen);
-    free(stack);
+    ribos_ir_release(
+        closure,
+        seen,
+        module->block_count,
+        sizeof(*seen));
+    ribos_ir_release(
+        closure,
+        stack,
+        stack_capacity,
+        sizeof(*stack));
     return 1;
-}
-
-static int
-ribos_compare_u32(const void *left, const void *right)
-{
-    uint32_t a = *(const uint32_t *)left;
-    uint32_t b = *(const uint32_t *)right;
-
-    return a < b ? -1 : a > b;
 }
 
 static int
@@ -736,21 +835,31 @@ ribos_collect_helper_ids(
     if (module->helper_call_count == 0) {
         return 1;
     }
-    closure->helper_ids = calloc(
+    closure->helper_ids = ribos_ir_allocate_zeroed(
+        closure,
         module->helper_call_count,
         sizeof(*closure->helper_ids));
     if (closure->helper_ids == NULL) {
         return 0;
     }
+    closure->helper_id_capacity = module->helper_call_count;
     for (index = 0; index < module->helper_call_count; ++index) {
+        size_t position;
+
         closure->helper_ids[index] =
             module->helper_calls[index].helper_stable_id;
+        position = index;
+        while (position != 0 &&
+            closure->helper_ids[position] <
+                closure->helper_ids[position - 1]) {
+            uint32_t value = closure->helper_ids[position - 1];
+
+            closure->helper_ids[position - 1] =
+                closure->helper_ids[position];
+            closure->helper_ids[position] = value;
+            --position;
+        }
     }
-    qsort(
-        closure->helper_ids,
-        module->helper_call_count,
-        sizeof(*closure->helper_ids),
-        ribos_compare_u32);
     for (index = 0; index < module->helper_call_count; ++index) {
         if (unique == 0 ||
             closure->helper_ids[index] !=
@@ -762,8 +871,10 @@ ribos_collect_helper_ids(
     if (module->function_count > SIZE_MAX / unique) {
         return 0;
     }
-    closure->helper_matrix = calloc(
-        module->function_count * unique,
+    closure->helper_matrix_count = module->function_count * unique;
+    closure->helper_matrix = ribos_ir_allocate_zeroed(
+        closure,
+        closure->helper_matrix_count,
         sizeof(*closure->helper_matrix));
     return closure->helper_matrix != NULL;
 }
@@ -847,15 +958,29 @@ ribos_analyze_region(
     };
     RibosPathBound result = {0};
 
-    context.state = calloc(module->block_count, sizeof(*context.state));
-    context.memo = calloc(module->block_count, sizeof(*context.memo));
+    context.state = ribos_ir_allocate_zeroed(
+        closure,
+        module->block_count,
+        sizeof(*context.state));
+    context.memo = ribos_ir_allocate_zeroed(
+        closure,
+        module->block_count,
+        sizeof(*context.memo));
     if (context.state == NULL || context.memo == NULL) {
         context.failed = 1;
     } else {
         result = ribos_analyze_node(&context, start_block);
     }
-    free(context.state);
-    free(context.memo);
+    ribos_ir_release(
+        closure,
+        context.state,
+        module->block_count,
+        sizeof(*context.state));
+    ribos_ir_release(
+        closure,
+        context.memo,
+        module->block_count,
+        sizeof(*context.memo));
     if (failed != NULL && context.failed) {
         *failed = 1;
     }
@@ -1186,33 +1311,76 @@ ribos_analyze_function(
 }
 
 RibosIrResourceClosure *
-ribos_ir_resource_closure_create(void)
+ribos_ir_resource_closure_create(const RibosAllocator *allocator)
 {
-    return calloc(1, sizeof(RibosIrResourceClosure));
+    RibosIrResourceClosure *closure;
+
+    if (allocator == NULL) {
+        return NULL;
+    }
+    closure = ribos_allocator_allocate_zeroed(
+        allocator,
+        1,
+        sizeof(*closure),
+        _Alignof(RibosIrResourceClosure));
+    if (closure != NULL) {
+        closure->allocator = allocator;
+    }
+    return closure;
 }
 
 void
 ribos_ir_resource_closure_reset(RibosIrResourceClosure *closure)
 {
+    const RibosAllocator *allocator;
+
     if (closure == NULL) {
         return;
     }
-    free(closure->types);
-    free(closure->functions);
-    free(closure->blocks);
-    free(closure->loops);
-    free(closure->slots);
-    free(closure->helper_ids);
-    free(closure->helper_matrix);
-    free(closure->helper_bounds);
+    allocator = closure->allocator;
+    ribos_ir_release(
+        closure, closure->types,
+        closure->type_count, sizeof(*closure->types));
+    ribos_ir_release(
+        closure, closure->functions,
+        closure->function_count, sizeof(*closure->functions));
+    ribos_ir_release(
+        closure, closure->blocks,
+        closure->block_count, sizeof(*closure->blocks));
+    ribos_ir_release(
+        closure, closure->loops,
+        closure->loop_count, sizeof(*closure->loops));
+    ribos_ir_release(
+        closure, closure->slots,
+        closure->slot_count, sizeof(*closure->slots));
+    ribos_ir_release(
+        closure, closure->helper_ids,
+        closure->helper_id_capacity, sizeof(*closure->helper_ids));
+    ribos_ir_release(
+        closure, closure->helper_matrix,
+        closure->helper_matrix_count, sizeof(*closure->helper_matrix));
+    ribos_ir_release(
+        closure, closure->helper_bounds,
+        closure->helper_bound_count, sizeof(*closure->helper_bounds));
     memset(closure, 0, sizeof(*closure));
+    closure->allocator = allocator;
 }
 
 void
 ribos_ir_resource_closure_destroy(RibosIrResourceClosure *closure)
 {
+    const RibosAllocator *allocator;
+
+    if (closure == NULL) {
+        return;
+    }
+    allocator = closure->allocator;
     ribos_ir_resource_closure_reset(closure);
-    free(closure);
+    ribos_allocator_release(
+        allocator,
+        closure,
+        sizeof(*closure),
+        _Alignof(RibosIrResourceClosure));
 }
 
 RibosIrStatus
@@ -1232,16 +1400,36 @@ ribos_ir_analyze_resources_v1(
     if (ribos_ir_validate_v1(module) != RIBOS_IR_OK) {
         return RIBOS_IR_INVALID_MODULE;
     }
+    closure->type_count = module->type_count;
+    closure->function_count = module->function_count;
+    closure->block_count = module->block_count;
+    closure->loop_count = module->loop_count;
+    closure->slot_count = module->slot_count;
     closure->types = module->type_count == 0 ? NULL :
-        calloc(module->type_count, sizeof(*closure->types));
+        ribos_ir_allocate_zeroed(
+            closure,
+            module->type_count,
+            sizeof(*closure->types));
     closure->functions = module->function_count == 0 ? NULL :
-        calloc(module->function_count, sizeof(*closure->functions));
+        ribos_ir_allocate_zeroed(
+            closure,
+            module->function_count,
+            sizeof(*closure->functions));
     closure->blocks = module->block_count == 0 ? NULL :
-        calloc(module->block_count, sizeof(*closure->blocks));
+        ribos_ir_allocate_zeroed(
+            closure,
+            module->block_count,
+            sizeof(*closure->blocks));
     closure->loops = module->loop_count == 0 ? NULL :
-        calloc(module->loop_count, sizeof(*closure->loops));
+        ribos_ir_allocate_zeroed(
+            closure,
+            module->loop_count,
+            sizeof(*closure->loops));
     closure->slots = module->slot_count == 0 ? NULL :
-        calloc(module->slot_count, sizeof(*closure->slots));
+        ribos_ir_allocate_zeroed(
+            closure,
+            module->slot_count,
+            sizeof(*closure->slots));
     if ((module->type_count != 0 && closure->types == NULL) ||
         (module->function_count != 0 && closure->functions == NULL) ||
         (module->block_count != 0 && closure->blocks == NULL) ||
@@ -1250,11 +1438,6 @@ ribos_ir_analyze_resources_v1(
         ribos_ir_resource_closure_reset(closure);
         return RIBOS_IR_RESOURCE_EXCEEDED;
     }
-    closure->type_count = module->type_count;
-    closure->function_count = module->function_count;
-    closure->block_count = module->block_count;
-    closure->loop_count = module->loop_count;
-    closure->slot_count = module->slot_count;
     for (index = 0; index < module->block_count; ++index) {
         closure->blocks[index].block_id = (uint32_t)index;
         closure->blocks[index].function_id =
@@ -1299,7 +1482,10 @@ ribos_ir_analyze_resources_v1(
         return RIBOS_IR_RESOURCE_EXCEEDED;
     }
     function_state = module->function_count == 0 ? NULL :
-        calloc(module->function_count, sizeof(*function_state));
+        ribos_ir_allocate_zeroed(
+            closure,
+            module->function_count,
+            sizeof(*function_state));
     if (module->function_count != 0 && function_state == NULL) {
         ribos_ir_resource_closure_reset(closure);
         return RIBOS_IR_RESOURCE_EXCEEDED;
@@ -1313,12 +1499,20 @@ ribos_ir_analyze_resources_v1(
         if (!ribos_analyze_function(
                 &function_analysis,
                 (uint32_t)index)) {
-            free(function_state);
+            ribos_ir_release(
+                closure,
+                function_state,
+                module->function_count,
+                sizeof(*function_state));
             ribos_ir_resource_closure_reset(closure);
             return RIBOS_IR_UNBOUNDED_CONTROL_FLOW;
         }
     }
-    free(function_state);
+    ribos_ir_release(
+        closure,
+        function_state,
+        module->function_count,
+        sizeof(*function_state));
     for (index = 0;
          index < module->function_count * closure->helper_id_count;
          ++index) {
@@ -1330,8 +1524,10 @@ ribos_ir_analyze_resources_v1(
         size_t row = 0;
         size_t function;
 
-        closure->helper_bounds =
-            calloc(helper_rows, sizeof(*closure->helper_bounds));
+        closure->helper_bounds = ribos_ir_allocate_zeroed(
+            closure,
+            helper_rows,
+            sizeof(*closure->helper_bounds));
         if (closure->helper_bounds == NULL) {
             ribos_ir_resource_closure_reset(closure);
             return RIBOS_IR_RESOURCE_EXCEEDED;
@@ -1469,14 +1665,14 @@ ribos_ir_resource_helper_bound(
 RibosIrStatus
 ribos_ir_dump_resources_v1(
     const RibosIrResourceClosure *closure,
-    FILE *output)
+    RibosWriter *output)
 {
     size_t index;
 
     if (closure == NULL || output == NULL || !closure->complete) {
         return RIBOS_IR_INVALID_ARGUMENT;
     }
-    (void)fprintf(
+    (void)ribos_writer_printf(
         output,
         "IR-RESOURCE-CLOSURE version=%u.%u types=%zu functions=%zu "
         "blocks=%zu loops=%zu slots=%zu helper-bounds=%zu\n",
@@ -1491,7 +1687,7 @@ ribos_ir_dump_resources_v1(
     for (index = 0; index < closure->type_count; ++index) {
         const RibosIrTypeLayout *type = &closure->types[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-RESOURCE-TYPE id=%u storage=%u bytes=%u align=%u "
             "stride=%u payload=%u capacity=%u\n",
@@ -1507,7 +1703,7 @@ ribos_ir_dump_resources_v1(
         const RibosIrFunctionResource *function =
             &closure->functions[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-RESOURCE-FUNCTION id=%u reachable=%u terminal=0x%x "
             "closed=%u frame=%u aggregate=%u largest=%u stack=%" PRIu64
@@ -1530,7 +1726,7 @@ ribos_ir_dump_resources_v1(
     for (index = 0; index < closure->block_count; ++index) {
         const RibosIrBlockResource *block = &closure->blocks[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-RESOURCE-BLOCK id=b%u function=%u reachable=%u "
             "executions=%" PRIu64 "\n",
@@ -1542,7 +1738,7 @@ ribos_ir_dump_resources_v1(
     for (index = 0; index < closure->loop_count; ++index) {
         const RibosIrLoopResource *loop = &closure->loops[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-RESOURCE-LOOP id=l%u function=%u header=b%u body=b%u "
             "exit=b%u latch=",
@@ -1552,11 +1748,11 @@ ribos_ir_dump_resources_v1(
             loop->body_block,
             loop->exit_block);
         if (loop->latch_block == RIBOS_IR_INVALID_ID) {
-            (void)fprintf(output, "-");
+            (void)ribos_writer_printf(output, "-");
         } else {
-            (void)fprintf(output, "b%u", loop->latch_block);
+            (void)ribos_writer_printf(output, "b%u", loop->latch_block);
         }
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             " trips=%u reachable=%u\n",
             loop->trip_count,
@@ -1565,7 +1761,7 @@ ribos_ir_dump_resources_v1(
     for (index = 0; index < closure->slot_count; ++index) {
         const RibosIrSlotLayout *slot = &closure->slots[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-RESOURCE-SLOT id=s%u function=%u type=%u offset=%u "
             "bytes=%u align=%u\n",
@@ -1580,7 +1776,7 @@ ribos_ir_dump_resources_v1(
         const RibosIrHelperBound *helper =
             &closure->helper_bounds[index];
 
-        (void)fprintf(
+        (void)ribos_writer_printf(
             output,
             "IR-RESOURCE-HELPER function=%u helper=%u upper=%" PRIu64
             "\n",
