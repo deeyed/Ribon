@@ -11,10 +11,13 @@ code_paths:
   - language/ribos/schema/include/ribos/schema/schema.h
   - language/ribos/schema/src/schema.c
   - language/ribos/frontend/src/lower.c
+  - language/ribos/artifact/include/ribos/artifact/
+  - language/ribos/artifact/src/
 tests:
   - make check-ribos-schema
   - make check-ribos-ir
   - make check-ribos-resources
+  - make check-ribos-artifact
   - make check
   - make docs
 hardware:
@@ -32,8 +35,10 @@ Policy IR v1은 typed frontend와 bytecode emitter/artifact verifier 사이의 V
 결정론적으로 무시할 수 있을 때만 증가한다. Opcode, type, control-flow 또는 fault
 의미가 바뀌면 major version을 증가한다.
 
-`RibosIrModule`은 host compiler의 bounded in-memory representation이다. Signed
-artifact의 byte serialization은 별도 후속 계약이 소유한다.
+`RibosIrModule`은 host compiler의 bounded in-memory representation이다.
+`RibosIrModuleView`는 artifact emitter가 사용하는 borrowed host view이며 wire
+format이 아니다. Signed artifact의 byte serialization은
+`ribos-bytecode-artifact-v1` 계약이 소유한다.
 
 ## Module identity
 

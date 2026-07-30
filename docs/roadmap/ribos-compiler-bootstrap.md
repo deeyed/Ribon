@@ -12,6 +12,7 @@ code_paths:
   - language/ribos/frontend/tests/
   - language/ribos/schema/
   - language/ribos/ir/
+  - language/ribos/artifact/
   - build/generated/ribos/
   - build/results/
 tests:
@@ -24,6 +25,7 @@ tests:
   - ribos-capability-negative
   - ribos-policy-ir-v1
   - ribos-resource-closure-v1
+  - ribos-bytecode-artifact-v1
 hardware:
   - none
 supersedes:
@@ -221,7 +223,8 @@ Bytecode emitter는 이 closure를 deterministic encoding으로 옮기고 verifi
 
 ## G6: Bytecode와 artifact verifier
 
-Policy IR을 bounded bytecode와 signed artifact로 내린다.
+Policy IR을 bounded bytecode와 signed artifact로 내린 뒤, 서로 독립적인 reader와
+verifier를 적용한다.
 
 ```text
 Policy IR validation
@@ -229,12 +232,17 @@ Policy IR validation
   -> IR resource closure 재검사와 bytecode counter mapping
   -> schema digest와 capability manifest
   -> source/helper map
-  -> canonical artifact serialization
-  -> signature와 rollback metadata
+  -> canonical little-endian artifact serialization
+  -> payload hash와 signature envelope
+  -> allocation-free structural reader
+  -> hostile-byte semantic verifier
 ```
 
-Artifact verifier는 compiler를 신뢰하지 않고 control flow, register/stack type,
-helper signature/capability, loop/call bound와 terminal action을 다시 증명한다.
+Structural reader는 compiler와 무관하게 envelope, hash와 모든 section range를
+검사하지만 실행 허가를 내리지 않는다. Artifact verifier는 compiler를 신뢰하지 않고
+control flow, register/stack type, helper signature/capability, loop/call bound와
+terminal action을 다시 증명한다. Product key/rollback policy는 signature envelope를
+별도 검증한다.
 
 ## G7: VM과 semantic helper dispatch
 
@@ -312,8 +320,8 @@ Host frontend와 Policy IR gate만으로 다음을 주장하지 않는다.
 
 ## Remaining compiler/runtime closure
 
-Policy IR 뒤의 독립 작업은 bytecode emission, signed artifact format, adversarial
-static verifier, VM execution과 Ribon helper integration이다. Fixed-storage parser는
+Policy IR 뒤의 독립 closure는 canonical bytecode artifact, adversarial static
+verifier, VM execution과 Ribon helper integration 순서다. Fixed-storage parser는
 source를 firmware에서 받아야 하는 product만 선택한다.
 
 Host compiler 성공을 firmware-ready parser, artifact verifier 또는 VM execution으로

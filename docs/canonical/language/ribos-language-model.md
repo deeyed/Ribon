@@ -8,6 +8,7 @@ code_paths:
   - language/ribos/frontend/include/ribos/frontend/compiler.h
   - language/ribos/schema/include/ribos/schema/schema.h
   - language/ribos/ir/include/ribos/ir/
+  - language/ribos/artifact/include/ribos/artifact/
   - include/Ribon/plugin/
   - src/core/
   - src/plugins/
@@ -20,7 +21,7 @@ tests:
   - ribos-deterministic-semantic-dump
   - ribos-product-schema-identity
   - ribos-policy-ir-v1
-  - ribos-bytecode-verifier
+  - make check-ribos-artifact
   - ribon-docs
 hardware:
   - none
@@ -107,15 +108,12 @@ Ribos policy IR
         +--> typed slot, explicit CFG, helper call-site와 product schema identity
         |
         v
-bounded bytecode
+canonical VM ABI 1.0/ISA 1.0 artifact
         |
-        +--> static verifier
-        |
-        v
-signed policy artifact
+        +--> little-endian section table, payload SHA-256와 signature envelope
         |
         v
-Ribon artifact parser와 verifier
+Ribon structural reader, signature verifier와 static verifier
         |
         v
 Ribos VM
@@ -137,6 +135,7 @@ Language implementation은 하나의 monolithic runtime이 아니다.
 language/ribos/frontend  source, token/trivia, AST, type/effect와 IR lowering
 language/ribos/schema    product-generated type/helper/handoff schema identity
 language/ribos/ir        VM 독립 typed CFG와 structural validator
+language/ribos/artifact  VM ABI/ISA와 canonical signed wire envelope
 language/ribos/vm        bytecode verifier와 runtime의 후속 ownership
 ```
 
@@ -163,6 +162,17 @@ phi-free explicit move, aggregate shape, source map과 helper call-site table을
 Expression과 argument는 source의 left-to-right 순서로 낮춘다. Integer arithmetic은
 wraparound가 아니라 checked operator로 기록하며 runtime overflow는 catchable
 exception이 아닌 policy fault다.
+
+VM ABI 1.0은 Policy IR typed slot을 virtual register로 직접 사용한다. Register ID와
+slot ID는 같고 최대 16,384개이며 별도 operand stack이나 physical-register allocator가
+없다. Artifact는 fixed instruction row와 operand table, type/function/block/slot/helper
+table, capability·resource budget와 schema digest를 explicit little-endian으로
+직렬화한다. Packed host structure는 wire ABI가 아니다.
+
+Artifact payload의 SHA-256는 byte identity를 제공한다. Optional Ed25519 envelope는
+canonical signing message와 product key ID를 결합한다. Structural reader는
+signature의 암호학적 유효성이나 bytecode semantics를 주장하지 않으며, product key
+policy와 hostile-byte verifier가 실행 전에 각각 독립적으로 통과해야 한다.
 
 Product type, member, helper signature/capability와 handoff field는 frontend C table의
 고정 의미가 아니다. Product/plugin graph가 생성하는 versioned schema artifact가

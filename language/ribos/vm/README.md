@@ -1,7 +1,8 @@
 # Ribos VM boundary
 
-`vm/`은 향후 bytecode emitter, executable artifact verifier와 bounded runtime의
-소유 경계다. Policy IR v1 라운드에는 VM implementation을 넣지 않는다.
+`vm/`은 executable artifact verifier와 bounded runtime의 소유 경계다.
+`language/ribos/artifact`는 VM ABI 1.0/ISA 1.0 emitter와 allocation-free structural
+reader를 제공하지만 VM implementation이나 semantic verification을 소유하지 않는다.
 
 VM 계층은 다음 규칙을 지켜야 한다.
 
@@ -17,6 +18,11 @@ VM 계층은 다음 규칙을 지켜야 한다.
   실행한다.
 - helper stable ID를 product-generated dispatch table에 연결하고 raw function pointer,
   raw MMIO, raw flash와 arbitrary jump를 policy에 노출하지 않는다.
+
+Structural reader가 envelope, payload hash와 section range를 통과시킨 artifact도 이
+계층의 independent verifier가 type, CFG, helper capability와 resource closure를
+재증명하기 전에는 dispatch할 수 없다. Ed25519 signature와 product key policy도
+실행 허가 전에 별도로 통과해야 한다.
 
 이 README는 implementation 완료 증거가 아니라 dependency와 attack-surface
 경계다.

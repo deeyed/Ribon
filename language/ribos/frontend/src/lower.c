@@ -10,8 +10,6 @@
 #define RIBOS_LOWER_SLOT_PARAMETER (1u << 0)
 #define RIBOS_LOWER_SLOT_BINDING (1u << 1)
 #define RIBOS_LOWER_SLOT_MUTABLE (1u << 2)
-#define RIBOS_LOWER_FUNCTION_POLICY (1u << 0)
-#define RIBOS_LOWER_FUNCTION_PURE (1u << 1)
 #define RIBOS_LOWER_BLOCK_ENTRY (1u << 0)
 
 typedef struct RibosLowerBinding {
@@ -2208,8 +2206,8 @@ ribos_lower_declare_functions(RibosLowerContext *context)
             .helper_call_upper_bound = source->total_helper_upper_bound,
             .maximum_call_depth = source->max_call_depth,
             .flags =
-                (source->is_policy ? RIBOS_LOWER_FUNCTION_POLICY : 0) |
-                (source->is_pure ? RIBOS_LOWER_FUNCTION_PURE : 0),
+                (source->is_policy ? RIBOS_IR_FUNCTION_POLICY : 0) |
+                (source->is_pure ? RIBOS_IR_FUNCTION_PURE : 0),
         };
         uint32_t id;
 
@@ -2252,8 +2250,8 @@ ribos_lower_function(
         .helper_call_upper_bound = function->total_helper_upper_bound,
         .maximum_call_depth = function->max_call_depth,
         .flags =
-            (function->is_policy ? RIBOS_LOWER_FUNCTION_POLICY : 0) |
-            (function->is_pure ? RIBOS_LOWER_FUNCTION_PURE : 0),
+            (function->is_policy ? RIBOS_IR_FUNCTION_POLICY : 0) |
+            (function->is_pure ? RIBOS_IR_FUNCTION_PURE : 0),
     };
     uint32_t entry;
     size_t index;

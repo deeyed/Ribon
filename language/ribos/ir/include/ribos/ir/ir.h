@@ -86,6 +86,12 @@ typedef enum RibosIrCheckedOperator {
     RIBOS_IR_CHECK_BIT_NOT
 } RibosIrCheckedOperator;
 
+/** Function descriptor의 안정된 의미 비트다. */
+typedef enum RibosIrFunctionFlags {
+    RIBOS_IR_FUNCTION_POLICY = 1u << 0,
+    RIBOS_IR_FUNCTION_PURE = 1u << 1
+} RibosIrFunctionFlags;
+
 /** Frontend type table에서 복사한 VM 독립 type 분류다. */
 typedef enum RibosIrTypeKind {
     RIBOS_IR_TYPE_ERROR = 0,
@@ -278,6 +284,42 @@ typedef struct RibosIrSummary {
     size_t helper_call_count;
 } RibosIrSummary;
 
+/**
+ * Host Policy IR storage를 artifact emitter에 read-only로 공개하는 view다.
+ *
+ * 이 구조는 compiler process 안에서만 유효하며 artifact wire ABI가 아니다.
+ * 모든 pointer의 lifetime은 owner `RibosIrModule`과 같다.
+ */
+typedef struct RibosIrModuleView {
+    uint16_t format_major;
+    uint16_t format_minor;
+    const uint8_t *schema_digest;
+    const RibosIrType *types;
+    size_t type_count;
+    const RibosIrShape *shapes;
+    size_t shape_count;
+    const RibosIrConstant *constants;
+    size_t constant_count;
+    const uint8_t *constant_bytes;
+    size_t constant_byte_count;
+    const RibosIrFunction *functions;
+    size_t function_count;
+    const RibosIrBlock *blocks;
+    size_t block_count;
+    const RibosIrLoop *loops;
+    size_t loop_count;
+    const RibosIrSlot *slots;
+    size_t slot_count;
+    const RibosIrInstruction *instructions;
+    size_t instruction_count;
+    const uint32_t *operands;
+    size_t operand_count;
+    const RibosIrSourceMap *source_maps;
+    size_t source_map_count;
+    const RibosIrHelperCallSite *helper_calls;
+    size_t helper_call_count;
+} RibosIrModuleView;
+
 /** 내부 storage를 숨기는 host Policy IR module이다. */
 typedef struct RibosIrModule RibosIrModule;
 
@@ -294,6 +336,11 @@ void ribos_ir_module_reset(RibosIrModule *module);
 RibosIrStatus ribos_ir_module_summary(
     const RibosIrModule *module,
     RibosIrSummary *summary);
+
+/** Validated 여부와 무관하게 module-owned table의 read-only view를 반환한다. */
+RibosIrStatus ribos_ir_module_view(
+    const RibosIrModule *module,
+    RibosIrModuleView *view);
 
 /** CFG, ID, operand slice와 terminator invariants를 검사한다. */
 RibosIrStatus ribos_ir_validate_v1(const RibosIrModule *module);

@@ -51,17 +51,18 @@ Source extension과 project hierarchy도 frontend, IR와 VM의 독립 배포·�
 Ribos source extension은 `.rbs`로 고정한다. `.ribos` alias와 하위 호환 loader는
 제공하지 않는다.
 
-Language project는 다음 네 경계로 분리한다.
+Language project는 다음 다섯 경계로 분리한다.
 
 ```text
 frontend  .rbs -> token/trivia -> AST -> typed AST -> IR builder calls
 schema    product descriptor -> canonical schema bytes -> SHA-256 identity
 ir        typed slots + explicit CFG + source/helper/shape tables
-vm        verified artifact -> bytecode execution (후속 구현)
+artifact  validated IR -> canonical little-endian signed wire artifact
+vm        verified artifact -> bytecode execution
 ```
 
 Frontend private AST와 Pegen runtime은 `frontend/` 밖의 public dependency가 아니다.
-Bytecode emitter, artifact verifier와 VM은 public Policy IR/schema contract만 소비한다.
+Artifact emitter, verifier와 VM은 public Policy IR/schema contract만 소비한다.
 
 Policy IR v1은 다음 표현을 가진다.
 

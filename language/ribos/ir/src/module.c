@@ -66,6 +66,46 @@ ribos_ir_module_summary(
     return RIBOS_IR_OK;
 }
 
+RibosIrStatus
+ribos_ir_module_view(
+    const RibosIrModule *module,
+    RibosIrModuleView *view)
+{
+    if (module == NULL || view == NULL) {
+        return RIBOS_IR_INVALID_ARGUMENT;
+    }
+    *view = (RibosIrModuleView){
+        .format_major = module->format_major,
+        .format_minor = module->format_minor,
+        .schema_digest = module->schema_digest,
+        .types = module->types,
+        .type_count = module->type_count,
+        .shapes = module->shapes,
+        .shape_count = module->shape_count,
+        .constants = module->constants,
+        .constant_count = module->constant_count,
+        .constant_bytes = module->constant_bytes,
+        .constant_byte_count = module->constant_byte_count,
+        .functions = module->functions,
+        .function_count = module->function_count,
+        .blocks = module->blocks,
+        .block_count = module->block_count,
+        .loops = module->loops,
+        .loop_count = module->loop_count,
+        .slots = module->slots,
+        .slot_count = module->slot_count,
+        .instructions = module->instructions,
+        .instruction_count = module->instruction_count,
+        .operands = module->operands,
+        .operand_count = module->operand_count,
+        .source_maps = module->source_maps,
+        .source_map_count = module->source_map_count,
+        .helper_calls = module->helper_calls,
+        .helper_call_count = module->helper_call_count,
+    };
+    return RIBOS_IR_OK;
+}
+
 static uint64_t
 ribos_ir_hash_bytes(const uint8_t *bytes, size_t byte_count)
 {

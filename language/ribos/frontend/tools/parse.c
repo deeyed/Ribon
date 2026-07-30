@@ -1,5 +1,6 @@
 #include "parser_internal.h"
 
+#include "ribos/artifact/emitter.h"
 #include "ribos/ir/analysis.h"
 
 #include <stdio.h>
@@ -41,6 +42,35 @@ ribos_read_file(const char *path, size_t *source_length)
     return source;
 }
 
+static int
+ribos_write_file(
+    const char *path,
+    const uint8_t *bytes,
+    size_t byte_count)
+{
+    FILE *output = fopen(path, "wb");
+    size_t written;
+    int close_status;
+
+    if (output == NULL) {
+        return 0;
+    }
+    written = fwrite(bytes, 1, byte_count, output);
+    close_status = fclose(output);
+    return written == byte_count && close_status == 0;
+}
+
+static void
+ribos_print_digest(
+    const uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES])
+{
+    size_t index;
+
+    for (index = 0; index < RIBOS_SCHEMA_DIGEST_BYTES; ++index) {
+        (void)printf("%02x", digest[index]);
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -57,6 +87,8 @@ main(int argc, char **argv)
     int compile_mode = 0;
     int ir_mode = 0;
     int resource_mode = 0;
+    int artifact_mode = 0;
+    const char *artifact_path = NULL;
 
     if (argc == 2) {
         path = argv[1];
@@ -83,11 +115,20 @@ main(int argc, char **argv)
             ir_mode = 1;
             resource_mode = 1;
         }
+    } else if (argc == 4 &&
+        strcmp(argv[1], "--emit-artifact") == 0) {
+        compile_mode = 1;
+        ir_mode = 1;
+        artifact_mode = 1;
+        artifact_path = argv[2];
+        path = argv[3];
     } else {
         (void)fprintf(
             stderr,
             "usage: %s [--check|--dump-tokens|--dump-ast|"
-            "--dump-semantics|--dump-ir|--dump-resources] SOURCE.rbs\n",
+            "--dump-semantics|--dump-ir|--dump-resources] SOURCE.rbs\n"
+            "       %s --emit-artifact OUTPUT.rba SOURCE.rbs\n",
+            argv[0],
             argv[0]);
         return 64;
     }
@@ -171,7 +212,7 @@ main(int argc, char **argv)
             }
             return 2;
         }
-        if (ir_mode && !resource_mode &&
+        if (ir_mode && !resource_mode && !artifact_mode &&
             (ribos_ir_validate_v1(ir_module) != RIBOS_IR_OK ||
              ribos_ir_dump_v1(ir_module, stdout) != RIBOS_IR_OK)) {
             ribos_ir_module_destroy(ir_module);
@@ -207,6 +248,82 @@ main(int argc, char **argv)
                     path);
                 return 2;
             }
+        }
+        if (artifact_mode) {
+            RibosArtifactEmitOptions artifact_options = {
+                .include_source_map = 1,
+            };
+            RibosArtifactView artifact_view;
+            RibosArtifactStatus artifact_status;
+            uint8_t *artifact = NULL;
+            size_t artifact_size = 0;
+            size_t encoded_size = 0;
+
+            artifact_status = ribos_artifact_emit_v1(
+                ir_module,
+                &artifact_options,
+                NULL,
+                0,
+                &artifact_size);
+            if (artifact_status == RIBOS_ARTIFACT_OK) {
+                artifact = malloc(artifact_size);
+                if (artifact == NULL) {
+                    artifact_status =
+                        RIBOS_ARTIFACT_CAPACITY_EXCEEDED;
+                }
+            }
+            if (artifact_status == RIBOS_ARTIFACT_OK) {
+                artifact_status = ribos_artifact_emit_v1(
+                    ir_module,
+                    &artifact_options,
+                    artifact,
+                    artifact_size,
+                    &encoded_size);
+            }
+            if (artifact_status == RIBOS_ARTIFACT_OK &&
+                encoded_size != artifact_size) {
+                artifact_status = RIBOS_ARTIFACT_INVALID_FORMAT;
+            }
+            if (artifact_status == RIBOS_ARTIFACT_OK &&
+                encoded_size == artifact_size) {
+                artifact_status = ribos_artifact_open_v1(
+                    artifact,
+                    artifact_size,
+                    &artifact_view);
+            }
+            if (artifact_status == RIBOS_ARTIFACT_OK &&
+                !ribos_write_file(
+                    artifact_path,
+                    artifact,
+                    artifact_size)) {
+                artifact_status = RIBOS_ARTIFACT_INVALID_ARGUMENT;
+            }
+            if (artifact_status != RIBOS_ARTIFACT_OK) {
+                free(artifact);
+                ribos_ir_module_destroy(ir_module);
+                (void)fprintf(
+                    stderr,
+                    "RIBOS-ARTIFACT-EMIT-FAIL status=%u "
+                    "source=%s artifact=%s\n",
+                    (unsigned)artifact_status,
+                    path,
+                    artifact_path);
+                return 2;
+            }
+            (void)printf(
+                "RIBOS-ARTIFACT-EMIT-OK source=%s artifact=%s "
+                "bytes=%zu vm=%u.%u isa=%u.%u sections=%zu sha256=",
+                path,
+                artifact_path,
+                artifact_size,
+                artifact_view.vm_abi_major,
+                artifact_view.vm_abi_minor,
+                artifact_view.isa_major,
+                artifact_view.isa_minor,
+                artifact_view.section_count);
+            ribos_print_digest(artifact_view.artifact_hash);
+            (void)printf("\n");
+            free(artifact);
         }
         ribos_ir_module_destroy(ir_module);
         (void)printf(
