@@ -24,6 +24,7 @@ tests:
   - ribos-policy-ir-v1
   - make check-ribos-artifact
   - make check-ribos-verifier
+  - make check-ribos-executable-corpus
   - make check-ribos-r18
   - ribon-docs
 hardware:

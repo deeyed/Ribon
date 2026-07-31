@@ -602,7 +602,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-vm-helpers check-ribos-vm-terminal \
 	check-ribos-vm-faults check-ribos-host-tools \
 	check-ribos-replay check-ribos-conformance \
-	check-ribos-hostile check-ribos-vm \
+	check-ribos-hostile check-ribos-executable-corpus check-ribos-vm \
 	check-ribos-ribon-integration check-ribos-product-graphs \
 	check-ribos-normal-no-network check-ribos-factory-recovery \
 	check-ribos-host-boundary check-ribos-golden-artifact \
@@ -741,7 +741,7 @@ check-ribos-parser-pilot: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
 	$(PYTHON) language/ribos/frontend/tests/parser_pilot_tests.py \
 		--parser $(RIBOS_PARSER_PILOT)
 	$(RIBOS_PARSER_PILOT) \
-		language/ribos/frontend/tests/positive/full_boot_policy.rbs
+		language/ribos/examples/executable/minimal_recovery.rbs
 
 check-ribos-semantics: check-ribos-parser-snapshot $(RIBOS_PARSER_PILOT)
 	$(PYTHON) language/ribos/frontend/tests/semantic_tests.py \
@@ -1038,10 +1038,18 @@ check-ribos-hostile: check-ribos-conformance
 		--verifier $(RIBOS_VERIFIER) \
 		--runner $(RIBOS_RUNNER)
 
-check-ribos-vm: check-ribos-vm-faults check-ribos-hostile
+check-ribos-executable-corpus: check-ribos-parser-pilot \
+		check-ribos-semantics check-ribos-vm-terminal check-ribos-host-tools
+	$(PYTHON) language/ribos/examples/tests/executable_corpus_tests.py \
+		--compiler $(RIBOS_PARSER_PILOT) \
+		--verifier $(RIBOS_VERIFIER) \
+		--runner $(RIBOS_RUNNER)
+
+check-ribos-vm: check-ribos-vm-faults check-ribos-hostile \
+		check-ribos-executable-corpus
 	@echo "RIBOS-VM-R16-AGGREGATE-OK core=production \
 replay=deterministic conformance=24-opcodes hostile=bounded \
-evidence=host-only"
+executable-examples=6 evidence=host-only"
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -2073,7 +2081,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-vm-loops check-ribos-vm-aggregates \
 	check-ribos-vm-handles check-ribos-vm-helpers \
 	check-ribos-vm-terminal check-ribos-vm-faults \
-	check-ribos-vm \
+	check-ribos-executable-corpus check-ribos-vm \
 	check-ribos-ribon-integration check-ribos-product-graphs \
 	check-ribos-normal-no-network check-ribos-factory-recovery \
 	check-ribos-host-boundary check-ribos-r18 \

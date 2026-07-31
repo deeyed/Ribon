@@ -1,0 +1,40 @@
+struct UpdateCondition {
+    minimum_battery: u8
+    require_grounded: bool
+}
+
+enum BootMode {
+    Normal
+    Recovery(RecoveryReason)
+}
+
+@pure
+def choose_mode(ctx: BootContext) -> BootMode {
+    let condition: UpdateCondition = UpdateCondition(
+        minimum_battery=60,
+        require_grounded=True,
+    )
+    if condition.minimum_battery < 60 {
+        return BootMode.Recovery(RecoveryReason.LOW_POWER)
+    }
+    return BootMode.Normal
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=256,
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let mode = choose_mode(ctx)
+    match mode {
+        BootMode.Normal => {
+            return Ok(boot.recovery(RecoveryReason.REQUESTED))
+        }
+        BootMode.Recovery(reason) => {
+            return Ok(boot.recovery(reason))
+        }
+    }
+}

@@ -98,6 +98,32 @@ qstar.test "port_service_tests" {
   },
 }
 
+qstar.run_target "ribos_executable_corpus" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-ribos-executable-corpus",
+    "check-ribos-executable-corpus",
+  },
+  timeout = 120,
+  expect = {
+    contains = "RIBOS-EXECUTABLE-CORPUS-OK",
+  },
+  description = qstar.status("Closing public Ribos examples through the host VM"),
+}
+
+qstar.test_suite "ribos_executable_corpus_tests" {
+  tests = {
+    "//tests:ribos_executable_corpus",
+  },
+  tags = {
+    "host",
+    "ribos",
+    "executable-corpus",
+  },
+  description = qstar.status("Public Ribos source-to-VM conformance suite"),
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
@@ -108,5 +134,6 @@ qstar.group "ribon_tests" {
     "//tests:fdt_parser_tests",
     "//tests:os_package_tests",
     "//tests:port_service_tests",
+    "//tests:ribos_executable_corpus",
   },
 }

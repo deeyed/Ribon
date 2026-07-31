@@ -44,6 +44,7 @@ make check-ribos-schema
 make check-ribos-ir
 make check-ribos-resources
 make check-ribos-artifact
+make check-ribos-executable-corpus
 make check
 make check-target-builds
 make qemu-aarch64-virt-raw-fdt-smoke
@@ -69,6 +70,12 @@ array와 bounded linear search를 사용한다. 일반 build는
 `language/ribos/frontend/generated/`의 추적되는 C parser snapshot을 직접 컴파일하며
 `make check`도 Pegen을 실행하지 않는다. 문법이나 generator integration을 바꿀 때만
 다음 explicit gate를 사용한다.
+
+Public Ribos example은 `language/ribos/examples/executable/`에 있으며 parser부터
+independent verifier와 production target-core VM의 host terminal outcome까지 실행된다.
+Sphinx 문서의 tagged example block, source, artifact digest와 exact resource closure는
+versioned manifest로 함께 고정된다. Parser-only syntax 조각은
+`language/ribos/frontend/tests/fragments/`로 분리되어 실행 가능성의 증거로 사용되지 않는다.
 
 ```sh
 make ribos-parser-generate RIBOS_PEGEN_ROOT=/path/to/cpython/Tools/peg_generator

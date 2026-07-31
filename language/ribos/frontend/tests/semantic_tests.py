@@ -14,28 +14,32 @@ FRONTEND = Path(__file__).resolve().parents[1]
 POSITIVE = FRONTEND / "tests" / "semantic" / "positive"
 NEGATIVE = FRONTEND / "tests" / "semantic" / "negative"
 EXPECTED = {
-    "aggregate_limit.rbs": "E_RESOURCE_LIMIT",
-    "argument_type.rbs": "E_ARGUMENT_TYPE_MISMATCH",
-    "capability_missing.rbs": "E_CAPABILITY_NOT_DECLARED",
-    "duplicate_binding.rbs": "E_DUPLICATE_BINDING",
-    "empty_collection.rbs": "E_CANNOT_INFER_EMPTY_COLLECTION",
-    "helper_budget.rbs": "E_HELPER_BUDGET_EXCEEDED",
-    "handoff_value_type.rbs": "E_ARGUMENT_TYPE_MISMATCH",
-    "heterogeneous_list.rbs": "E_COLLECTION_ELEMENT_TYPE_MISMATCH",
-    "immutable_assignment.rbs": "E_MUTATE_IMMUTABLE_BINDING",
-    "instruction_budget.rbs": "E_INSTRUCTION_BUDGET_EXCEEDED",
-    "missing_return.rbs": "E_MISSING_RETURN",
-    "non_exhaustive_match.rbs": "E_NON_EXHAUSTIVE_MATCH",
-    "pure_effect.rbs": "E_PURE_FUNCTION_HAS_EFFECT",
-    "recursive_call.rbs": "E_RECURSIVE_CALL_GRAPH",
-    "result_unused.rbs": "E_RESULT_MUST_BE_USED",
-    "type_mismatch.rbs": "E_TYPE_MISMATCH",
-    "unbounded_iteration.rbs": "E_UNBOUNDED_ITERATION",
-    "unknown_name.rbs": "E_UNKNOWN_NAME",
+    "aggregate_limit.rbs": ("bound-error", "E_RESOURCE_LIMIT"),
+    "argument_type.rbs": ("type-error", "E_ARGUMENT_TYPE_MISMATCH"),
+    "capability_missing.rbs": ("capability-error", "E_CAPABILITY_NOT_DECLARED"),
+    "duplicate_binding.rbs": ("name-error", "E_DUPLICATE_BINDING"),
+    "empty_collection.rbs": ("type-error", "E_CANNOT_INFER_EMPTY_COLLECTION"),
+    "helper_budget.rbs": ("bound-error", "E_HELPER_BUDGET_EXCEEDED"),
+    "handoff_value_type.rbs": ("type-error", "E_ARGUMENT_TYPE_MISMATCH"),
+    "heterogeneous_list.rbs": ("type-error", "E_COLLECTION_ELEMENT_TYPE_MISMATCH"),
+    "immutable_assignment.rbs": ("type-error", "E_MUTATE_IMMUTABLE_BINDING"),
+    "instruction_budget.rbs": ("bound-error", "E_INSTRUCTION_BUDGET_EXCEEDED"),
+    "missing_return.rbs": ("type-error", "E_MISSING_RETURN"),
+    "non_exhaustive_match.rbs": ("type-error", "E_NON_EXHAUSTIVE_MATCH"),
+    "pure_effect.rbs": ("capability-error", "E_PURE_FUNCTION_HAS_EFFECT"),
+    "recursive_call.rbs": ("bound-error", "E_RECURSIVE_CALL_GRAPH"),
+    "result_unused.rbs": ("type-error", "E_RESULT_MUST_BE_USED"),
+    "type_mismatch.rbs": ("type-error", "E_TYPE_MISMATCH"),
+    "unbounded_iteration.rbs": ("bound-error", "E_UNBOUNDED_ITERATION"),
+    "unknown_name.rbs": ("name-error", "E_UNKNOWN_NAME"),
 }
 
 
-def invoke(parser: Path, fixture: Path, mode: str = "--check") -> subprocess.CompletedProcess[str]:
+def invoke(
+    parser: Path,
+    fixture: Path,
+    mode: str = "--check",
+) -> subprocess.CompletedProcess[str]:
     """Invoke one bounded compiler operation without a shell."""
 
     return subprocess.run(
@@ -69,10 +73,15 @@ def main(argv: list[str]) -> int:
     for fixture in sorted(NEGATIVE.glob("*.rbs")):
         result = invoke(args.parser, fixture)
         negative_count += 1
-        expected = EXPECTED[fixture.name]
-        if result.returncode == 0 or f"code={expected}" not in result.stderr:
+        expected_status, expected_code = EXPECTED[fixture.name]
+        if (
+            result.returncode == 0
+            or f"status={expected_status}" not in result.stderr
+            or f"code={expected_code}" not in result.stderr
+        ):
             failures.append(
-                f"semantic negative mismatch: {fixture.name} expected={expected}\n"
+                f"semantic negative mismatch: {fixture.name} "
+                f"expected={expected_status}/{expected_code}\n"
                 f"stdout={result.stdout}stderr={result.stderr}"
             )
 

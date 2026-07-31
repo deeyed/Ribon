@@ -1,0 +1,23 @@
+@pure
+def policy_ready(ctx: BootContext) -> bool {
+    let mask: u32 = ((0x10 | 0b0011) ^ 3) & 255
+    let shifted: u32 = (mask << 2) >> 1
+    let inverted: u32 = ~shifted
+    let positive: u32 = +3
+    let arithmetic: u32 = positive + 2 * 5 / 1 % 4
+    return inverted > positive and arithmetic > 0
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=256,
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    if policy_ready(ctx) {
+        return Ok(boot.recovery(RecoveryReason.REQUESTED))
+    }
+    return Err(BootError.POLICY_REJECTED)
+}

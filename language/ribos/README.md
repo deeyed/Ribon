@@ -43,6 +43,10 @@ language/ribos/
     include/ribos/vm/
     src/
     tests/
+  examples/
+    executable/
+    manifest.json
+    tests/
 ```
 
 경계는 다음과 같다.
@@ -143,6 +147,7 @@ make check-ribos-host-tools
 make check-ribos-replay
 make check-ribos-conformance
 make check-ribos-hostile
+make check-ribos-executable-corpus
 make check-ribos-vm
 make check-ribos-ribon-integration
 make check-ribos-r18
@@ -167,6 +172,10 @@ make check-ribos-r18
 - host replay gate는 같은 target-core VM을 `ribos-run`에 연결하고 deterministic
   input tuple, ISA 24 opcode, cross-layer resource closure와 bounded hostile input을
   증명한다.
+- executable-corpus gate는 모든 public `.rbs` example을 parser, semantic, Policy IR,
+  resource closure, deterministic artifact, independent verifier와 terminal VM replay까지
+  내리고 Sphinx Markdown code block과 source의 byte identity를 증명한다. Parser 표면만
+  검사하는 불완전 source는 `frontend/tests/fragments/`에 격리한다.
 - Ribon integration gate는 generated schema/helper binding, Core arena, typed service,
   watchdog와 existing boot transaction을 generic adapter로 연결하되 VM object graph의
   Ribon 비의존성을 유지함을 증명한다.

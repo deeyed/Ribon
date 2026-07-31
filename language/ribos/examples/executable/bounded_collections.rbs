@@ -1,0 +1,36 @@
+@pure
+def profile_for(revision: BoardRevision) -> Profile {
+    let profiles: FrozenMap[BoardRevision, Profile, 2] = {
+        BoardRevision.V1: Profile.ETH_PHY_A,
+        BoardRevision.V2: Profile.ETH_PHY_B,
+    }
+    return profiles.get(
+        revision,
+        default=Profile.ETH_PHY_A,
+    )
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=512,
+    helper_budget=2,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let required_devices: Array[Device, 3] = [
+        Device.UART0,
+        Device.STORAGE0,
+        Device.ETH0,
+    ]
+    let mut count: u32 = 0
+    for dev in required_devices {
+        if dev == Device.UART0 {
+            count = count + 1
+        }
+    }
+    if count == 1 {
+        return Ok(boot.recovery(RecoveryReason.REQUESTED))
+    }
+    return Ok(boot.recovery(RecoveryReason.INVALID_IMAGE))
+}

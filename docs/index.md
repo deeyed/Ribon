@@ -72,6 +72,7 @@ contracts/language/ribos-generation-handles-v1
 contracts/language/ribos-typed-helper-dispatch-v1
 contracts/language/ribos-terminal-outcome-recovery-v1
 contracts/language/ribos-host-replay-v1
+contracts/language/ribos-executable-corpus-v1
 contracts/language/ribos-ribon-product-integration-v1
 contracts/language/ribos-cross-architecture-validation-v1
 api/public-c-api
@@ -125,6 +126,7 @@ adr/0034-ribos-production-vm-host-replay
 adr/0035-ribos-ribon-product-integration
 adr/0036-ribos-cross-architecture-qemu-validation
 adr/0037-uefi-product-scoped-hermetic-build
+adr/0038-ribos-executable-example-corpus
 ```
 
 ```{toctree}
@@ -191,4 +193,5 @@ log/2026-07-31-ribos-host-replay-hardening
 log/2026-07-31-ribos-ribon-product-integration
 log/2026-07-31-ribos-cross-architecture-vm-validation
 log/2026-07-31-r01-uefi-product-hermetic-build
+log/2026-07-31-r02-ribos-executable-corpus
 ```

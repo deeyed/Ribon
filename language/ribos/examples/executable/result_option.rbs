@@ -1,0 +1,35 @@
+@pure
+def maybe_attempts(enabled: bool, attempts: u32) -> Option[u32] {
+    if enabled {
+        return Some(attempts)
+    }
+    return None
+}
+
+@pure
+def checked_attempts(enabled: bool) -> Option[u32] {
+    let attempts = maybe_attempts(enabled, 3)?
+    return Some(attempts + 1)
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    instruction_budget=256,
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let attempts = checked_attempts(True)
+    match attempts {
+        Option.Some(value) => {
+            if value >= 4 {
+                return Ok(boot.recovery(RecoveryReason.REQUESTED))
+            }
+            return Err(BootError.POLICY_REJECTED)
+        }
+        None => {
+            return Err(BootError.POLICY_REJECTED)
+        }
+    }
+}

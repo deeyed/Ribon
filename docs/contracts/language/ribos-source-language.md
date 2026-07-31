@@ -25,6 +25,7 @@ tests:
   - ribos-capability-negative
   - ribos-deterministic-semantic-dump
   - ribos-budget-negative
+  - make check-ribos-executable-corpus
   - ribon-docs
 hardware:
   - none

@@ -10,14 +10,23 @@ from pathlib import Path
 
 
 FRONTEND = Path(__file__).resolve().parents[1]
-POSITIVE = FRONTEND / "tests" / "positive"
+RIBOS = FRONTEND.parent
+EXECUTABLE = RIBOS / "examples" / "executable"
+FRAGMENTS = FRONTEND / "tests" / "fragments"
 NEGATIVE = FRONTEND / "tests" / "negative"
-EXPECTED_NEGATIVE_KIND = {
-    "exception_try.rbs": "reserved-feature",
-    "invalid_number.rbs": "invalid-number",
-    "invalid_string_escape.rbs": "invalid-string",
-    "reserved_while.rbs": "reserved-feature",
-    "top_level_reserved_while.rbs": "reserved-feature",
+EXPECTED_NEGATIVE = {
+    "chained_comparison.rbs": ("syntax-error", "syntax"),
+    "exception_try.rbs": ("syntax-error", "reserved-feature"),
+    "invalid_decorator_placement.rbs": ("syntax-error", "syntax"),
+    "invalid_number.rbs": ("lexical-error", "invalid-number"),
+    "invalid_string_escape.rbs": ("lexical-error", "invalid-string"),
+    "missing_parameter_type.rbs": ("syntax-error", "syntax"),
+    "nested_function.rbs": ("syntax-error", "syntax"),
+    "python_conditional.rbs": ("syntax-error", "syntax"),
+    "reserved_while.rbs": ("syntax-error", "reserved-feature"),
+    "top_level_reserved_while.rbs": ("syntax-error", "reserved-feature"),
+    "top_level_statement.rbs": ("syntax-error", "syntax"),
+    "unbalanced_delimiter.rbs": ("syntax-error", "syntax"),
 }
 
 
@@ -41,14 +50,24 @@ def main(argv: list[str]) -> int:
     args = argument_parser.parse_args(argv)
 
     failures: list[str] = []
-    positive_count = 0
+    executable_count = 0
+    fragment_count = 0
     negative_count = 0
-    for fixture in sorted(POSITIVE.glob("*.rbs")):
+    for fixture in sorted(EXECUTABLE.glob("*.rbs")):
         result = invoke(args.parser, fixture)
-        positive_count += 1
+        executable_count += 1
         if result.returncode != 0 or "RIBOS-PARSER-PILOT-OK" not in result.stdout:
             failures.append(
-                f"positive fixture failed: {fixture.name}\n"
+                f"executable fixture failed: {fixture.name}\n"
+                f"stdout={result.stdout}stderr={result.stderr}"
+            )
+
+    for fixture in sorted(FRAGMENTS.glob("*.rbs")):
+        result = invoke(args.parser, fixture)
+        fragment_count += 1
+        if result.returncode != 0 or "RIBOS-PARSER-PILOT-OK" not in result.stdout:
+            failures.append(
+                f"syntax fragment failed: {fixture.name}\n"
                 f"stdout={result.stdout}stderr={result.stderr}"
             )
 
@@ -61,11 +80,15 @@ def main(argv: list[str]) -> int:
                 f"stdout={result.stdout}stderr={result.stderr}"
             )
             continue
-        expected_kind = EXPECTED_NEGATIVE_KIND.get(fixture.name)
-        if expected_kind is not None and f"kind={expected_kind}" not in result.stderr:
+        expected_status, expected_kind = EXPECTED_NEGATIVE[fixture.name]
+        if (
+            f"status={expected_status}" not in result.stderr
+            or f"kind={expected_kind}" not in result.stderr
+        ):
             failures.append(
                 f"negative fixture category mismatch: {fixture.name} "
-                f"expected={expected_kind}\nstderr={result.stderr}"
+                f"expected={expected_status}/{expected_kind}\n"
+                f"stderr={result.stderr}"
             )
 
     if failures:
@@ -73,7 +96,8 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "RIBOS-PARSER-CORPUS-OK "
-        f"positive={positive_count} negative={negative_count}"
+        f"executable={executable_count} fragments={fragment_count} "
+        f"negative={negative_count}"
     )
     return 0
 
