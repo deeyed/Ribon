@@ -696,45 +696,157 @@ ribos_artifact_find_section(
     return &view->sections[kind];
 }
 
-RibosArtifactStatus
-ribos_artifact_signature_message_v1(
+/** Trust message v1 mode registry 안에 있는지 검사한다. */
+static int
+ribos_artifact_trust_mode_is_valid(uint16_t mode)
+{
+    return mode >= RIBOS_ARTIFACT_TRUST_MODE_NORMAL &&
+        mode <= RIBOS_ARTIFACT_TRUST_MODE_DIAGNOSTIC;
+}
+
+/** Trust message v1 key usage registry 안에 있는지 검사한다. */
+static int
+ribos_artifact_key_usage_is_valid(uint16_t key_usage)
+{
+    return key_usage >= RIBOS_ARTIFACT_KEY_USAGE_POLICY_NORMAL &&
+        key_usage <= RIBOS_ARTIFACT_KEY_USAGE_BOOT_IMAGE;
+}
+
+/** Ribos policy mode와 단일 policy key usage가 정확히 대응하는지 검사한다. */
+static int
+ribos_artifact_policy_usage_matches_mode(
+    uint16_t mode,
+    uint16_t key_usage)
+{
+    return key_usage <=
+            RIBOS_ARTIFACT_KEY_USAGE_POLICY_DIAGNOSTIC &&
+        key_usage == mode;
+}
+
+/** Product-bound Ribos policy trust tuple을 canonical little-endian byte로 만든다. */
+RibosArtifactTrustStatus
+ribos_artifact_trust_message_v1(
+    const RibosArtifactView *view,
     RibosArtifactSignatureAlgorithm algorithm,
     const uint8_t *key_id,
     size_t key_id_length,
-    uint64_t payload_length,
-    const uint8_t artifact_hash[RIBOS_SCHEMA_DIGEST_BYTES],
-    uint8_t output[RIBOS_ARTIFACT_SIGNATURE_MESSAGE_BYTES])
+    const RibosArtifactTrustContextV1 *context,
+    uint8_t output[RIBOS_ARTIFACT_TRUST_MESSAGE_V1_BYTES])
 {
     static const uint8_t domain[32] =
-        "RIBOS-ARTIFACT-SIGNATURE-V1";
+        "RIBON-TRUST-MESSAGE-V1";
     RibosArtifactWriter writer;
     uint8_t key_id_hash[RIBOS_SCHEMA_DIGEST_BYTES];
+    uint64_t payload_length;
 
-    if (algorithm != RIBOS_ARTIFACT_SIGNATURE_ED25519 ||
+    if (view == NULL || context == NULL ||
         key_id == NULL || key_id_length == 0 ||
         key_id_length > RIBOS_ARTIFACT_MAX_KEY_ID_BYTES ||
-        artifact_hash == NULL || output == NULL) {
-        return RIBOS_ARTIFACT_INVALID_ARGUMENT;
+        output == NULL ||
+        context->size != sizeof(*context)) {
+        return RIBOS_ARTIFACT_TRUST_INVALID_ARGUMENT;
+    }
+    if (context->trust_major !=
+            RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MAJOR ||
+        context->trust_minor !=
+            RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MINOR ||
+        view->envelope_major != RIBOS_ARTIFACT_ENVELOPE_V1_MAJOR ||
+        view->envelope_minor != RIBOS_ARTIFACT_ENVELOPE_V1_MINOR ||
+        view->vm_abi_major != RIBOS_VM_ABI_V1_MAJOR ||
+        view->vm_abi_minor != RIBOS_VM_ABI_V1_MINOR ||
+        view->isa_major != RIBOS_BYTECODE_ISA_V1_MAJOR ||
+        view->isa_minor != RIBOS_BYTECODE_ISA_V1_MINOR) {
+        return RIBOS_ARTIFACT_TRUST_UNSUPPORTED_VERSION;
+    }
+    if (view->hash_algorithm != RIBOS_ARTIFACT_HASH_SHA256 ||
+        algorithm != RIBOS_ARTIFACT_SIGNATURE_ED25519) {
+        return RIBOS_ARTIFACT_TRUST_UNSUPPORTED_ALGORITHM;
+    }
+    if (!ribos_artifact_trust_mode_is_valid(context->mode)) {
+        return RIBOS_ARTIFACT_TRUST_INVALID_MODE;
+    }
+    if (!ribos_artifact_key_usage_is_valid(context->key_usage)) {
+        return RIBOS_ARTIFACT_TRUST_INVALID_USAGE;
+    }
+    if (!ribos_artifact_policy_usage_matches_mode(
+            context->mode,
+            context->key_usage)) {
+        return RIBOS_ARTIFACT_TRUST_MODE_USAGE_MISMATCH;
+    }
+    if (context->flags != 0 || !ribos_artifact_bytes_are_zero(
+            (const uint8_t *)context->reserved,
+            sizeof(context->reserved))) {
+        return RIBOS_ARTIFACT_TRUST_RESERVED_NONZERO;
+    }
+    if (ribos_artifact_bytes_are_zero(
+            view->artifact_hash,
+            RIBOS_SCHEMA_DIGEST_BYTES) ||
+        ribos_artifact_bytes_are_zero(
+            view->schema_digest,
+            RIBOS_SCHEMA_DIGEST_BYTES) ||
+        ribos_artifact_bytes_are_zero(
+            context->product_digest,
+            RIBOS_SCHEMA_DIGEST_BYTES) ||
+        ribos_artifact_bytes_are_zero(
+            context->rollback_domain_digest,
+            RIBOS_SCHEMA_DIGEST_BYTES)) {
+        return RIBOS_ARTIFACT_TRUST_INVALID_IDENTITY;
+    }
+    payload_length = (uint64_t)view->payload_length;
+    if ((size_t)payload_length != view->payload_length) {
+        return RIBOS_ARTIFACT_TRUST_INVALID_ARGUMENT;
     }
     ribos_artifact_sha256(key_id, key_id_length, key_id_hash);
-    memset(output, 0, RIBOS_ARTIFACT_SIGNATURE_MESSAGE_BYTES);
+    memset(output, 0, RIBOS_ARTIFACT_TRUST_MESSAGE_V1_BYTES);
     writer = (RibosArtifactWriter){
         .output = output,
-        .capacity = RIBOS_ARTIFACT_SIGNATURE_MESSAGE_BYTES,
+        .capacity = RIBOS_ARTIFACT_TRUST_MESSAGE_V1_BYTES,
     };
     ribos_artifact_writer_bytes(&writer, 0, domain, sizeof(domain));
     ribos_artifact_writer_u16(
-        &writer, 32, RIBOS_ARTIFACT_ENVELOPE_V1_MAJOR);
+        &writer, 32, RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MAJOR);
     ribos_artifact_writer_u16(
-        &writer, 34, RIBOS_ARTIFACT_ENVELOPE_V1_MINOR);
-    ribos_artifact_writer_u16(&writer, 36, (uint16_t)algorithm);
-    ribos_artifact_writer_u64(&writer, 40, payload_length);
+        &writer, 34, RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MINOR);
+    ribos_artifact_writer_u16(
+        &writer, 36, view->envelope_major);
+    ribos_artifact_writer_u16(
+        &writer, 38, view->envelope_minor);
+    ribos_artifact_writer_u16(&writer, 40, view->vm_abi_major);
+    ribos_artifact_writer_u16(&writer, 42, view->vm_abi_minor);
+    ribos_artifact_writer_u16(&writer, 44, view->isa_major);
+    ribos_artifact_writer_u16(&writer, 46, view->isa_minor);
+    ribos_artifact_writer_u16(
+        &writer, 48, (uint16_t)view->hash_algorithm);
+    ribos_artifact_writer_u16(&writer, 50, (uint16_t)algorithm);
+    ribos_artifact_writer_u16(&writer, 52, context->mode);
+    ribos_artifact_writer_u16(&writer, 54, context->key_usage);
+    ribos_artifact_writer_u64(&writer, 56, context->sequence);
+    ribos_artifact_writer_u64(&writer, 64, payload_length);
     ribos_artifact_writer_bytes(
-        &writer, 48, artifact_hash, RIBOS_SCHEMA_DIGEST_BYTES);
+        &writer,
+        72,
+        view->artifact_hash,
+        RIBOS_SCHEMA_DIGEST_BYTES);
     ribos_artifact_writer_bytes(
-        &writer, 80, key_id_hash, RIBOS_SCHEMA_DIGEST_BYTES);
+        &writer,
+        104,
+        context->product_digest,
+        RIBOS_SCHEMA_DIGEST_BYTES);
+    ribos_artifact_writer_bytes(
+        &writer,
+        136,
+        view->schema_digest,
+        RIBOS_SCHEMA_DIGEST_BYTES);
+    ribos_artifact_writer_bytes(
+        &writer,
+        168,
+        context->rollback_domain_digest,
+        RIBOS_SCHEMA_DIGEST_BYTES);
+    ribos_artifact_writer_bytes(
+        &writer, 200, key_id_hash, RIBOS_SCHEMA_DIGEST_BYTES);
     return writer.failed ?
-        RIBOS_ARTIFACT_INVALID_ARGUMENT : RIBOS_ARTIFACT_OK;
+        RIBOS_ARTIFACT_TRUST_INVALID_ARGUMENT :
+        RIBOS_ARTIFACT_TRUST_OK;
 }
 
 const char *

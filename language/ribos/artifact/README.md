@@ -9,6 +9,7 @@ v1.1을 `.rba`로 내리는 emitter implementation은 host compiler 경계인
 validated Policy IR + resource closure
   -> canonical little-endian payload
   -> SHA-256 artifact identity
+  -> product-bound 232-byte trust message
   -> optional Ed25519 signature envelope
   -> borrowed structural view
 ```
@@ -40,9 +41,9 @@ CLI로 source-map을 포함한 unsigned development artifact를 만들 수 있�
 build/tools/ribosc --emit-artifact policy.rba policy.rbs
 ```
 
-이 계층은 Ed25519 signature의 크기와 canonical signing message를 고정하지만
-암호학적 signature verification은 수행하지 않는다. 또한 structural reader 성공은
-bytecode type/CFG/helper semantics가 검증되었다는 뜻이 아니다. 독립 hostile-byte
-two-stage verifier는 `vm/` 계층에 있고 `make check-ribos-verifier`로 검사한다.
-Stage-2는 exact resource closure까지 소유하며 key policy와 VM dispatch는 별도
-후속 책임이다.
+이 계층은 Ed25519 signature의 크기와 artifact/product/schema/mode/usage/domain/sequence를
+봉인하는 canonical 232-byte trust message를 고정하지만 암호학적 signature verification은
+수행하지 않는다. 또한 structural reader 성공은 bytecode type/CFG/helper semantics가
+검증되었다는 뜻이 아니다. 독립 hostile-byte two-stage verifier는 `vm/` 계층에 있고
+`make check-ribos-verifier`로 검사한다. Stage-2는 exact resource closure까지 소유하며 key
+policy와 VM dispatch는 별도 책임이다.

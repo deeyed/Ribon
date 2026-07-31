@@ -75,11 +75,16 @@ Composer는 `build/` 아래 최소 다음을 생성한다.
 - final link map
 - target artifact 또는 package manifest
 
+Security binding을 생성하는 product의 trust identity는 selected source manifest exact bytes의
+SHA-256이다. Composer report의 source-manifest digest와 signer input의 product digest는 같아야
+한다. Parsed JSON을 다시 serialize한 byte나 generated C source hash로 product identity를
+대체하지 않는다.
+
 Ribos policy를 선택한 product는 추가로 versioned schema provider, stable-ID helper
-execution table, exact service route, canonical helper-contract digest, mode/phase와
-resource limit을 생성한다. Compiler/verifier가 소비하는 schema identity와 adapter가
-dispatch하는 helper contract는 같은 manifest에서 나와야 한다. Callback 주소와 native
-pointer는 canonical digest에 포함하지 않는다.
+execution table, exact service route, canonical helper-contract digest, mode/phase,
+single key usage, rollback-domain digest와 resource limit을 생성한다. Compiler/verifier가
+소비하는 schema identity와 adapter가 dispatch하는 helper contract는 같은 manifest에서
+나와야 한다. Callback 주소와 native pointer는 canonical digest에 포함하지 않는다.
 
 Generated output은 정본 source가 아니며 build directory 밖에 기록하지 않는다.
 

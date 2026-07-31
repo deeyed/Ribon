@@ -53,6 +53,7 @@ Signed manifest는 다음 정보를 포함한다.
 - image format과 entry compatibility
 - predecessor와 rollback 조건
 - signing key ID와 delegation
+- single key usage와 rollback-domain ID
 - recovery와 confirmation policy
 
 Transport URI와 mirror는 서명된 정책 또는 provisioned endpoint에서 얻는다.
@@ -71,9 +72,14 @@ Partial payload와 `STAGING` destination을 실행하지 않는다.
 
 ## Anti-rollback
 
-Sequence는 wrap하지 않는 unsigned monotonic 값이다. Protected sequence보다 작은 manifest는
-서명이 유효해도 거부한다. 승인된 기능 rollback도 더 큰 sequence의 새 manifest를
-요구한다.
+Sequence는 domain별 wrap하지 않는 unsigned monotonic 값이다. Confirmed floor가 `N`이면 새
+pending candidate는 정확히 `N+1`이어야 한다. Trial 동안 confirmed `N`과 pending `N+1`만
+실행 authority를 가지며 confirmation commit 뒤에는 `N`을 normal authority에서 거부한다.
+승인된 기능 rollback도 더 큰 sequence의 새 manifest를 요구한다.
+
+Update manifest signature는 `UPDATE_MANIFEST` single key usage와 exact product, mode,
+rollback-domain 및 sequence에 결속된다. Policy, image와 recovery key usage를 update manifest
+authority로 재사용하지 않는다.
 
 ## Protocol confirmation
 

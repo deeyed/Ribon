@@ -182,9 +182,11 @@ table, capability·resource budget와 schema digest를 explicit little-endian으
 직렬화한다. Packed host structure는 wire ABI가 아니다.
 
 Artifact payload의 SHA-256는 byte identity를 제공한다. Optional Ed25519 envelope는
-canonical signing message와 product key ID를 결합한다. Structural reader는
-signature의 암호학적 유효성이나 bytecode semantics를 주장하지 않으며, product key
-policy와 hostile-byte verifier가 실행 전에 각각 독립적으로 통과해야 한다.
+product-bound canonical trust message와 product key ID를 결합한다. Message는 artifact,
+product, schema, VM/ISA, mode, single usage, rollback domain과 sequence를 봉인한다.
+Structural reader는 signature의 암호학적 유효성이나 bytecode semantics를 주장하지 않으며,
+product key policy, rollback authority와 hostile-byte verifier가 실행 전에 각각 독립적으로
+통과해야 한다.
 
 Product type, member, helper signature/capability, ownership, parameter
 borrow/consume mode, typestate transition, terminal boot action과 handoff field는

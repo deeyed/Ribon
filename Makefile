@@ -867,10 +867,16 @@ $(RIBOS_ARTIFACT_TEST): language/ribos/artifact/tests/artifact_tests.c \
 		$(RIBOS_HOST_SUPPORT_LIB) -o $@
 
 check-ribos-artifact: check-ribos-parser-snapshot \
-		$(RIBOS_PARSER_PILOT) $(RIBOS_ARTIFACT_TEST)
+		$(RIBOS_PARSER_PILOT) $(RIBOS_ARTIFACT_TEST) \
+		tools/inspect_ribos_trust_message.py \
+		tests/fixtures/security/ribos-policy-trust-v1.json
 	$(RIBOS_ARTIFACT_TEST)
 	$(PYTHON) language/ribos/artifact/tests/artifact_tests.py \
 		--compiler $(RIBOS_PARSER_PILOT)
+	$(PYTHON) language/ribos/artifact/tests/trust_message_tests.py \
+		--c-codec $(RIBOS_ARTIFACT_TEST) \
+		--inspector tools/inspect_ribos_trust_message.py \
+		--vector tests/fixtures/security/ribos-policy-trust-v1.json
 
 $(RIBOS_VERIFIER): language/ribos/host/tools/verify.c \
 		$(RIBOS_TARGET_CORE_LIB) Makefile

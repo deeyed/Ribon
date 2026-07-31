@@ -9,6 +9,7 @@ code_paths:
   - language/ribos/host/include/ribos/host/artifact_emitter.h
   - language/ribos/host/src/artifact_emitter.c
   - language/ribos/ir/include/ribos/ir/
+  - tools/inspect_ribos_trust_message.py
 tests:
   - make check-ribos-artifact
   - make check-ribos-verifier
@@ -16,6 +17,7 @@ tests:
   - make check-ribos-resources
   - make check
   - make docs
+  - ribon-trust-message-vector-v1
 hardware:
   - none
 supersedes:
@@ -94,25 +96,30 @@ total length = signature offset + signature length = file length
 Artifact hash는 signature envelope, key ID와 signature bytes를 포함하지 않고
 executable payload 전체만 포함한다.
 
-### Ed25519 signing message
+### Product-bound Ed25519 trust message
 
-Signer와 verifier는 다음 112-byte message에 Ed25519를 적용한다.
+Signer와 verifier는 232-byte `RIBON-TRUST-MESSAGE-V1`에 Ed25519를 적용한다. Exact offset,
+mode와 key-usage registry, product/domain identity 및 authorization ordering은
+`contracts/security/signed-object-trust-v1`이 소유한다.
 
-| Offset | Size | Value |
-| ---: | ---: | --- |
-| 0 | 32 | zero-padded ASCII domain `RIBOS-ARTIFACT-SIGNATURE-V1` |
-| 32 | 2 | envelope major, little-endian |
-| 34 | 2 | envelope minor, little-endian |
-| 36 | 2 | signature algorithm, little-endian |
-| 38 | 2 | zero |
-| 40 | 8 | payload length, little-endian |
-| 48 | 32 | payload SHA-256 |
-| 80 | 32 | `SHA-256(key ID bytes)` |
+Message는 다음 값을 모두 봉인한다.
+
+- envelope, VM ABI와 ISA version
+- SHA-256와 Ed25519 algorithm ID
+- executable payload length와 SHA-256
+- selected source product manifest SHA-256
+- payload schema digest
+- execution mode와 single key usage
+- rollback-domain digest와 monotonic sequence
+- `SHA-256(key ID bytes)`
 
 Key ID는 key 자체가 아니며 product trust store의 immutable key 선택자다. Production
 loader는 product policy에 따라 key ID를 trust root에 resolve하고 signature를
 암호학적으로 검증해야 한다. Core codec의 hash와 envelope-shape 검사 성공은
 signature 인증 성공을 의미하지 않는다.
+
+112-byte signing message를 승인하는 compatibility path는 없다. Update manifest와 boot image는
+같은 usage registry를 사용하지만 Ribos policy message로 서명하지 않는다.
 
 ## Executable payload header
 
@@ -415,6 +422,6 @@ helper-specific bound, reachable capability, opaque provenance, ownership/typest
 terminal/fault closure를 구현한다. Runtime counter는 VM gate이며 Stage-2 report도
 signature와 rollback을 포함한 실행 certificate가 아니다.
 
-Production verifier는 그 뒤 signature와 rollback/product policy를 확인한다. Structural
-reader 성공, host emitter 성공 또는 valid signature 중 어느 하나만으로 artifact를
-실행할 수 없다.
+Production authorizer는 product-bound canonical message의 signature, key usage와 rollback
+state를 확인한 뒤 verifier를 실행한다. Structural reader 성공, host emitter 성공 또는 valid
+signature 중 어느 하나만으로 artifact를 실행할 수 없다.

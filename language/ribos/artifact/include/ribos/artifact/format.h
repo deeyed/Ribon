@@ -31,7 +31,9 @@ extern "C" {
 #define RIBOS_ARTIFACT_MAX_HELPER_IMPORTS 256u
 #define RIBOS_ARTIFACT_MAX_KEY_ID_BYTES 64u
 #define RIBOS_ARTIFACT_ED25519_SIGNATURE_BYTES 64u
-#define RIBOS_ARTIFACT_SIGNATURE_MESSAGE_BYTES 112u
+#define RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MAJOR 1u
+#define RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MINOR 0u
+#define RIBOS_ARTIFACT_TRUST_MESSAGE_V1_BYTES 232u
 #define RIBOS_ARTIFACT_INVALID_ID UINT32_MAX
 #define RIBOS_BYTECODE_FRAME_ALIGNMENT_V1 8u
 
@@ -71,6 +73,56 @@ typedef enum RibosArtifactSignatureAlgorithm {
     RIBOS_ARTIFACT_SIGNATURE_NONE = 0,
     RIBOS_ARTIFACT_SIGNATURE_ED25519 = 1
 } RibosArtifactSignatureAlgorithm;
+
+/** Product-bound trust message가 봉인하는 stable execution mode다. */
+typedef enum RibosArtifactTrustMode {
+    RIBOS_ARTIFACT_TRUST_MODE_NORMAL = 1,
+    RIBOS_ARTIFACT_TRUST_MODE_RECOVERY = 2,
+    RIBOS_ARTIFACT_TRUST_MODE_PROVISIONING = 3,
+    RIBOS_ARTIFACT_TRUST_MODE_DIAGNOSTIC = 4
+} RibosArtifactTrustMode;
+
+/** 한 signature가 승인할 수 있는 단일 key usage registry다. */
+typedef enum RibosArtifactKeyUsage {
+    RIBOS_ARTIFACT_KEY_USAGE_POLICY_NORMAL = 1,
+    RIBOS_ARTIFACT_KEY_USAGE_POLICY_RECOVERY = 2,
+    RIBOS_ARTIFACT_KEY_USAGE_POLICY_PROVISIONING = 3,
+    RIBOS_ARTIFACT_KEY_USAGE_POLICY_DIAGNOSTIC = 4,
+    RIBOS_ARTIFACT_KEY_USAGE_UPDATE_MANIFEST = 5,
+    RIBOS_ARTIFACT_KEY_USAGE_BOOT_IMAGE = 6
+} RibosArtifactKeyUsage;
+
+/** Canonical trust-message codec의 stable 결과다. */
+typedef enum RibosArtifactTrustStatus {
+    RIBOS_ARTIFACT_TRUST_OK = 0,
+    RIBOS_ARTIFACT_TRUST_INVALID_ARGUMENT,
+    RIBOS_ARTIFACT_TRUST_UNSUPPORTED_VERSION,
+    RIBOS_ARTIFACT_TRUST_UNSUPPORTED_ALGORITHM,
+    RIBOS_ARTIFACT_TRUST_INVALID_MODE,
+    RIBOS_ARTIFACT_TRUST_INVALID_USAGE,
+    RIBOS_ARTIFACT_TRUST_MODE_USAGE_MISMATCH,
+    RIBOS_ARTIFACT_TRUST_INVALID_IDENTITY,
+    RIBOS_ARTIFACT_TRUST_RESERVED_NONZERO
+} RibosArtifactTrustStatus;
+
+/**
+ * Product authority가 signer와 verifier에 제공하는 trust tuple v1이다.
+ *
+ * 이 구조체를 wire로 직접 저장하지 않는다. Digest는 각각 exact source product
+ * manifest, rollback-domain ID의 SHA-256이고 sequence는 wrap하지 않는 u64다.
+ */
+typedef struct RibosArtifactTrustContextV1 {
+    uint32_t size;
+    uint16_t trust_major;
+    uint16_t trust_minor;
+    uint16_t mode;
+    uint16_t key_usage;
+    uint32_t flags;
+    uint64_t sequence;
+    uint8_t product_digest[RIBOS_SCHEMA_DIGEST_BYTES];
+    uint8_t rollback_domain_digest[RIBOS_SCHEMA_DIGEST_BYTES];
+    uint64_t reserved[4];
+} RibosArtifactTrustContextV1;
 
 /** Envelope flag의 안정된 의미 비트다. */
 typedef enum RibosArtifactEnvelopeFlags {
@@ -304,18 +356,20 @@ const RibosArtifactSectionView *ribos_artifact_find_section(
     RibosArtifactSectionKind kind);
 
 /**
- * Ed25519 signer와 verifier가 공유하는 canonical 112-byte message를 만든다.
+ * Ed25519 signer와 verifier가 공유하는 product-bound 232-byte message를 만든다.
  *
- * Message는 domain, envelope version, algorithm, payload length, payload hash와
- * SHA-256(key ID)를 결합한다.
+ * Unsigned view를 signer가 사용할 수 있도록 algorithm과 key ID는 별도 입력이다.
+ * Message는 artifact/product/schema/domain digest, VM/ISA, mode, usage와 sequence를
+ * explicit little-endian으로 봉인한다. Update/image usage는 Ribos policy artifact에
+ * 사용할 수 없으며 별도 object codec이 같은 stable registry를 소비한다.
  */
-RibosArtifactStatus ribos_artifact_signature_message_v1(
+RibosArtifactTrustStatus ribos_artifact_trust_message_v1(
+    const RibosArtifactView *view,
     RibosArtifactSignatureAlgorithm algorithm,
     const uint8_t *key_id,
     size_t key_id_length,
-    uint64_t payload_length,
-    const uint8_t artifact_hash[RIBOS_SCHEMA_DIGEST_BYTES],
-    uint8_t output[RIBOS_ARTIFACT_SIGNATURE_MESSAGE_BYTES]);
+    const RibosArtifactTrustContextV1 *context,
+    uint8_t output[RIBOS_ARTIFACT_TRUST_MESSAGE_V1_BYTES]);
 
 /** Stable bytecode opcode의 ASCII spelling을 반환한다. */
 const char *ribos_bytecode_opcode_name(RibosBytecodeOpcode opcode);

@@ -58,11 +58,13 @@ product manifest
 `RibonRibosProductBinding`은 같은 product manifest에서 다음을 생성한다.
 
 - product와 policy stable ID
+- selected source product manifest의 exact-byte SHA-256
 - versioned schema provider와 schema digest
 - stable ID 순서의 helper execution contract
 - callback 주소를 제외한 canonical helper-contract digest
 - helper별 exact service kind, service ID와 Ribon capability
 - Ribos capability, allowed mode와 exact boot phase
+- single key usage, rollback-domain digest와 candidate sequence source
 - instruction, helper, stack, arena, I/O, operation, poll, duration, call-depth,
   handle와 trace limit
 - monotonic timer와 optional required watchdog service
@@ -92,9 +94,14 @@ generated source와 linked object graph의 부재로 증명한다.
 
 ## Authorization과 arena
 
-Product authorizer는 signature, key identity, rollback counter와 product trust policy를
-소유한다. VM authorizer ABI는 receipt만 소비하며 generic adapter는 key format이나
-secure storage를 해석하지 않는다.
+Product authorizer는 product-bound 232-byte trust message, signature, key identity, rollback
+counter와 product trust policy를 소유한다. VM authorizer ABI는 receipt만 소비하며 generic
+adapter는 key format이나 secure storage를 해석하지 않는다.
+
+Authorization은 structural open, product/schema/mode/usage/domain identity, bounded key policy,
+Ed25519, protected rollback state, Stage-1/2 verifier 순서로 진행한다. Later stage 성공으로 앞선
+실패를 덮어쓰지 않으며 첫 stable failure class를 보존한다. Product callback은 artifact digest와
+schema digest만 보고 signature를 승인할 수 없다.
 
 Core가 제공한 `RibonArena`는 다음 순서로만 증가한다.
 
