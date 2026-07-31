@@ -107,6 +107,14 @@ struct RibonMonotonicTimerServiceOperations {
     RibonServiceTimerNowFn now; /**< Monotonic counter snapshot callback이다. */
 };
 
+/** @brief Boot policy execution deadline을 감시하는 watchdog operation table이다. */
+struct RibonWatchdogServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    void *context; /**< Environment-owned borrowed context다. */
+    RibonServiceWatchdogArmFn arm; /**< Non-zero millisecond timeout을 arm한다. */
+};
+
 /** @brief Persistent attempt metadata role의 typed operation table이다. */
 struct RibonPersistentMetadataServiceOperations {
     uint32_t size; /**< Operation table byte 크기다. */
@@ -232,6 +240,10 @@ int ribon_environment_plugin_operations_are_valid(
 
 /** @brief Diagnostic sink service operation table을 검사한다. */
 int ribon_diagnostic_sink_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor);
+
+/** @brief Watchdog service operation table을 검사한다. */
+int ribon_watchdog_service_operations_are_valid(
     const struct RibonServiceDescriptor *descriptor);
 
 /** @brief Machine-description service operation table을 검사한다. */

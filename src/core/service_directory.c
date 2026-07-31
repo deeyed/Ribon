@@ -324,6 +324,24 @@ int ribon_diagnostic_sink_service_operations_are_valid(
            operations->write != 0;
 }
 
+/** @brief Watchdog service operation table의 exact typed ABI를 검사한다. */
+int ribon_watchdog_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonWatchdogServiceOperations *operations;
+    if (descriptor == 0 ||
+        descriptor->kind != RIBON_SERVICE_KIND_WATCHDOG ||
+        descriptor->provides != RIBON_CAP_WATCHDOG ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return operations != 0 &&
+           operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->arm != 0;
+}
+
 /** @brief Machine-description service operation table을 검사한다. */
 int ribon_machine_description_service_operations_are_valid(
     const struct RibonServiceDescriptor *descriptor) {

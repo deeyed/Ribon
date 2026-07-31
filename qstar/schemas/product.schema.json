@@ -56,6 +56,215 @@
         "load_size": {"type": "integer", "minimum": 1}
       }
     },
+    "ribos_policy": {
+      "type": "object",
+      "required": [
+        "policy_id",
+        "schema_symbol",
+        "authorize_symbol",
+        "factory_recovery_symbol",
+        "validate_boot_action_symbol",
+        "timer_service_id",
+        "watchdog_service_id",
+        "watchdog_required",
+        "phase",
+        "capabilities",
+        "ribon_capabilities",
+        "arena_budget",
+        "limits",
+        "helpers"
+      ],
+      "properties": {
+        "policy_id": {"type": "string", "minLength": 1},
+        "schema_symbol": {"type": "string", "pattern": "^ribos_"},
+        "authorize_symbol": {"type": "string", "pattern": "^ribon_"},
+        "factory_recovery_symbol": {"type": "string", "pattern": "^ribon_"},
+        "validate_boot_action_symbol": {"type": "string", "pattern": "^ribon_"},
+        "timer_service_id": {"type": "string", "minLength": 1},
+        "watchdog_service_id": {
+          "oneOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "watchdog_required": {"type": "boolean"},
+        "phase": {"const": "boot"},
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "BOOT",
+              "DEVICE",
+              "DIAGNOSTIC",
+              "FLASH",
+              "HANDOFF",
+              "INSPECT",
+              "NETWORK",
+              "STATE"
+            ]
+          }
+        },
+        "ribon_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "arena_budget": {"type": "integer", "minimum": 1},
+        "limits": {
+          "type": "object",
+          "required": [
+            "maximum_instructions",
+            "maximum_helper_calls",
+            "maximum_stack_bytes",
+            "maximum_arena_bytes",
+            "maximum_input_bytes",
+            "maximum_output_bytes",
+            "maximum_operations",
+            "maximum_polls",
+            "maximum_execution_duration_ns",
+            "maximum_helper_duration_ns",
+            "maximum_call_depth",
+            "maximum_handles",
+            "maximum_trace_records"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "maximum_instructions": {"type": "integer", "minimum": 1},
+            "maximum_helper_calls": {"type": "integer", "minimum": 1},
+            "maximum_stack_bytes": {"type": "integer", "minimum": 1},
+            "maximum_arena_bytes": {"type": "integer", "minimum": 1},
+            "maximum_input_bytes": {"type": "integer", "minimum": 1},
+            "maximum_output_bytes": {"type": "integer", "minimum": 1},
+            "maximum_operations": {"type": "integer", "minimum": 1},
+            "maximum_polls": {"type": "integer", "minimum": 1},
+            "maximum_execution_duration_ns": {"type": "integer", "minimum": 1},
+            "maximum_helper_duration_ns": {"type": "integer", "minimum": 1},
+            "maximum_call_depth": {"type": "integer", "minimum": 1},
+            "maximum_handles": {"type": "integer", "minimum": 1},
+            "maximum_trace_records": {"type": "integer", "minimum": 1}
+          }
+        },
+        "helpers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "required": [
+              "stable_id",
+              "callback_symbol",
+              "service_kind",
+              "service_id",
+              "ribon_capabilities",
+              "ribos_capabilities",
+              "effect",
+              "durability",
+              "handle_transition",
+              "transition_parameter",
+              "allowed_modes",
+              "allowed_phases",
+              "maximum_input_bytes",
+              "maximum_output_bytes",
+              "maximum_operations",
+              "maximum_polls",
+              "maximum_duration_ns"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "stable_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967294
+              },
+              "callback_symbol": {"type": "string", "pattern": "^ribon_"},
+              "service_kind": {
+                "oneOf": [
+                  {"type": "string", "minLength": 1},
+                  {"type": "null"}
+                ]
+              },
+              "service_id": {
+                "oneOf": [
+                  {"type": "string", "minLength": 1},
+                  {"type": "null"}
+                ]
+              },
+              "ribon_capabilities": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              },
+              "ribos_capabilities": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              },
+              "effect": {
+                "enum": ["pure", "ephemeral", "journaled", "terminal"]
+              },
+              "durability": {
+                "enum": [
+                  "none",
+                  "volatile",
+                  "journal-receipt",
+                  "sealed-intent"
+                ]
+              },
+              "handle_transition": {
+                "enum": [
+                  "none",
+                  "create",
+                  "consume",
+                  "replace",
+                  "terminal-consume"
+                ]
+              },
+              "transition_parameter": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "allowed_modes": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "normal",
+                    "recovery",
+                    "provisioning",
+                    "diagnostic"
+                  ]
+                }
+              },
+              "allowed_phases": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "early",
+                    "foundation",
+                    "driver",
+                    "boot",
+                    "quiesce"
+                  ]
+                }
+              },
+              "maximum_input_bytes": {"type": "integer", "minimum": 1},
+              "maximum_output_bytes": {"type": "integer", "minimum": 1},
+              "maximum_operations": {"type": "integer", "minimum": 1},
+              "maximum_polls": {"type": "integer", "minimum": 1},
+              "maximum_duration_ns": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
     "max_plugins": {"type": "integer", "minimum": 1, "maximum": 64},
     "services": {
       "type": "array",

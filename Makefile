@@ -75,6 +75,8 @@ endif
 CORE_LIB := $(BUILD_DIR)/libribon-core.a
 BOOT_LIB := $(BUILD_DIR)/libribon-boot.a
 SDK_LIB := $(BUILD_DIR)/libribon-sdk.a
+RIBOS_POLICY_LIB := $(BUILD_DIR)/libribon-policy-ribos.a
+RIBOS_POLICY_OBJ := $(BUILD_DIR)/obj/src/plugins/policy/ribos/adapter.o
 HOST_REFERENCE := $(BUILD_DIR)/ribon-host-reference
 KERNEL_FIXTURE := $(BUILD_DIR)/fixtures/kernel.elf
 HOST_MANIFEST := qstar/manifests/host-reference.json
@@ -97,6 +99,7 @@ RIBOS_VM_SCALAR_TEST := $(TEST_BUILD_DIR)/ribos_vm_scalar_tests
 RIBOS_VM_CALLS_LOOPS_TEST := $(TEST_BUILD_DIR)/ribos_vm_calls_loops_tests
 RIBOS_VM_HANDLES_TEST := $(TEST_BUILD_DIR)/ribos_vm_handles_tests
 RIBOS_VM_TERMINAL_TEST := $(TEST_BUILD_DIR)/ribos_vm_terminal_tests
+RIBOS_RIBON_INTEGRATION_TEST := $(TEST_BUILD_DIR)/ribos_ribon_integration_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_RUNNER := $(BUILD_ROOT)/tools/ribos-run
 RIBOS_PEGEN_ROOT ?=
@@ -212,6 +215,7 @@ ARCH_SRCS := \
 	src/arch/$(RIBON_ARCH)/arch.c
 HOST_PRODUCT_SRCS := \
 	src/environments/host/services.c \
+	src/environments/host/ribos_policy.c \
 	src/protocols/synthetic/protocol.c \
 	src/image-formats/elf64.c \
 	src/modes/normal.c
@@ -477,6 +481,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-vm-faults check-ribos-host-tools \
 	check-ribos-replay check-ribos-conformance \
 	check-ribos-hostile check-ribos-vm \
+	check-ribos-ribon-integration check-ribos-product-graphs \
+	check-ribos-normal-no-network check-ribos-factory-recovery \
 	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
@@ -491,7 +497,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 
 all: lib host-reference
 
-lib: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB)
+lib: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB) $(RIBOS_POLICY_LIB) \
+	$(RIBOS_TARGET_CORE_LIB)
 
 host-reference: $(HOST_REFERENCE)
 
@@ -529,6 +536,19 @@ $(eval $(call RIBOS_TARGET_OBJECT,runtime_helpers,language/ribos/vm/src/runtime/
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_interpreter,language/ribos/vm/src/runtime/interpreter.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_terminal,language/ribos/vm/src/runtime/terminal.c))
 
+$(RIBOS_POLICY_OBJ): src/plugins/policy/ribos/adapter.c \
+		include/Ribon/policy/ribos.h $(RIBOS_HEADERS) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(BUILD_DIR)/obj/src/environments/host/ribos_policy.o: \
+		src/environments/host/ribos_policy.c \
+		src/environments/host/ribos_policy.h $(RIBOS_HEADERS) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,allocator,language/ribos/host/src/allocator.c))
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,format,language/ribos/host/src/format.c))
 $(eval $(call RIBOS_HOST_SUPPORT_OBJECT,writer,language/ribos/host/src/writer.c))
@@ -551,6 +571,11 @@ $(RIBOS_TARGET_CORE_LIB): $(RIBOS_TARGET_CORE_OBJS) Makefile
 	@mkdir -p $(@D)
 	$(RM) $@
 	$(AR) rcs $@ $(RIBOS_TARGET_CORE_OBJS)
+
+$(RIBOS_POLICY_LIB): $(RIBOS_POLICY_OBJ) Makefile
+	@mkdir -p $(@D)
+	$(RM) $@
+	$(AR) rcs $@ $(RIBOS_POLICY_OBJ)
 
 $(RIBOS_HOST_SUPPORT_LIB): $(RIBOS_HOST_SUPPORT_OBJS) Makefile
 	@mkdir -p $(@D)
@@ -923,7 +948,8 @@ $(GENERATED_REGISTRY_C): $(HOST_MANIFEST) tools/generate_plugin_registry.py
 
 $(GENERATED_REGISTRY_O): $(GENERATED_REGISTRY_C)
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
 
 $(CORE_LIB): $(CORE_OBJS) Makefile
 	@mkdir -p $(@D)
@@ -942,8 +968,44 @@ $(SDK_LIB): $(SDK_LIB_OBJS) Makefile
 
 $(HOST_REFERENCE): \
 	$(HOST_MAIN_OBJ) $(ARCH_OBJS) $(HOST_PRODUCT_OBJS) \
-	$(GENERATED_REGISTRY_O) $(BOOT_LIB) $(CORE_LIB)
+	$(GENERATED_REGISTRY_O) $(RIBOS_POLICY_LIB) \
+	$(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(RIBOS_RIBON_INTEGRATION_TEST): \
+		tests/policy/ribos_integration_tests.c \
+		$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
+		$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) \
+		tests/policy/ribos_integration_tests.c \
+		$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
+		$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+check-ribos-ribon-integration: $(RIBOS_RIBON_INTEGRATION_TEST) \
+		$(RIBOS_PARSER_PILOT)
+	@tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(RIBOS_PARSER_PILOT) --emit-artifact \
+			"$$tmp/aggregate-ownership.rba" \
+			language/ribos/vm/tests/aggregate_ownership.rbs; \
+		$(RIBOS_RIBON_INTEGRATION_TEST) \
+			"$$tmp/aggregate-ownership.rba"
+
+check-ribos-product-graphs:
+	$(PYTHON) tools/lint/ribos_product_graph_lint.py \
+		--manifest $(HOST_MANIFEST) --architecture $(RIBON_ARCH)
+
+check-ribos-normal-no-network:
+	$(PYTHON) tools/lint/ribos_normal_no_network_lint.py \
+		--manifest $(HOST_MANIFEST) --architecture $(RIBON_ARCH)
+
+check-ribos-factory-recovery: check-ribos-ribon-integration
+	@echo "RIBOS-FACTORY-RECOVERY-OK external-artifact=optional \
+authorization=fail-closed notification=once evidence=host-object"
 
 $(KERNEL_FIXTURE): tools/make_elf64_fixture.py
 	@mkdir -p $(@D)
@@ -996,7 +1058,7 @@ $(TEST_BUILD_DIR)/arch_ops_%_tests: \
 $(CORE_SERVICE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/core/service_boundary_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
-	$(BOOT_LIB) $(CORE_LIB)
+	$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(PORT_SERVICE_TEST): \
@@ -1009,7 +1071,7 @@ $(PORT_SERVICE_TEST): \
 $(BOOT_LIFECYCLE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/boot/lifecycle_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
-	$(BOOT_LIB) $(CORE_LIB)
+	$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(ENVIRONMENT_PERSISTENT_INPUTS_TEST): \
@@ -1571,9 +1633,13 @@ check-firmware-object-graphs: firmware-provider-reference
 		--makefile Makefile \
 		--provider-root $(FIRMWARE_PROVIDER_ROOT)
 
-check-object-graphs: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB)
+check-object-graphs: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB) $(RIBOS_POLICY_LIB) \
+		$(RIBOS_TARGET_CORE_LIB)
 	$(PYTHON) tools/lint/object_graph_lint.py \
 		--core $(CORE_LIB) --boot $(BOOT_LIB) --sdk $(SDK_LIB)
+	$(PYTHON) tools/lint/ribos_object_graph_lint.py \
+		--adapter $(RIBOS_POLICY_LIB) \
+		--vm-core $(RIBOS_TARGET_CORE_LIB)
 
 qstar-check:
 	$(QSTAR) --file qstar.lua check
@@ -1581,7 +1647,7 @@ qstar-check:
 check-one: $(HOST_REFERENCE) $(KERNEL_FIXTURE)
 	$(HOST_REFERENCE) --kernel $(KERNEL_FIXTURE) > $(BUILD_DIR)/host-reference.txt
 	grep -q "product=host-reference" $(BUILD_DIR)/host-reference.txt
-	grep -q "registry-plugins=4" $(BUILD_DIR)/host-reference.txt
+	grep -q "registry-plugins=5" $(BUILD_DIR)/host-reference.txt
 	grep -q "core-library=libribon-core" $(BUILD_DIR)/host-reference.txt
 	grep -q "boot-library=libribon-boot" $(BUILD_DIR)/host-reference.txt
 	grep -q "environment=host" $(BUILD_DIR)/host-reference.txt
@@ -1607,6 +1673,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-vm-handles check-ribos-vm-helpers \
 	check-ribos-vm-terminal check-ribos-vm-faults \
 	check-ribos-vm \
+	check-ribos-ribon-integration check-ribos-product-graphs \
+	check-ribos-normal-no-network check-ribos-factory-recovery \
 	check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \

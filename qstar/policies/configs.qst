@@ -35,3 +35,27 @@ qstar.config "ribon_test_c" {
     },
   },
 }
+
+qstar.config "ribon_ribos_target_c" {
+  toolset = "//qstar/policies:host",
+  lang = {
+    c = {
+      include_dirs = {
+        "include",
+        "language/ribos/base/include",
+        "language/ribos/schema/include",
+        "language/ribos/artifact/include",
+        "language/ribos/artifact/src",
+        "language/ribos/vm/include",
+      },
+      compile_options = {
+        "-std=c11",
+        "-O2",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+      },
+    },
+  },
+}

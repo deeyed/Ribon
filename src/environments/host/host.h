@@ -26,6 +26,8 @@ uint32_t ribon_host_lifecycle_fixture_flush_count(void);
 
 /** @brief Host durable journal fixture가 수행한 quiesce 수를 반환한다. */
 uint32_t ribon_host_lifecycle_fixture_quiesce_count(void);
+uint32_t ribon_host_lifecycle_fixture_watchdog_arm_count(void);
+uint64_t ribon_host_lifecycle_fixture_watchdog_timeout_ms(void);
 
 /** @brief Host fixture에 남은 durable metadata byte 수를 반환한다. */
 uint64_t ribon_host_lifecycle_fixture_metadata_size(void);

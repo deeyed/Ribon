@@ -27,6 +27,7 @@ qstar.group "ribon_libraries" {
   deps = {
     "//src/core:libribon_core",
     "//src/common:libribon_boot",
+    "//src/plugins:libribon_policy_ribos",
     "//src/plugins:libribon_sdk",
   },
 }

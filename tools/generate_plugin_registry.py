@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import struct
 
 
 ARCHITECTURE_MASKS = {
@@ -121,6 +123,92 @@ PAYLOAD_KEYS = {
     "load_base",
     "load_size",
 }
+RIBOS_CAPABILITIES = {
+    "INSPECT": 1 << 0,
+    "DEVICE": 1 << 1,
+    "STATE": 1 << 2,
+    "NETWORK": 1 << 3,
+    "FLASH": 1 << 4,
+    "HANDOFF": 1 << 5,
+    "BOOT": 1 << 6,
+    "DIAGNOSTIC": 1 << 7,
+}
+RIBOS_EFFECTS = {
+    "pure": ("RIBOS_VM_HELPER_EFFECT_PURE", 1),
+    "ephemeral": ("RIBOS_VM_HELPER_EFFECT_EPHEMERAL", 2),
+    "journaled": ("RIBOS_VM_HELPER_EFFECT_JOURNALED", 3),
+    "terminal": ("RIBOS_VM_HELPER_EFFECT_TERMINAL", 4),
+}
+RIBOS_DURABILITIES = {
+    "none": ("RIBOS_VM_HELPER_DURABILITY_NONE", 0),
+    "volatile": ("RIBOS_VM_HELPER_DURABILITY_VOLATILE", 1),
+    "journal-receipt": ("RIBOS_VM_HELPER_DURABILITY_JOURNAL_RECEIPT", 2),
+    "sealed-intent": ("RIBOS_VM_HELPER_DURABILITY_SEALED_INTENT", 3),
+}
+RIBOS_TRANSITIONS = {
+    "none": ("RIBOS_VM_HANDLE_TRANSITION_NONE", 0),
+    "create": ("RIBOS_VM_HANDLE_TRANSITION_CREATE", 1),
+    "consume": ("RIBOS_VM_HANDLE_TRANSITION_CONSUME", 2),
+    "replace": ("RIBOS_VM_HANDLE_TRANSITION_REPLACE", 3),
+    "terminal-consume": ("RIBOS_VM_HANDLE_TRANSITION_TERMINAL_CONSUME", 4),
+}
+RIBOS_PHASES = {
+    "early": 0,
+    "foundation": 1,
+    "driver": 2,
+    "boot": 3,
+    "quiesce": 4,
+}
+RIBOS_LIMIT_KEYS = {
+    "maximum_instructions",
+    "maximum_helper_calls",
+    "maximum_stack_bytes",
+    "maximum_arena_bytes",
+    "maximum_input_bytes",
+    "maximum_output_bytes",
+    "maximum_operations",
+    "maximum_polls",
+    "maximum_execution_duration_ns",
+    "maximum_helper_duration_ns",
+    "maximum_call_depth",
+    "maximum_handles",
+    "maximum_trace_records",
+}
+RIBOS_HELPER_KEYS = {
+    "stable_id",
+    "callback_symbol",
+    "service_kind",
+    "service_id",
+    "ribon_capabilities",
+    "ribos_capabilities",
+    "effect",
+    "durability",
+    "handle_transition",
+    "transition_parameter",
+    "allowed_modes",
+    "allowed_phases",
+    "maximum_input_bytes",
+    "maximum_output_bytes",
+    "maximum_operations",
+    "maximum_polls",
+    "maximum_duration_ns",
+}
+RIBOS_POLICY_KEYS = {
+    "policy_id",
+    "schema_symbol",
+    "authorize_symbol",
+    "factory_recovery_symbol",
+    "validate_boot_action_symbol",
+    "timer_service_id",
+    "watchdog_service_id",
+    "watchdog_required",
+    "phase",
+    "capabilities",
+    "ribon_capabilities",
+    "arena_budget",
+    "limits",
+    "helpers",
+}
 
 
 def _string(manifest: dict[str, object], key: str) -> str:
@@ -207,6 +295,213 @@ def _provider_entries(
     if symbol_required and ids != sorted(ids):
         raise ValueError(f"{key} IDs must be sorted")
     return entries
+
+
+def _ribos_string_list(
+    value: object,
+    field: str,
+    accepted: set[str],
+    allow_empty: bool = False,
+) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or (not value and not allow_empty)
+        or any(not isinstance(item, str) or item not in accepted for item in value)
+        or value != sorted(set(value))
+    ):
+        raise ValueError(f"{field} must be a sorted unique supported list")
+    return value
+
+
+def _ribos_policy(
+    manifest: dict[str, object],
+    plugin_ids: list[str],
+    services: list[dict[str, str]],
+    allowed_capabilities: list[str],
+) -> dict[str, object] | None:
+    """Validate the optional product-generated Ribos schema/helper binding."""
+
+    raw = manifest.get("ribos_policy")
+    if raw is None:
+        if "policy.ribos" in plugin_ids:
+            raise ValueError("policy.ribos plugin requires ribos_policy")
+        return None
+    if not isinstance(raw, dict) or set(raw) != RIBOS_POLICY_KEYS:
+        raise ValueError("ribos_policy must define the complete v1 binding")
+    if "policy.ribos" not in plugin_ids or "ribos" not in manifest["policies"]:
+        raise ValueError("ribos_policy requires policy.ribos and ribos policy selection")
+    selection = manifest["plugin_selections"]
+    if not isinstance(selection, list) or not any(
+        item == {"id": "policy.ribos", "kind": "policy"} for item in selection
+    ):
+        raise ValueError("ribos_policy requires the policy.ribos kind selector")
+    strings = (
+        "policy_id",
+        "schema_symbol",
+        "authorize_symbol",
+        "factory_recovery_symbol",
+        "validate_boot_action_symbol",
+        "timer_service_id",
+    )
+    for field in strings:
+        if not isinstance(raw.get(field), str) or not raw[field]:
+            raise ValueError(f"ribos_policy.{field} must be a stable string")
+    for field in (
+        "authorize_symbol",
+        "factory_recovery_symbol",
+        "validate_boot_action_symbol",
+    ):
+        if not str(raw[field]).startswith("ribon_"):
+            raise ValueError(f"ribos_policy.{field} must be a Ribon symbol")
+    if not str(raw["schema_symbol"]).startswith("ribos_"):
+        raise ValueError("ribos_policy.schema_symbol must be a Ribos schema provider")
+    if raw.get("phase") != "boot":
+        raise ValueError("Ribos policy v1 executes only in boot phase")
+    mode = str(manifest["mode"])
+    capabilities = _ribos_string_list(
+        raw.get("capabilities"),
+        "ribos_policy.capabilities",
+        set(RIBOS_CAPABILITIES),
+    )
+    ribon_capabilities = _ribos_string_list(
+        raw.get("ribon_capabilities"),
+        "ribos_policy.ribon_capabilities",
+        set(CAPABILITIES),
+    )
+    if not set(ribon_capabilities).issubset(allowed_capabilities):
+        raise ValueError("Ribos policy Ribon capabilities must be product-allowed")
+    if mode == "normal" and ({"NETWORK", "FLASH"} & set(capabilities)):
+        raise ValueError("normal Ribos policy must not grant network or flash")
+    arena_budget = raw.get("arena_budget")
+    if not isinstance(arena_budget, int) or arena_budget <= 0:
+        raise ValueError("ribos_policy.arena_budget must be positive")
+    limits = raw.get("limits")
+    if (
+        not isinstance(limits, dict)
+        or set(limits) != RIBOS_LIMIT_KEYS
+        or any(not isinstance(limits[key], int) or limits[key] <= 0 for key in limits)
+        or limits["maximum_arena_bytes"] > arena_budget
+        or limits["maximum_helper_duration_ns"] >
+            limits["maximum_execution_duration_ns"]
+    ):
+        raise ValueError("ribos_policy.limits must be a bounded complete v1 closure")
+    service_by_id = {item["id"]: item for item in services}
+    timer = service_by_id.get(str(raw["timer_service_id"]))
+    if timer is None or timer["kind"] != "monotonic-timer":
+        raise ValueError("ribos_policy timer must select a monotonic service")
+    watchdog_required = raw.get("watchdog_required")
+    watchdog_id = raw.get("watchdog_service_id")
+    if not isinstance(watchdog_required, bool):
+        raise ValueError("ribos_policy.watchdog_required must be boolean")
+    if watchdog_required:
+        watchdog = service_by_id.get(str(watchdog_id))
+        if watchdog is None or watchdog["kind"] != "watchdog":
+            raise ValueError("required Ribos watchdog must select a watchdog service")
+    elif watchdog_id is not None:
+        raise ValueError("optional Ribos watchdog ID must be null")
+    helpers = raw.get("helpers")
+    if not isinstance(helpers, list) or not helpers:
+        raise ValueError("ribos_policy.helpers must be non-empty")
+    normalized: list[dict[str, object]] = []
+    stable_ids: list[int] = []
+    for helper in helpers:
+        if not isinstance(helper, dict) or set(helper) != RIBOS_HELPER_KEYS:
+            raise ValueError("Ribos helper must define the complete execution route")
+        stable_id = helper.get("stable_id")
+        callback = helper.get("callback_symbol")
+        if (
+            not isinstance(stable_id, int)
+            or stable_id < 0
+            or stable_id >= 0xFFFFFFFF
+            or not isinstance(callback, str)
+            or not callback.startswith("ribon_")
+        ):
+            raise ValueError("Ribos helper stable ID or callback is invalid")
+        stable_ids.append(stable_id)
+        helper_ribos = _ribos_string_list(
+            helper.get("ribos_capabilities"),
+            "Ribos helper capabilities",
+            set(RIBOS_CAPABILITIES),
+        )
+        helper_ribon = _ribos_string_list(
+            helper.get("ribon_capabilities"),
+            "Ribos helper Ribon capabilities",
+            set(CAPABILITIES),
+            allow_empty=True,
+        )
+        if not set(helper_ribos).issubset(capabilities):
+            raise ValueError("helper capability exceeds Ribos policy grant")
+        if not set(helper_ribon).issubset(ribon_capabilities):
+            raise ValueError("helper Ribon capability exceeds policy grant")
+        service_kind = helper.get("service_kind")
+        service_id = helper.get("service_id")
+        if service_kind is None or service_id is None:
+            if service_kind is not None or service_id is not None or helper_ribon:
+                raise ValueError("service-free helper must not require a Ribon service")
+        elif (
+            not isinstance(service_kind, str)
+            or service_kind not in SERVICE_KIND_VALUES
+            or not isinstance(service_id, str)
+            or service_by_id.get(service_id, {}).get("kind") != service_kind
+            or not helper_ribon
+        ):
+            raise ValueError("helper service route does not match the product graph")
+        effect = helper.get("effect")
+        durability = helper.get("durability")
+        transition = helper.get("handle_transition")
+        if (
+            effect not in RIBOS_EFFECTS
+            or durability not in RIBOS_DURABILITIES
+            or transition not in RIBOS_TRANSITIONS
+        ):
+            raise ValueError("helper effect, durability, or transition is invalid")
+        expected_durability = {
+            "pure": "none",
+            "ephemeral": "volatile",
+            "journaled": "journal-receipt",
+            "terminal": "sealed-intent",
+        }[str(effect)]
+        if durability != expected_durability:
+            raise ValueError("helper durability must match its effect")
+        transition_parameter = helper.get("transition_parameter")
+        if (
+            not isinstance(transition_parameter, int)
+            or transition_parameter < 0
+            or transition_parameter > 0xFFFFFFFF
+            or (transition == "none" and transition_parameter != 0xFFFFFFFF)
+        ):
+            raise ValueError("helper transition parameter is invalid")
+        allowed_modes = _ribos_string_list(
+            helper.get("allowed_modes"),
+            "Ribos helper modes",
+            set(MODE_VALUES),
+        )
+        allowed_phases = _ribos_string_list(
+            helper.get("allowed_phases"),
+            "Ribos helper phases",
+            set(RIBOS_PHASES),
+        )
+        if allowed_modes != [mode] or allowed_phases != ["boot"]:
+            raise ValueError("Ribos helper must be closed to the selected mode and boot phase")
+        for field in (
+            "maximum_input_bytes",
+            "maximum_output_bytes",
+            "maximum_operations",
+            "maximum_polls",
+            "maximum_duration_ns",
+        ):
+            if not isinstance(helper.get(field), int) or helper[field] <= 0:
+                raise ValueError(f"Ribos helper {field} must be positive")
+        normalized.append(dict(helper))
+    if stable_ids != sorted(set(stable_ids)):
+        raise ValueError("Ribos helper stable IDs must be unique and sorted")
+    if limits["maximum_helper_calls"] < 1 or len(helpers) > 256:
+        raise ValueError("Ribos helper table exceeds v1 bounds")
+    result = dict(raw)
+    result["capabilities"] = capabilities
+    result["ribon_capabilities"] = ribon_capabilities
+    result["helpers"] = normalized
+    return result
 
 
 def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, object]:
@@ -368,11 +663,283 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
     max_plugins = manifest.get("max_plugins")
     if not isinstance(max_plugins, int) or max_plugins < len(plugins) or max_plugins > 64:
         raise ValueError("max_plugins must bound the graph and the core ABI")
+    manifest["ribos_policy"] = _ribos_policy(
+        manifest,
+        ids,
+        services,
+        allowed,
+    )
     return manifest
 
 
 def _capability_expression(values: list[str]) -> str:
     return " |\n        ".join(CAPABILITIES[value] for value in values)
+
+
+def _ribos_mask_expression(values: list[str], mapping: dict[str, int]) -> int:
+    mask = 0
+    for value in values:
+        mask |= 1 << mapping[value]
+    return mask
+
+
+def _ribos_capability_value(values: list[str]) -> int:
+    result = 0
+    for value in values:
+        result |= RIBOS_CAPABILITIES[value]
+    return result
+
+
+def _ribos_helper_digest(policy: dict[str, object]) -> bytes:
+    helpers = policy["helpers"]
+    assert isinstance(helpers, list)
+    payload = bytearray(b"RIBOS-HELPER-EXECUTION-V1".ljust(32, b"\0"))
+    payload.extend(struct.pack("<HHI", 1, 0, len(helpers)))
+    for helper in helpers:
+        assert isinstance(helper, dict)
+        ribos_caps = helper["ribos_capabilities"]
+        modes = helper["allowed_modes"]
+        phases = helper["allowed_phases"]
+        assert isinstance(ribos_caps, list)
+        assert isinstance(modes, list)
+        assert isinstance(phases, list)
+        payload.extend(
+            struct.pack(
+                "<IIIIIIII",
+                helper["stable_id"],
+                0,
+                _ribos_capability_value(ribos_caps),
+                RIBOS_EFFECTS[str(helper["effect"])][1],
+                1,
+                RIBOS_DURABILITIES[str(helper["durability"])][1],
+                RIBOS_TRANSITIONS[str(helper["handle_transition"])][1],
+                helper["transition_parameter"],
+            )
+        )
+        payload.extend(
+            struct.pack(
+                "<QQQQQQQ",
+                _ribos_mask_expression(modes, {
+                    "normal": 0,
+                    "recovery": 1,
+                    "provisioning": 2,
+                    "diagnostic": 3,
+                }),
+                _ribos_mask_expression(phases, RIBOS_PHASES),
+                helper["maximum_input_bytes"],
+                helper["maximum_output_bytes"],
+                helper["maximum_operations"],
+                helper["maximum_polls"],
+                helper["maximum_duration_ns"],
+            )
+        )
+    return hashlib.sha256(payload).digest()
+
+
+def _c_bytes(data: bytes) -> str:
+    return ", ".join(f"0x{value:02x}u" for value in data)
+
+
+def _render_ribos_policy(manifest: dict[str, object]) -> str:
+    policy = manifest.get("ribos_policy")
+    if policy is None:
+        return ""
+    assert isinstance(policy, dict)
+    helpers = policy["helpers"]
+    limits = policy["limits"]
+    assert isinstance(helpers, list)
+    assert isinstance(limits, dict)
+    callback_symbols = sorted(
+        {str(helper["callback_symbol"]) for helper in helpers}
+    )
+    callbacks = "\n".join(
+        "extern uint32_t " + symbol +
+        "(void *, const struct RibonServiceDescriptor *, "
+        "struct RibosVmHelperCall *);"
+        for symbol in callback_symbols
+    )
+    authorizer = str(policy["authorize_symbol"])
+    recovery = str(policy["factory_recovery_symbol"])
+    action_validator = str(policy["validate_boot_action_symbol"])
+    schema = str(policy["schema_symbol"])
+    binding_rows: list[str] = []
+    route_rows: list[str] = []
+    for helper in helpers:
+        assert isinstance(helper, dict)
+        ribos_caps = helper["ribos_capabilities"]
+        modes = helper["allowed_modes"]
+        phases = helper["allowed_phases"]
+        ribon_caps = helper["ribon_capabilities"]
+        assert isinstance(ribos_caps, list)
+        assert isinstance(modes, list)
+        assert isinstance(phases, list)
+        assert isinstance(ribon_caps, list)
+        binding_rows.append(
+            """    {
+        .execution = {
+            .size = sizeof(RibosVmHelperExecutionDescriptor),
+            .contract_major = RIBOS_VM_HELPER_EXECUTION_V1_MAJOR,
+            .contract_minor = RIBOS_VM_HELPER_EXECUTION_V1_MINOR,
+            .stable_id = %(stable_id)su,
+            .required_capabilities = %(ribos_caps)su,
+            .effect = %(effect)s,
+            .execution_mode = RIBOS_VM_HELPER_EXECUTION_SYNCHRONOUS,
+            .durability = %(durability)s,
+            .handle_transition = %(transition)s,
+            .transition_parameter = %(transition_parameter)su,
+            .allowed_mode_mask = UINT64_C(%(mode_mask)s),
+            .allowed_phase_mask = UINT64_C(%(phase_mask)s),
+            .maximum_input_bytes = UINT64_C(%(maximum_input_bytes)s),
+            .maximum_output_bytes = UINT64_C(%(maximum_output_bytes)s),
+            .maximum_operations = UINT64_C(%(maximum_operations)s),
+            .maximum_polls = UINT64_C(%(maximum_polls)s),
+            .maximum_duration_ns = UINT64_C(%(maximum_duration_ns)s),
+        },
+        .invoke = ribon_ribos_policy_helper_dispatch,
+    },""" % {
+                "stable_id": helper["stable_id"],
+                "ribos_caps": _ribos_capability_value(ribos_caps),
+                "effect": RIBOS_EFFECTS[str(helper["effect"])][0],
+                "durability":
+                    RIBOS_DURABILITIES[str(helper["durability"])][0],
+                "transition":
+                    RIBOS_TRANSITIONS[str(helper["handle_transition"])][0],
+                "transition_parameter": helper["transition_parameter"],
+                "mode_mask": _ribos_mask_expression(
+                    modes,
+                    {
+                        "normal": 0,
+                        "recovery": 1,
+                        "provisioning": 2,
+                        "diagnostic": 3,
+                    },
+                ),
+                "phase_mask": _ribos_mask_expression(phases, RIBOS_PHASES),
+                "maximum_input_bytes": helper["maximum_input_bytes"],
+                "maximum_output_bytes": helper["maximum_output_bytes"],
+                "maximum_operations": helper["maximum_operations"],
+                "maximum_polls": helper["maximum_polls"],
+                "maximum_duration_ns": helper["maximum_duration_ns"],
+            }
+        )
+        service_kind = (
+            "RIBON_RIBOS_NO_SERVICE_KIND"
+            if helper["service_kind"] is None
+            else SERVICE_KIND_VALUES[str(helper["service_kind"])]
+        )
+        service_id = (
+            "0"
+            if helper["service_id"] is None
+            else f"\"{helper['service_id']}\""
+        )
+        ribon_capability = (
+            "0u"
+            if not ribon_caps
+            else _capability_expression(ribon_caps)
+        )
+        route_rows.append(
+            """    {
+        .stable_id = %(stable_id)su,
+        .service_kind = %(service_kind)s,
+        .service_id = %(service_id)s,
+        .required_ribon_capabilities = %(ribon_caps)s,
+        .invoke = %(callback)s,
+    },""" % {
+                "stable_id": helper["stable_id"],
+                "service_kind": service_kind,
+                "service_id": service_id,
+                "ribon_caps": ribon_capability,
+                "callback": helper["callback_symbol"],
+            }
+        )
+    helper_digest = _ribos_helper_digest(policy)
+    mode = str(manifest["mode"])
+    watchdog_id = policy["watchdog_service_id"]
+    return f"""
+extern const struct RibosProductSchema *{schema}(void);
+extern uint32_t {authorizer}(
+    void *, const struct RibosArtifactAuthorizationRequest *,
+    struct RibosArtifactAuthorizationReceipt *);
+extern void {recovery}(
+    void *, const struct RibonRibosFailureReceipt *);
+extern int {action_validator}(
+    void *, const struct RibosVmBootAction *,
+    const struct RibonBootTransaction *);
+{callbacks}
+
+static const RibosVmHelperBinding generated_ribos_helper_bindings[] = {{
+{chr(10).join(binding_rows)}
+}};
+
+static const RibosVmHelperContract generated_ribos_helper_contract = {{
+    .size = sizeof(generated_ribos_helper_contract),
+    .contract_major = RIBOS_VM_HELPER_EXECUTION_V1_MAJOR,
+    .contract_minor = RIBOS_VM_HELPER_EXECUTION_V1_MINOR,
+    .binding_count = (uint32_t)(
+        sizeof(generated_ribos_helper_bindings) /
+        sizeof(generated_ribos_helper_bindings[0])),
+    .bindings = generated_ribos_helper_bindings,
+    .digest = {{ {_c_bytes(helper_digest)} }},
+}};
+
+static const struct RibonRibosHelperRoute generated_ribos_routes[] = {{
+{chr(10).join(route_rows)}
+}};
+
+static const RibosVmLimits generated_ribos_limits = {{
+    .size = sizeof(generated_ribos_limits),
+    .runtime_abi_major = RIBOS_VM_RUNTIME_ABI_V1_MAJOR,
+    .runtime_abi_minor = RIBOS_VM_RUNTIME_ABI_V1_MINOR,
+    .maximum_instructions = UINT64_C({limits['maximum_instructions']}),
+    .maximum_helper_calls = UINT64_C({limits['maximum_helper_calls']}),
+    .maximum_stack_bytes = UINT64_C({limits['maximum_stack_bytes']}),
+    .maximum_arena_bytes = UINT64_C({limits['maximum_arena_bytes']}),
+    .maximum_input_bytes = UINT64_C({limits['maximum_input_bytes']}),
+    .maximum_output_bytes = UINT64_C({limits['maximum_output_bytes']}),
+    .maximum_operations = UINT64_C({limits['maximum_operations']}),
+    .maximum_polls = UINT64_C({limits['maximum_polls']}),
+    .maximum_execution_duration_ns =
+        UINT64_C({limits['maximum_execution_duration_ns']}),
+    .maximum_helper_duration_ns =
+        UINT64_C({limits['maximum_helper_duration_ns']}),
+    .maximum_call_depth = {limits['maximum_call_depth']}u,
+    .maximum_handles = {limits['maximum_handles']}u,
+    .maximum_trace_records = {limits['maximum_trace_records']}u,
+}};
+
+static const struct RibonRibosProductBinding generated_ribos_binding = {{
+    .size = sizeof(generated_ribos_binding),
+    .abi_version = RIBON_RIBOS_POLICY_ABI_VERSION,
+    .product_id = "{manifest['product_id']}",
+    .policy_id = "{policy['policy_id']}",
+    .schema = {schema},
+    .helper_contract = &generated_ribos_helper_contract,
+    .routes = generated_ribos_routes,
+    .route_count = (uint32_t)(
+        sizeof(generated_ribos_routes) / sizeof(generated_ribos_routes[0])),
+    .selected_phase = RIBON_PLUGIN_PHASE_BOOT,
+    .mode_mask = RIBON_MODE_MASK({MODE_VALUES[mode]}),
+    .granted_ribos_capabilities =
+        {_ribos_capability_value(policy['capabilities'])}u,
+    .watchdog_required = {1 if policy['watchdog_required'] else 0}u,
+    .required_ribon_capabilities =
+        {_capability_expression(policy['ribon_capabilities'])},
+    .arena_budget = UINT64_C({policy['arena_budget']}),
+    .timer_service_id = "{policy['timer_service_id']}",
+    .watchdog_service_id =
+        {f'"{watchdog_id}"' if watchdog_id is not None else "0"},
+    .limits = &generated_ribos_limits,
+    .authorize = {authorizer},
+    .factory_recovery = {recovery},
+    .validate_boot_action = {action_validator},
+}};
+
+const struct RibonRibosProductBinding *
+ribon_generated_ribos_policy_binding(void)
+{{
+    return &generated_ribos_binding;
+}}
+"""
 
 
 def render(manifest: dict[str, object]) -> str:
@@ -421,8 +988,15 @@ def render(manifest: dict[str, object]) -> str:
     )
     required = _capability_expression(manifest["required_capabilities"])  # type: ignore[arg-type]
     allowed = _capability_expression(manifest["allowed_capabilities"])  # type: ignore[arg-type]
+    ribos_policy = _render_ribos_policy(manifest)
+    ribos_includes = """#include <Ribon/policy/ribos.h>
+#include <ribos/schema/schema.h>
+#include <ribos/vm/prepared.h>
+#include <ribos/vm/runtime.h>
+""" if manifest.get("ribos_policy") is not None else ""
     return f"""/* Generated by tools/generate_plugin_registry.py; do not edit. */
 #include <Ribon/plugin/registry.h>
+{ribos_includes}
 
 {externs}
 {service_externs}
@@ -493,6 +1067,7 @@ const struct RibonProductDescriptor *ribon_generated_product_descriptor(void) {{
 const struct RibonServiceDirectory *ribon_generated_service_directory(void) {{
     return &generated_service_directory;
 }}
+{ribos_policy}
 """
 
 
@@ -526,6 +1101,7 @@ def main() -> int:
             "image": manifest["image"],
             "evidence": manifest["evidence"],
             "payload": manifest.get("payload"),
+            "ribos_policy": manifest.get("ribos_policy"),
             "source_manifest": str(args.manifest),
         }
         args.report.parent.mkdir(parents=True, exist_ok=True)

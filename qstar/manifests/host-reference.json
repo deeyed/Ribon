@@ -10,7 +10,8 @@
     "synthetic"
   ],
   "policies": [
-    "normal"
+    "normal",
+    "ribos"
   ],
   "image": {
     "format": "host-executable",
@@ -47,6 +48,11 @@
       "id": "service.host.storage-flush",
       "kind": "storage-flush",
       "symbol": "ribon_host_storage_flush_service_descriptor"
+    },
+    {
+      "id": "service.host.watchdog",
+      "kind": "watchdog",
+      "symbol": "ribon_host_watchdog_service_descriptor"
     }
   ],
   "service_selections": [],
@@ -58,6 +64,10 @@
     {
       "id": "protocol.synthetic",
       "kind": "boot-protocol"
+    },
+    {
+      "id": "policy.ribos",
+      "kind": "policy"
     }
   ],
   "required_capabilities": [
@@ -71,7 +81,8 @@
     "IMAGE_ELF64",
     "MONOTONIC_TIMER",
     "PERSISTENT_METADATA",
-    "STORAGE_FLUSH"
+    "STORAGE_FLUSH",
+    "WATCHDOG"
   ],
   "allowed_capabilities": [
     "ARCHITECTURE",
@@ -84,7 +95,8 @@
     "IMAGE_ELF64",
     "MONOTONIC_TIMER",
     "PERSISTENT_METADATA",
-    "STORAGE_FLUSH"
+    "STORAGE_FLUSH",
+    "WATCHDOG"
   ],
   "limits": {
     "max_memory_regions": 256,
@@ -113,9 +125,182 @@
       "symbol": "ribon_elf64_image_plugin_descriptor"
     },
     {
+      "id": "policy.ribos",
+      "package": "ribon.policy.ribos",
+      "symbol": "ribon_ribos_policy_plugin_descriptor"
+    },
+    {
       "id": "protocol.synthetic",
       "package": "ribon.protocol.synthetic",
       "symbol": "ribon_synthetic_protocol_plugin_descriptor"
     }
-  ]
+  ],
+  "ribos_policy": {
+    "policy_id": "policy.ribos.host-reference.v1",
+    "schema_symbol": "ribos_schema_reference_v1",
+    "authorize_symbol": "ribon_host_ribos_authorize",
+    "factory_recovery_symbol": "ribon_host_ribos_factory_recovery",
+    "validate_boot_action_symbol": "ribon_host_ribos_validate_boot_action",
+    "timer_service_id": "service.host.monotonic-timer",
+    "watchdog_service_id": "service.host.watchdog",
+    "watchdog_required": true,
+    "phase": "boot",
+    "capabilities": [
+      "BOOT",
+      "INSPECT"
+    ],
+    "ribon_capabilities": [
+      "BOOT_SOURCE_READ",
+      "MONOTONIC_TIMER",
+      "PERSISTENT_METADATA",
+      "WATCHDOG"
+    ],
+    "arena_budget": 131072,
+    "limits": {
+      "maximum_instructions": 64,
+      "maximum_helper_calls": 4,
+      "maximum_stack_bytes": 4096,
+      "maximum_arena_bytes": 65536,
+      "maximum_input_bytes": 1024,
+      "maximum_output_bytes": 256,
+      "maximum_operations": 16,
+      "maximum_polls": 16,
+      "maximum_execution_duration_ns": 10000000,
+      "maximum_helper_duration_ns": 1000000,
+      "maximum_call_depth": 8,
+      "maximum_handles": 8,
+      "maximum_trace_records": 8
+    },
+    "helpers": [
+      {
+        "stable_id": 2,
+        "callback_symbol": "ribon_host_ribos_slot_selected",
+        "service_kind": "persistent-metadata",
+        "service_id": "service.host.persistent-metadata",
+        "ribon_capabilities": [
+          "PERSISTENT_METADATA"
+        ],
+        "ribos_capabilities": [
+          "INSPECT"
+        ],
+        "effect": "pure",
+        "durability": "none",
+        "handle_transition": "none",
+        "transition_parameter": 4294967295,
+        "allowed_modes": [
+          "normal"
+        ],
+        "allowed_phases": [
+          "boot"
+        ],
+        "maximum_input_bytes": 64,
+        "maximum_output_bytes": 64,
+        "maximum_operations": 1,
+        "maximum_polls": 1,
+        "maximum_duration_ns": 1000000
+      },
+      {
+        "stable_id": 8,
+        "callback_symbol": "ribon_host_ribos_slot_image",
+        "service_kind": "boot-source",
+        "service_id": "service.host.boot-source",
+        "ribon_capabilities": [
+          "BOOT_SOURCE_READ"
+        ],
+        "ribos_capabilities": [
+          "INSPECT"
+        ],
+        "effect": "pure",
+        "durability": "none",
+        "handle_transition": "create",
+        "transition_parameter": 4294967295,
+        "allowed_modes": [
+          "normal"
+        ],
+        "allowed_phases": [
+          "boot"
+        ],
+        "maximum_input_bytes": 64,
+        "maximum_output_bytes": 64,
+        "maximum_operations": 1,
+        "maximum_polls": 1,
+        "maximum_duration_ns": 1000000
+      },
+      {
+        "stable_id": 11,
+        "callback_symbol": "ribon_host_ribos_image_verify",
+        "service_kind": null,
+        "service_id": null,
+        "ribon_capabilities": [],
+        "ribos_capabilities": [
+          "INSPECT"
+        ],
+        "effect": "pure",
+        "durability": "none",
+        "handle_transition": "replace",
+        "transition_parameter": 0,
+        "allowed_modes": [
+          "normal"
+        ],
+        "allowed_phases": [
+          "boot"
+        ],
+        "maximum_input_bytes": 64,
+        "maximum_output_bytes": 64,
+        "maximum_operations": 1,
+        "maximum_polls": 1,
+        "maximum_duration_ns": 1000000
+      },
+      {
+        "stable_id": 21,
+        "callback_symbol": "ribon_host_ribos_boot_slot",
+        "service_kind": null,
+        "service_id": null,
+        "ribon_capabilities": [],
+        "ribos_capabilities": [
+          "BOOT"
+        ],
+        "effect": "terminal",
+        "durability": "sealed-intent",
+        "handle_transition": "terminal-consume",
+        "transition_parameter": 1,
+        "allowed_modes": [
+          "normal"
+        ],
+        "allowed_phases": [
+          "boot"
+        ],
+        "maximum_input_bytes": 64,
+        "maximum_output_bytes": 64,
+        "maximum_operations": 1,
+        "maximum_polls": 1,
+        "maximum_duration_ns": 1000000
+      },
+      {
+        "stable_id": 22,
+        "callback_symbol": "ribon_host_ribos_boot_recovery",
+        "service_kind": null,
+        "service_id": null,
+        "ribon_capabilities": [],
+        "ribos_capabilities": [
+          "BOOT"
+        ],
+        "effect": "terminal",
+        "durability": "sealed-intent",
+        "handle_transition": "none",
+        "transition_parameter": 4294967295,
+        "allowed_modes": [
+          "normal"
+        ],
+        "allowed_phases": [
+          "boot"
+        ],
+        "maximum_input_bytes": 64,
+        "maximum_output_bytes": 64,
+        "maximum_operations": 1,
+        "maximum_polls": 1,
+        "maximum_duration_ns": 1000000
+      }
+    ]
+  }
 }

@@ -194,3 +194,15 @@ ribos_artifact_sha256(
     }
     ribos_artifact_sha256_finish(&context, digest);
 }
+
+void
+ribos_artifact_digest_bytes_v1(
+    const uint8_t *input,
+    size_t input_size,
+    uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES])
+{
+    if (digest == NULL || (input_size != 0 && input == NULL)) {
+        return;
+    }
+    ribos_artifact_sha256(input, input_size, digest);
+}

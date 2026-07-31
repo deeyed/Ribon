@@ -57,6 +57,11 @@ language/ribos/
 | `artifact` | validated Policy IR와 resource closure | canonical `.rba`, borrowed structural view | frontend AST, packed C wire image와 VM dispatch |
 | `vm` | untrusted `.rba`, selected product schema | two-stage verification, prepared program과 bounded execution | `.rbs`, Pegen, frontend AST와 Policy IR |
 
+Ribon product integration은 이 계층 안에 넣지 않는다.
+`src/plugins/policy/ribos/adapter.c`와 generated `RibonRibosProductBinding`만 Core
+arena, typed service, watchdog와 boot transaction을 알고, target-core VM은 Ribon
+header와 symbol을 import하지 않는다.
+
 `frontend/src/lower.c`는 frontend-private AST를 public `ribos/ir` builder API로
 변환하는 bridge다. IR module, validator, CFG/resource analyzer와 deterministic
 dump는 `ir/`가 소유한다.
@@ -139,6 +144,7 @@ make check-ribos-replay
 make check-ribos-conformance
 make check-ribos-hostile
 make check-ribos-vm
+make check-ribos-ribon-integration
 ```
 
 - parser gate는 `.rbs` syntax acceptance/rejection만 증명한다.
@@ -160,6 +166,9 @@ make check-ribos-vm
 - host replay gate는 같은 target-core VM을 `ribos-run`에 연결하고 deterministic
   input tuple, ISA 24 opcode, cross-layer resource closure와 bounded hostile input을
   증명한다.
+- Ribon integration gate는 generated schema/helper binding, Core arena, typed service,
+  watchdog와 existing boot transaction을 generic adapter로 연결하되 VM object graph의
+  Ribon 비의존성을 유지함을 증명한다.
 
 CLI는 host inspection을 위해 다음 mode를 제공한다.
 

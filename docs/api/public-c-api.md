@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-07-31
 code_paths:
   - include/Ribon/core/
   - include/Ribon/boot/
@@ -12,6 +12,7 @@ code_paths:
   - include/Ribon/sdk/
   - include/Ribon/arch/
   - include/Ribon/port/
+  - include/Ribon/policy/
 tests:
   - ribon-public-api-lint
   - ribon-doxygen
@@ -103,6 +104,22 @@ Ribon/service/directory.h
 Service API는 immutable typed descriptor, caller-owned directory, authority/collection selection과
 operation lifetime을 제공한다. Monolithic service table, compatibility alias와 runtime locator는
 public ABI에 없다.
+
+## Ribos Policy Adapter API
+
+```text
+Ribon/policy/ribos.h
+```
+
+Policy adapter API는 generated product binding, semantic helper route, artifact
+authorization, factory recovery, BootAction validation과 pointer-free execution receipt를
+제공한다. Adapter만 Ribon arena, typed service와 boot transaction을 알고 Ribos VM public
+type은 forward declaration으로 유지한다.
+
+Product callback은 stable semantic helper만 구현하며 raw MMIO, raw flash와 arbitrary
+transfer를 노출하지 않는다. `ribon_ribos_policy_execute`는 sealed BootAction을
+재검사·single-consume한 뒤 기존 transaction commit과 quiesce를 수행하지만 architecture
+transfer를 호출하지 않는다.
 
 ## Firmware API
 

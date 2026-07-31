@@ -11,3 +11,17 @@ qstar.staticlib "libribon_sdk" {
     "//qstar/policies:ribon_host_c",
   },
 }
+
+qstar.staticlib "libribon_policy_ribos" {
+  artifact_name = "libribon-policy-ribos.a",
+  sources = {
+    "src/plugins/policy/ribos/adapter.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+    "//src/core:libribon_core",
+  },
+  configs = {
+    "//qstar/policies:ribon_ribos_target_c",
+  },
+}

@@ -2,8 +2,9 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-07-31
 code_paths:
+  - include/Ribon/policy/ribos.h
   - qstar.lua
   - qstar/
   - qstar/schemas/
@@ -14,6 +15,8 @@ tests:
   - ribon-plugin-graph-lint
   - ribon-product-composition-test
   - ribon-object-graph-lint
+  - make check-ribos-product-graphs
+  - make check-ribos-normal-no-network
 hardware:
   - none
 supersedes:
@@ -69,6 +72,12 @@ Composer는 `build/` 아래 최소 다음을 생성한다.
 - selected object manifest
 - final link map
 - target artifact 또는 package manifest
+
+Ribos policy를 선택한 product는 추가로 versioned schema provider, stable-ID helper
+execution table, exact service route, canonical helper-contract digest, mode/phase와
+resource limit을 생성한다. Compiler/verifier가 소비하는 schema identity와 adapter가
+dispatch하는 helper contract는 같은 manifest에서 나와야 한다. Callback 주소와 native
+pointer는 canonical digest에 포함하지 않는다.
 
 Generated output은 정본 source가 아니며 build directory 밖에 기록하지 않는다.
 
@@ -132,6 +141,8 @@ Gate는 archive member와 final link map을 검사하여 다음을 거부한다.
 - Linux 또는 FreeBSD product의 Parus object
 - normal product의 recovery network와 update writer
 - normal product의 mutable filesystem 또는 inactive destination storage authority
+- normal Ribos binding의 network, flash 또는 update-writer helper route
+- Ribos schema/helper digest 불일치와 unsorted/duplicate helper route
 - firmware personality 없는 product의 runtime service
 - service authority 중복, collection owner 미선택, service ABI/lifetime/mode budget 불일치
 - external-media target의 runtime object graph에 embedded payload fixture object

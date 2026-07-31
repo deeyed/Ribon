@@ -23,6 +23,9 @@ terminal/fault closure를 artifact byte에서 다시 계산한다.
 Verifier, target-safe artifact codec, schema와 neutral base adapter는
 `libribos-target-core.a`에 들어간다. CLI만 host 계층에 있으며 target archive에는
 libc allocator, `FILE`, frontend, Policy IR와 artifact emitter가 들어갈 수 없다.
+Ribon integration은 별도 `libribon-policy-ribos.a`가 소유한다. 이 archive가 generated
+schema/helper binding을 Core arena와 typed service에 연결하므로 target-core VM에는
+Ribon header, service ID와 boot transaction symbol을 추가하지 않는다.
 
 Runtime public ABI는 다음 header가 소유한다.
 
@@ -108,6 +111,7 @@ make check-ribos-conformance
 make check-ribos-hostile
 make check-ribos-vm
 make check-ribos-verifier
+make check-ribos-ribon-integration
 build/tools/ribos-verify POLICY.rba
 build/tools/ribos-run \
     --context CONTEXT.rbctx \
@@ -142,5 +146,7 @@ typed helper execution, terminal action sealing과 fail-closed recovery를 설�
 `ribos-run`은 별도 reference VM이 아니라 이 target-core runtime을 hosted embedder에
 연결하며 deterministic context/helper replay, 24-opcode conformance와
 compiler/verifier/runtime resource 비교를 제공한다.
-이는 실제 실행 권한 이전, production signature/rollback provider, Ribon product
-service linkage, QEMU 또는 hardware policy 실행 증거가 아니다.
+Ribon product service linkage와 transaction integration은 별도
+`check-ribos-ribon-integration` host-object gate가 증명한다. 어느 host gate도 실제
+실행 권한 이전, production signature/rollback provider, QEMU 또는 hardware policy
+실행 증거가 아니다.

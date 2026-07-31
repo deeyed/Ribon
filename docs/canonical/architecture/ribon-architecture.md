@@ -184,6 +184,18 @@ private AST가 VM product에 링크되지 않는다. OS별 handoff key와 board 
 type은 selected protocol 또는 port package가 제공하며 Core Language에 Parus, Linux,
 FreeBSD, RPi5 또는 QEMU 이름을 추가하지 않는다.
 
+Ribon product와의 실행 연결은 별도 `libribon-policy-ribos` adapter가 소유한다.
+Ribos target core는 Ribon header와 symbol을 import하지 않는다. Product manifest가
+versioned schema, helper execution descriptor, exact typed-service route, mode/phase와
+resource limit을 한 graph에서 생성하고 adapter가 schema/helper digest와 service
+budget을 실행 전에 다시 검사한다.
+
+Policy 성공은 control transfer가 아니라 sealed `BootAction`이다. Adapter는 product
+의미를 재검사하고 action을 한 번 consume한 뒤 기존 `RibonBootTransaction`의 commit과
+quiesce를 사용한다. Transfer는 transaction caller에 남는다. PolicyError, VM fault와
+adapter failure는 external artifact가 필요 없는 compiled factory recovery에 최대 한
+번 전달한다.
+
 ### Product와 Target
 
 Product manifest는 기능 조합을 정의하고 Target은 실행 가능한 구체 조합을 정의한다.
@@ -233,9 +245,12 @@ ABI mismatch와 budget/mode violation을 fail-closed한다.
 | `IMAGE_FORMAT` | ELF64, PE/COFF |
 | `BOOT_PROTOCOL` | Parus, Linux, FreeBSD, Zircon, synthetic contract fixture |
 | `SERVICE` | diagnostic sink 같은 SDK typed service package |
+| `POLICY` | Ribos처럼 boot decision을 bounded program으로 조합하는 provider |
+| `FIRMWARE_PERSONALITY` | UEFI/BIOS firmware ABI product |
 
-`POLICY`와 `FIRMWARE_PERSONALITY`는 firmware product가 사용할 수 있는 활성 kind다.
-Mode descriptor는 plugin descriptor와 별도 계약이다.
+`POLICY`는 bootloader와 firmware product가 선택할 수 있다.
+`FIRMWARE_PERSONALITY`는 firmware product에서만 활성이다. Mode descriptor는 plugin
+descriptor와 별도 계약이다.
 
 Driver, filesystem, transport, security와 firmware service는 SDK 확장에서 독립 kind가
 될 수 있다. 해당 kind가 public descriptor ABI에 추가되기 전에는 product가 선택한
@@ -267,6 +282,10 @@ registry에 의존하지 않는다.
 `libribon-sdk`는 SDK ABI tuple, package descriptor validation, host package contract와
 firmware personality service directory를 제공한다. Architecture, environment, boot
 protocol, port implementation은 해당 archive에 포함하지 않는다.
+
+`include/Ribon/policy/ribos.h`는 generic product adapter ABI를 공개하지만
+`libribon-policy-ribos.a`는 현재 source product graph의 선택 archive다. Installed SDK
+archive 집합으로 승격하는 packaging 결정과 cross-target evidence는 후속 작업이다.
 
 ## Plugin graph 불변식
 

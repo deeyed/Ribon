@@ -222,6 +222,9 @@ make check-ribos-verifier
 ```
 
 이 증거는 single-consume action, PolicyError 분리, durable receipt chain, bounded fault
-closure와 recovery-once 의미를 검증한다. 실제 Ribon boot transaction, Parus handoff,
-network/flash product adapter, QEMU transfer 또는 hardware recovery 실행을 증명하지
-않는다.
+closure와 recovery-once의 VM-local 의미를 검증한다. Ribon product adapter와 실제
+`RibonBootTransaction` 연결은
+`contracts/language/ribos-ribon-product-integration-v1` 및
+`make check-ribos-ribon-integration`이 별도 host-object evidence로 검증한다. 어느 gate도
+Parus handoff, network/flash product, QEMU transfer 또는 hardware recovery 실행을
+증명하지 않는다.

@@ -77,6 +77,17 @@ typedef enum RibosArtifactEnvelopeFlags {
     RIBOS_ARTIFACT_ENVELOPE_SIGNED = 1u << 0
 } RibosArtifactEnvelopeFlags;
 
+/**
+ * Caller-owned bytes의 SHA-256 identity를 allocation 없이 계산한다.
+ *
+ * `input_size == 0`이면 `input`은 NULL일 수 있다. 이 함수는 context와 product
+ * adapter가 immutable value identity를 만들 때 artifact hash 구현을 공유한다.
+ */
+void ribos_artifact_digest_bytes_v1(
+    const uint8_t *input,
+    size_t input_size,
+    uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES]);
+
 /** Executable payload flag의 안정된 의미 비트다. */
 typedef enum RibosArtifactPayloadFlags {
     RIBOS_ARTIFACT_HAS_SOURCE_MAP = 1u << 0

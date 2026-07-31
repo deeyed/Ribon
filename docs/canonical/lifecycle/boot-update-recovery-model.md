@@ -2,9 +2,10 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-07-31
 code_paths:
   - include/Ribon/boot/plan.h
+  - include/Ribon/policy/ribos.h
   - include/Ribon/service/directory.h
   - src/common/boot.c
   - src/plugins/update/
@@ -96,6 +97,29 @@ Read-only media parser는 GPT/protective MBR, filesystem과 path를 각각 검�
 memory, other filesystem 또는 network source fallback을 열지 않는다. Normal product의 reader는
 inactive-slot writer와 mutable filesystem authority를 포함하지 않는다.
 
+### Ribos policy adapter
+
+Ribos가 selected policy이면 generated binding이 schema, helper route, mode/phase,
+timer/watchdog와 resource limit을 고정한다. Generic adapter는 Ribon Core arena와 typed
+service만 알고 VM target core는 Ribon symbol을 import하지 않는다.
+
+```text
+validate generated binding
+  -> product artifact authorization
+  -> independent verifier + PreparedProgram
+  -> arm required watchdog
+  -> bounded VM execution
+  -> validate sealed BootAction
+  -> consume action once
+  -> COMMIT_ATTEMPT
+  -> QUIESCE_ENVIRONMENT
+```
+
+Adapter는 `TRANSFER`를 호출하지 않는다. PolicyError, VmFault, action rejection과
+post-consume commit/quiesce failure는 external `.rba`가 없어도 실행되는 compiled
+factory recovery에 최대 한 번 전달한다. Failure 뒤 policy 재실행이나 consumed
+action 재사용은 허용하지 않는다.
+
 ### Prepare protocol
 
 Boot Protocol은 검증된 component plan으로 handoff와 entry contract를 생성한다. Protocol
@@ -135,6 +159,9 @@ Architecture backend는 cache와 privilege state를 정규화하고 protocol ent
 
 Mode는 runtime flag만이 아니라 product object graph다. Normal product는 recovery
 transport, inactive writer, diagnostic fixture를 링크하지 않는다.
+Normal Ribos binding도 network, flash와 update-writer helper route를 생성하지 않는다.
+Recovery/provisioning policy는 같은 callback을 flag로 여는 것이 아니라 별도 signed
+product graph로 구성한다.
 
 ## Update
 

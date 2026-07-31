@@ -60,12 +60,14 @@ struct HostLifecycleFixture {
     uint32_t writes;
     uint32_t flushes;
     uint32_t quiesces;
+    uint32_t watchdog_arms;
     uint32_t source_failures;
     uint32_t metadata_failures;
     uint32_t flush_failures;
     uint32_t quiesce_failures;
     uint64_t timer_ticks;
     uint64_t timer_step;
+    uint64_t watchdog_timeout_ms;
 };
 
 static struct HostLifecycleFixture host_lifecycle_fixture;
@@ -120,6 +122,23 @@ static const struct RibonMonotonicTimerServiceOperations host_timer_operations =
     .context = &host_lifecycle_fixture,
     .frequency_hz = 1000000u,
     .now = host_timer_now,
+};
+
+/** @brief Host policy watchdog arm을 deterministic fixture state에 기록한다. */
+static int host_watchdog_arm(void *context, uint64_t timeout_ms) {
+    if (context != &host_lifecycle_fixture || timeout_ms == 0u) {
+        return RIBON_SERVICE_STATUS_BAD_ARGUMENT;
+    }
+    ++host_lifecycle_fixture.watchdog_arms;
+    host_lifecycle_fixture.watchdog_timeout_ms = timeout_ms;
+    return RIBON_SERVICE_STATUS_OK;
+}
+
+static const struct RibonWatchdogServiceOperations host_watchdog_operations = {
+    .size = sizeof(host_watchdog_operations),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .context = &host_lifecycle_fixture,
+    .arm = host_watchdog_arm,
 };
 
 /** @brief Host fixture의 bounded attempt metadata를 읽는다. */
@@ -244,6 +263,13 @@ static int host_timer_validate(const struct RibonServiceDescriptor *descriptor) 
            operations->now == host_timer_now;
 }
 
+/** @brief Host watchdog descriptor와 immutable operation table을 함께 검사한다. */
+static int host_watchdog_validate(const struct RibonServiceDescriptor *descriptor) {
+    return descriptor != 0 &&
+           descriptor->operations == &host_watchdog_operations &&
+           ribon_watchdog_service_operations_are_valid(descriptor);
+}
+
 /** @brief Host metadata operation table의 durable write contract를 검사한다. */
 static int host_metadata_validate(const struct RibonServiceDescriptor *descriptor) {
     const struct RibonPersistentMetadataServiceOperations *operations = descriptor == 0 ? 0 : descriptor->operations;
@@ -314,6 +340,30 @@ const struct RibonServiceDescriptor ribon_host_monotonic_timer_service_descripto
     .validate_operations = host_timer_validate,
 };
 
+/** @brief Host fixture가 제공하는 policy execution watchdog authority다. */
+const struct RibonServiceDescriptor ribon_host_watchdog_service_descriptor = {
+    .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC,
+    .size = sizeof(ribon_host_watchdog_service_descriptor),
+    .abi_version = RIBON_SERVICE_ABI_VERSION,
+    .kind = RIBON_SERVICE_KIND_WATCHDOG,
+    .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY,
+    .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
+    .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
+    .id = "service.host.watchdog",
+    .provides = RIBON_CAP_WATCHDOG,
+    .architecture_mask = RIBON_ARCH_MASK_ALL,
+    .environment_mask = RIBON_ENV_MASK_HOST,
+    .mode_mask = RIBON_MODE_MASK_ALL,
+    .arena_budget = 1024u,
+    .input_budget = 64u,
+    .output_budget = 64u,
+    .deadline_ms = 30000u,
+    .operations = &host_watchdog_operations,
+    .operations_size = sizeof(host_watchdog_operations),
+    .operations_abi = RIBON_SERVICE_ABI_VERSION,
+    .validate_operations = host_watchdog_validate,
+};
+
 /** @brief Host fixture가 제공하는 durable attempt metadata authority다. */
 const struct RibonServiceDescriptor ribon_host_persistent_metadata_service_descriptor = {
     .magic = RIBON_SERVICE_DESCRIPTOR_MAGIC, .size = sizeof(ribon_host_persistent_metadata_service_descriptor),
@@ -359,6 +409,7 @@ static const struct RibonServiceDescriptor *const host_services[] = {
     &ribon_host_monotonic_timer_service_descriptor,
     &ribon_host_persistent_metadata_service_descriptor,
     &ribon_host_storage_flush_service_descriptor,
+    &ribon_host_watchdog_service_descriptor,
 };
 
 static const struct RibonServiceDirectory host_service_directory = {
@@ -402,6 +453,16 @@ uint32_t ribon_host_lifecycle_fixture_flush_count(void) { return host_lifecycle_
 
 /** @brief Host durable journal fixture가 기록한 quiesce 수를 반환한다. */
 uint32_t ribon_host_lifecycle_fixture_quiesce_count(void) { return host_lifecycle_fixture.quiesces; }
+
+/** @brief Host watchdog arm 호출 수를 반환한다. */
+uint32_t ribon_host_lifecycle_fixture_watchdog_arm_count(void) {
+    return host_lifecycle_fixture.watchdog_arms;
+}
+
+/** @brief 마지막 host watchdog timeout을 millisecond로 반환한다. */
+uint64_t ribon_host_lifecycle_fixture_watchdog_timeout_ms(void) {
+    return host_lifecycle_fixture.watchdog_timeout_ms;
+}
 
 /** @brief Host fixture에 남은 partial 또는 committed metadata byte 수를 반환한다. */
 uint64_t ribon_host_lifecycle_fixture_metadata_size(void) {
@@ -471,6 +532,7 @@ const struct RibonPluginDescriptor ribon_host_environment_plugin_descriptor = {
     .provides =
         RIBON_CAP_BOOT_SOURCE_READ |
         RIBON_CAP_MONOTONIC_TIMER |
+        RIBON_CAP_WATCHDOG |
         RIBON_CAP_PERSISTENT_METADATA |
         RIBON_CAP_STORAGE_FLUSH |
         RIBON_CAP_ENVIRONMENT_QUIESCE,
