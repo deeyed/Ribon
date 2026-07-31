@@ -77,7 +77,7 @@ def main() -> int:
 
     consumer = json.loads(
         (ROOT / "products" / "bootmgr" / "manifests" /
-         "x86_64-uefi-parus.json").read_text(encoding="utf-8")
+         "x86_64-uefi-parus-fixture.json").read_text(encoding="utf-8")
     )
     provider = json.loads(
         (ROOT / "products" / "firmware" / "manifests" /

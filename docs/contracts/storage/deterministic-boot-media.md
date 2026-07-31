@@ -14,7 +14,8 @@ code_paths:
 tests:
   - make check-media-pipeline
   - make check-normal-media-surface
-  - make x86_64-uefi-app-smoke
+  - make x86_64-uefi-parus-fixture-smoke
+  - make check-uefi-product-hermeticity
 hardware:
   - none
 supersedes:
@@ -123,6 +124,12 @@ x86_64 UEFI boot manager의 ESP recipe는 application, configuration, external p
 서로 분리한다. Runtime application object graph에는 build-embedded payload object가 없어야 한다.
 Raw-FDT memory source는 별도 fixture/product 경계이며 UEFI file source의 compatibility alias가
 아니다.
+
+Fixture와 external-kernel UEFI product는 각각 독립 product ID, generated registry, object,
+link map, ESP, copied manifest와 result root를 가진다. External payload selector가 fixture
+product의 dependency나 output identity를 바꾸지 않으며 두 product는 공통 writable ESP를
+사용하지 않는다. External product는 payload copy 전에 manifest tuple, ELF class/window와
+payload digest를 검증한다. Fixture marker를 포함한 input은 external product에서 거부한다.
 
 Normal product manifest와 final object graph에는 inactive-slot writer 또는 network transport
 authority가 없어야 한다. Recovery/network/update writer product는 별도 mode graph가 명시적으로

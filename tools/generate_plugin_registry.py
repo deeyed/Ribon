@@ -1103,6 +1103,9 @@ def main() -> int:
             "payload": manifest.get("payload"),
             "ribos_policy": manifest.get("ribos_policy"),
             "source_manifest": str(args.manifest),
+            "source_manifest_sha256": hashlib.sha256(
+                args.manifest.read_bytes()
+            ).hexdigest(),
         }
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(

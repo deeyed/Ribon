@@ -124,6 +124,7 @@ adr/0033-ribos-terminal-action-fault-recovery
 adr/0034-ribos-production-vm-host-replay
 adr/0035-ribos-ribon-product-integration
 adr/0036-ribos-cross-architecture-qemu-validation
+adr/0037-uefi-product-scoped-hermetic-build
 ```
 
 ```{toctree}
@@ -189,4 +190,5 @@ log/2026-07-31-ribos-host-target-boundary
 log/2026-07-31-ribos-host-replay-hardening
 log/2026-07-31-ribos-ribon-product-integration
 log/2026-07-31-ribos-cross-architecture-vm-validation
+log/2026-07-31-r01-uefi-product-hermetic-build
 ```

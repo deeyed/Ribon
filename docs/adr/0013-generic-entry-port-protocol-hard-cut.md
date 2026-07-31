@@ -17,7 +17,7 @@ tests:
   - make check
   - make qemu-aarch64-virt-parus-smoke
   - make qemu-riscv64-virt-parus-smoke
-  - make x86_64-uefi-app-smoke
+  - make x86_64-uefi-parus-fixture-smoke
 hardware:
   - Raspberry Pi 5 fresh UART is required for a physical-hardware claim
 supersedes:

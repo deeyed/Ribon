@@ -89,6 +89,12 @@ class ExternalParusPayloadTests(unittest.TestCase):
             report = self.validator.validate(ARM64_MANIFEST, payload)
             self.assertTrue(report["success"])
             self.assertEqual(report["entry_abi"], "arm64-rph1-v1")
+            self.assertEqual(report["payload"]["class"], "external-kernel")
+            self.assertEqual(report["payload"]["format"], "elf64")
+            self.assertEqual(
+                report["payload"]["size_bytes"],
+                payload.stat().st_size,
+            )
             self.assertTrue(report["payload"]["immutable"])
 
     def test_accepts_riscv64_rph1_payload_in_product_window(self) -> None:
@@ -148,6 +154,16 @@ class ExternalParusPayloadTests(unittest.TestCase):
             manifest.write_text(json.dumps(document), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "RPH1 tuple"):
                 self.validator.validate(manifest, payload)
+
+    def test_rejects_fixture_marker_for_external_product(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            payload = Path(raw) / "fixture.elf"
+            write_elf(payload)
+            payload.write_bytes(
+                payload.read_bytes() + b"RIBON-FIXTURE-PAYLOAD-V1"
+            )
+            with self.assertRaisesRegex(ValueError, "fixture payload"):
+                self.validator.validate(ARM64_MANIFEST, payload)
 
 
 if __name__ == "__main__":

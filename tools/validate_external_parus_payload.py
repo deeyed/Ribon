@@ -13,6 +13,11 @@ from pathlib import Path
 PT_LOAD = 1
 PF_X = 1
 PF_W = 2
+FIXTURE_MARKERS = (
+    b"PARUS-FIXTURE-ENTRY-OK",
+    b"RIBON-FIXTURE-PAYLOAD-V1",
+    b"RIBON-RISCV64-RPH1-FIXTURE-V1",
+)
 ARCHITECTURE_CONTRACTS = {
     "x86_64": {
         "machine": 62,
@@ -63,6 +68,8 @@ def inspect_elf(path: Path) -> tuple[dict[str, int], list[dict[str, int]]]:
     data = path.read_bytes()
     if len(data) < 64 or data[:4] != b"\x7fELF":
         raise ValueError("payload is not ELF")
+    if any(marker in data for marker in FIXTURE_MARKERS):
+        raise ValueError("fixture payload cannot satisfy an external-kernel product")
     if data[4] != 2 or data[5] != 1:
         raise ValueError("payload is not little-endian ELF64")
     header = struct.unpack_from("<16sHHIQQQIHHHHHH", data, 0)
@@ -168,8 +175,11 @@ def validate(
         "architecture": contract["architecture"],
         "entry_abi": contract["entry_abi"],
         "payload": {
+            "class": "external-kernel",
+            "format": "elf64",
             "path": str(payload_path),
             "sha256": before,
+            "size_bytes": payload_path.stat().st_size,
             "immutable": True,
         },
         "entry": f"0x{header['entry']:016x}",

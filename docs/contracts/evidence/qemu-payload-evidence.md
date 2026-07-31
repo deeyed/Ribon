@@ -8,11 +8,16 @@ code_paths:
   - tools/validate_external_parus_payload.py
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
   - products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
+  - products/bootmgr/manifests/x86_64-uefi-parus-fixture.json
+  - products/bootmgr/manifests/x86_64-uefi-parus-external.json
   - tests/fixtures/riscv64/
   - tests/tools/qemu_target_smoke_tests.py
   - tests/tools/external_parus_payload_tests.py
 tests:
   - make check-qemu-evidence
+  - make check-uefi-product-hermeticity
+  - make x86_64-uefi-parus-fixture-smoke
+  - make UEFI_PARUS_PAYLOAD=/path/to/parus.elf x86_64-uefi-parus-external-smoke
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
   - make qemu-riscv64-virt-rph1-fixture-smoke
 hardware:
@@ -43,6 +48,19 @@ immutability를 확인한다. Fixture target은 별도 build directory와 genera
 External-kernel class는 actual payload identity와 Ribon transfer 증거를 연다. Parus
 boot stage 또는 runtime 성공은 별도 required marker graph와 Parus integration
 harness가 검증해야 하며, payload class만으로 열리지 않는다.
+
+## x86_64 UEFI product 격리
+
+`bootmgr.x86_64-uefi-parus-fixture`와
+`bootmgr.x86_64-uefi-parus-external`은 서로 다른 product root, registry, object, link map,
+ESP와 result를 사용한다. Fixture→external→fixture와 그 역순의 증분 빌드는 이미 생성된
+반대 product output을 변경해서는 안 된다. 동일 input을 독립 build root에서 조합한
+canonical application과 ESP artifact는 byte-identical이어야 한다.
+
+Hermeticity gate가 synthetic external-input ELF를 사용하는 경우 그 실행은 build dependency와
+output isolation의 host evidence일 뿐 external Parus runtime evidence가 아니다. External QEMU
+evidence는 별도의 실제 kernel payload, external product manifest와 Parus terminal marker graph를
+모두 요구한다.
 
 ## RISC-V RPH1 contract fixture
 

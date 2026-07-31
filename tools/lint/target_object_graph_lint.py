@@ -63,11 +63,26 @@ EXPECTED = {
             "ports/raspberrypi/rpi5/port",
         ),
     },
-    "x86_64-uefi-app": {
+    "x86_64-uefi-parus-fixture": {
         "architecture": "x86_64",
         "environment": "uefi",
         "port": "qemu-pc-x86_64",
         "map": "ribon.map",
+        "product_id": "bootmgr.x86_64-uefi-parus-fixture",
+        "needles": (
+            "uefi_app.o",
+            "boot_config.o",
+            "ribon_port_selected",
+        ),
+    },
+    "x86_64-uefi-parus-external": {
+        "architecture": "x86_64",
+        "environment": "uefi",
+        "port": "qemu-pc-x86_64",
+        "map": "ribon.map",
+        "optional": True,
+        "product_id": "bootmgr.x86_64-uefi-parus-external",
+        "payload_entry_abi": "amd64-rph1-v1",
         "needles": (
             "uefi_app.o",
             "boot_config.o",
@@ -112,15 +127,15 @@ def main() -> int:
             or any(item.startswith("platform.") for item in plugins)
         ):
             fail(f"{target}: generated tuple is not exact")
-        if (
-            expected.get("product_id") is not None
-            and (
-                report.get("product_id") != expected["product_id"]
-                or not isinstance(payload, dict)
-                or payload.get("entry_abi") != expected["payload_entry_abi"]
-            )
-        ):
-            fail(f"{target}: external payload product contract is not exact")
+        if expected.get("product_id") is not None:
+            if report.get("product_id") != expected["product_id"]:
+                fail(f"{target}: product identity is not exact")
+            payload_entry_abi = expected.get("payload_entry_abi")
+            if payload_entry_abi is not None and (
+                not isinstance(payload, dict)
+                or payload.get("entry_abi") != payload_entry_abi
+            ):
+                fail(f"{target}: external payload product contract is not exact")
         map_name = expected.get("map")
         if map_name is None:
             continue
@@ -137,12 +152,12 @@ def main() -> int:
         forbidden = (
             "raspberrypi/rpi5" if target.startswith("qemu-") else
             "qemu/virt-aarch64" if target.startswith("rpi5-") else
-            "src/environments/raw-fdt" if target == "x86_64-uefi-app" else
+            "src/environments/raw-fdt" if target.startswith("x86_64-uefi-") else
             ""
         )
         if forbidden and forbidden in link_map:
             fail(f"{target}: forbidden object leaked into link map: {forbidden}")
-        if target == "x86_64-uefi-app" and "embedded_payload" in link_map:
+        if target.startswith("x86_64-uefi-") and "embedded_payload" in link_map:
             fail(f"{target}: embedded payload object remains in the runtime object graph")
     print("RIBON-R4-TARGET-OBJECT-GRAPHS-OK")
     return 0

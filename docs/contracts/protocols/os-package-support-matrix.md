@@ -11,7 +11,7 @@ tests:
   - make check-os-packages
   - make qemu-aarch64-virt-parus-smoke
   - make qemu-riscv64-virt-parus-smoke
-  - make x86_64-uefi-parus-smoke
+  - make x86_64-uefi-parus-external-smoke
 hardware:
   - RPi5 evidence is independent and requires fresh UART
 supersedes:

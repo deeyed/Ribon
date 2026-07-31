@@ -48,7 +48,8 @@ make check
 make check-target-builds
 make qemu-aarch64-virt-raw-fdt-smoke
 make qemu-riscv64-virt-rph1-fixture-smoke
-make x86_64-uefi-app-smoke
+make x86_64-uefi-parus-fixture-smoke
+make check-uefi-product-hermeticity
 make qstar-check
 make docs
 ```

@@ -5,9 +5,9 @@ local target_commands = {
     output = "build/qstar/generated/r4/targets/qemu-aarch64-virt-raw-fdt/ribon.bin",
   },
   {
-    name = "ribon_x86_64_uefi_app",
-    make_target = "x86_64-uefi-app",
-    output = "build/qstar/generated/r4/targets/x86_64-uefi-app/esp/EFI/BOOT/BOOTX64.EFI",
+    name = "ribon_x86_64_uefi_parus_fixture",
+    make_target = "x86_64-uefi-parus-fixture",
+    output = "build/qstar/generated/r4/targets/x86_64-uefi-parus-fixture/esp/EFI/BOOT/BOOTX64.EFI",
   },
   {
     name = "ribon_qemu_riscv64_rph1_fixture",
@@ -49,7 +49,7 @@ qstar.group "ribon_boot_targets" {
   deps = {
     "//targets:ribon_qemu_aarch64_raw_fdt",
     "//targets:ribon_qemu_riscv64_rph1_fixture",
-    "//targets:ribon_x86_64_uefi_app",
+    "//targets:ribon_x86_64_uefi_parus_fixture",
     "//targets:ribon_rpi5_raw_fdt_package",
     "//targets:ribon_x86_bios_compile",
   },

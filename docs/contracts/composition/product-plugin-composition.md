@@ -17,6 +17,7 @@ tests:
   - ribon-object-graph-lint
   - make check-ribos-product-graphs
   - make check-ribos-normal-no-network
+  - make check-uefi-product-hermeticity
 hardware:
   - none
 supersedes:
@@ -80,6 +81,20 @@ dispatch하는 helper contract는 같은 manifest에서 나와야 한다. Callba
 pointer는 canonical digest에 포함하지 않는다.
 
 Generated output은 정본 source가 아니며 build directory 밖에 기록하지 않는다.
+
+### Product별 output identity
+
+서로 다른 `product_id`를 가진 target은 같은 writable output root를 공유하지 않는다.
+Application, generated registry, object, link map, package/ESP, copied manifest, payload,
+configuration과 result는 product-owned root 아래에만 생성한다. Environment variable 또는
+external payload 존재 여부가 이미 선택된 product root의 manifest, object graph나 artifact
+의미를 바꿀 수 없다.
+
+External input을 받는 product는 source path에만 의존하지 않고 input digest와 class를
+product result에 기록한다. Input path 또는 bytes가 바뀌면 validation, copied payload와
+composed artifact가 다시 생성되어야 한다. Fixture와 external product를 어느 순서로
+증분 빌드해도 반대 product의 canonical output은 변하지 않아야 하며, 독립 build root의
+동일 product/input은 같은 canonical artifact를 생성해야 한다.
 
 ## 정확한 provider 수
 

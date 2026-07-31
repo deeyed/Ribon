@@ -14,7 +14,8 @@ tests:
   - make check-frontends
   - make check-target-builds
   - make qemu-aarch64-virt-raw-fdt-smoke
-  - make x86_64-uefi-app-smoke
+  - make x86_64-uefi-parus-fixture-smoke
+  - make check-uefi-product-hermeticity
 hardware:
   - none
 supersedes:

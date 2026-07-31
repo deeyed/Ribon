@@ -2,7 +2,7 @@
   "schema_version": 1,
   "product_id": "bootmgr.x86_64-uefi-parus-external",
   "product_kind": "bootloader",
-  "target_id": "x86_64-uefi-app",
+  "target_id": "x86_64-uefi-parus-external",
   "architecture": "x86_64",
   "environment": "uefi",
   "port": "qemu-pc-x86_64",

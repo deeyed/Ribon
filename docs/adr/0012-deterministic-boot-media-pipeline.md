@@ -14,7 +14,7 @@ code_paths:
   - targets/x86_64-uefi-app/
 tests:
   - make check-media-pipeline
-  - make x86_64-uefi-app-smoke
+  - make x86_64-uefi-parus-fixture-smoke
 hardware:
   - none
 supersedes:

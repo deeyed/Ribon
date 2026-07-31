@@ -386,29 +386,39 @@ RPI5_OBJS += \
 	$(RPI5_DIR)/obj/generated/embedded_payload.o \
 	$(RPI5_DIR)/obj/targets/rpi5-aarch64-raw-fdt/entry.o
 
-UEFI_DIR := $(TARGET_BUILD_ROOT)/x86_64-uefi-app
-UEFI_MANIFEST := products/bootmgr/manifests/x86_64-uefi-parus.json
-UEFI_EXTERNAL_MANIFEST := products/bootmgr/manifests/x86_64-uefi-parus-external.json
+UEFI_FIXTURE_PRODUCT := x86_64-uefi-parus-fixture
+UEFI_EXTERNAL_PRODUCT := x86_64-uefi-parus-external
+UEFI_FIXTURE_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_FIXTURE_PRODUCT)
+UEFI_EXTERNAL_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_EXTERNAL_PRODUCT)
+UEFI_FIXTURE_MANIFEST := \
+	products/bootmgr/manifests/x86_64-uefi-parus-fixture.json
+UEFI_EXTERNAL_MANIFEST := \
+	products/bootmgr/manifests/x86_64-uefi-parus-external.json
 UEFI_PARUS_PAYLOAD ?=
-UEFI_PARUS_VALIDATION := $(UEFI_DIR)/results/external-payload.json
-ifneq ($(strip $(UEFI_PARUS_PAYLOAD)),)
-UEFI_SELECTED_MANIFEST = $(UEFI_EXTERNAL_MANIFEST)
-UEFI_SELECTED_PAYLOAD = $(abspath $(UEFI_PARUS_PAYLOAD))
-UEFI_SELECTED_VALIDATION = $(UEFI_PARUS_VALIDATION)
-else
-UEFI_SELECTED_MANIFEST = $(UEFI_MANIFEST)
-UEFI_SELECTED_PAYLOAD = $(UEFI_FIXTURE)
-UEFI_SELECTED_VALIDATION =
-endif
-UEFI_REGISTRY_C := $(UEFI_DIR)/generated/plugin_registry.c
-UEFI_GRAPH := $(UEFI_DIR)/results/object-graph.json
-UEFI_FIXTURE := $(UEFI_DIR)/payload.elf
-UEFI_APP := $(UEFI_DIR)/BOOTX64.EFI
-UEFI_ESP := $(UEFI_DIR)/esp
-UEFI_CONFIG := $(UEFI_ESP)/RIBON/BOOT.CFG
-UEFI_PAYLOAD := $(UEFI_ESP)/RIBON/PAYLOAD.ELF
-UEFI_INIT_IMAGE_FIXTURE := $(UEFI_DIR)/fixtures/init-image.bin
-UEFI_INIT_IMAGE := $(UEFI_ESP)/RIBON/INIT.IMG
+UEFI_EXTERNAL_SOURCE := $(if $(strip $(UEFI_PARUS_PAYLOAD)),\
+	$(abspath $(UEFI_PARUS_PAYLOAD)))
+
+UEFI_FIXTURE_REGISTRY_C := $(UEFI_FIXTURE_DIR)/generated/plugin_registry.c
+UEFI_FIXTURE_GRAPH := $(UEFI_FIXTURE_DIR)/results/object-graph.json
+UEFI_FIXTURE_INPUT_MANIFEST := $(UEFI_FIXTURE_DIR)/manifests/product.json
+UEFI_FIXTURE_PAYLOAD_SOURCE := $(UEFI_FIXTURE_DIR)/fixtures/payload.elf
+UEFI_FIXTURE_APP := $(UEFI_FIXTURE_DIR)/BOOTX64.EFI
+UEFI_FIXTURE_ESP := $(UEFI_FIXTURE_DIR)/esp
+UEFI_FIXTURE_CONFIG := $(UEFI_FIXTURE_ESP)/RIBON/BOOT.CFG
+UEFI_FIXTURE_PAYLOAD := $(UEFI_FIXTURE_ESP)/RIBON/PAYLOAD.ELF
+UEFI_FIXTURE_INIT_SOURCE := $(UEFI_FIXTURE_DIR)/fixtures/init-image.bin
+UEFI_FIXTURE_INIT_IMAGE := $(UEFI_FIXTURE_ESP)/RIBON/INIT.IMG
+
+UEFI_EXTERNAL_REGISTRY_C := $(UEFI_EXTERNAL_DIR)/generated/plugin_registry.c
+UEFI_EXTERNAL_GRAPH := $(UEFI_EXTERNAL_DIR)/results/object-graph.json
+UEFI_EXTERNAL_INPUT_MANIFEST := $(UEFI_EXTERNAL_DIR)/manifests/product.json
+UEFI_EXTERNAL_VALIDATION := $(UEFI_EXTERNAL_DIR)/results/external-payload.json
+UEFI_EXTERNAL_APP := $(UEFI_EXTERNAL_DIR)/BOOTX64.EFI
+UEFI_EXTERNAL_ESP := $(UEFI_EXTERNAL_DIR)/esp
+UEFI_EXTERNAL_CONFIG := $(UEFI_EXTERNAL_ESP)/RIBON/BOOT.CFG
+UEFI_EXTERNAL_PAYLOAD := $(UEFI_EXTERNAL_ESP)/RIBON/PAYLOAD.ELF
+UEFI_EXTERNAL_INIT_SOURCE := $(UEFI_EXTERNAL_DIR)/fixtures/init-image.bin
+UEFI_EXTERNAL_INIT_IMAGE := $(UEFI_EXTERNAL_ESP)/RIBON/INIT.IMG
 UEFI_SRCS := \
 	src/core/arena.c \
 	src/core/context.c \
@@ -434,9 +444,12 @@ UEFI_SRCS := \
 	src/environments/uefi-app/uefi_app.c \
 	ports/qemu/pc-x86_64/port.c \
 	targets/x86_64-uefi-app/entry.c
-UEFI_OBJS := $(UEFI_SRCS:%.c=$(UEFI_DIR)/obj/%.o)
-UEFI_OBJS += \
-	$(UEFI_DIR)/obj/generated/plugin_registry.o
+UEFI_FIXTURE_OBJS := $(UEFI_SRCS:%.c=$(UEFI_FIXTURE_DIR)/obj/%.o)
+UEFI_FIXTURE_OBJS += \
+	$(UEFI_FIXTURE_DIR)/obj/generated/plugin_registry.o
+UEFI_EXTERNAL_OBJS := $(UEFI_SRCS:%.c=$(UEFI_EXTERNAL_DIR)/obj/%.o)
+UEFI_EXTERNAL_OBJS += \
+	$(UEFI_EXTERNAL_DIR)/obj/generated/plugin_registry.o
 
 RIBOS_R18_DIR := $(TARGET_BUILD_ROOT)/ribos-r18
 RIBOS_R18_MANIFEST := $(RIBOS_R18_DIR)/generated/product.json
@@ -574,6 +587,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
 	check-qemu-evidence \
+	check-uefi-product-hermeticity \
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
@@ -596,11 +610,13 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-r18 ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
-	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
+	qemu-aarch64-virt-parus-smoke x86_64-uefi-parus-fixture \
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
 	qemu-riscv64-virt-rph1-fixture-product \
 	qemu-riscv64-virt-rph1-fixture-smoke \
-	x86_64-uefi-app-smoke x86_64-uefi-parus-smoke \
+	x86_64-uefi-parus-external x86_64-uefi-parus-external-product \
+	x86_64-uefi-parus-fixture-smoke x86_64-uefi-parus-external-smoke \
+	uefi-external-input-force \
 	bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-parus-package \
 	legacy-hard-cut qstar-check docs docs-lint docs-clean clean
@@ -1657,84 +1673,160 @@ rpi5-aarch64-parus-package:
 		RPI5_PARUS_PAYLOAD=$(abspath $(RPI5_PARUS_PAYLOAD)) \
 		rpi5-aarch64-raw-fdt-package
 
-$(UEFI_PARUS_VALIDATION): \
-	$(UEFI_EXTERNAL_MANIFEST) $(UEFI_SELECTED_PAYLOAD) \
-	tools/validate_external_parus_payload.py
-	$(PYTHON) tools/validate_external_parus_payload.py \
-		--manifest $(UEFI_EXTERNAL_MANIFEST) \
-		--payload $(UEFI_SELECTED_PAYLOAD) \
-		--result $@
-
-$(UEFI_REGISTRY_C): $(UEFI_SELECTED_MANIFEST) tools/generate_plugin_registry.py
-	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
-		--output $@ --report $(UEFI_GRAPH)
-
-$(UEFI_FIXTURE): tools/make_elf64_fixture.py
-	@mkdir -p $(@D)
-	$(PYTHON) $< --arch x86_64 --base 0x200000 --entry-at-base --output $@
-
-$(UEFI_DIR)/obj/%.o: %.c
-	@mkdir -p $(@D)
-	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(UEFI_DIR)/obj/generated/plugin_registry.o: $(UEFI_REGISTRY_C)
-	@mkdir -p $(@D)
-	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(UEFI_APP): $(UEFI_OBJS)
-	$(LLD_LINK) /subsystem:efi_application /entry:efi_main /nodefaultlib \
-		/machine:x64 /map:$(UEFI_DIR)/ribon.map /out:$@ $(UEFI_OBJS)
-
-$(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_APP)
+$(UEFI_FIXTURE_INPUT_MANIFEST): $(UEFI_FIXTURE_MANIFEST)
 	@mkdir -p $(@D)
 	cp $< $@
 
-$(UEFI_CONFIG): tools/make_boot_config.py Makefile
+$(UEFI_EXTERNAL_INPUT_MANIFEST): $(UEFI_EXTERNAL_MANIFEST)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(UEFI_EXTERNAL_VALIDATION): \
+	$(UEFI_EXTERNAL_MANIFEST) $(UEFI_EXTERNAL_SOURCE) \
+	tools/validate_external_parus_payload.py uefi-external-input-force
+	@test -n "$(UEFI_EXTERNAL_SOURCE)" || \
+		{ echo "UEFI_PARUS_PAYLOAD is required" >&2; exit 2; }
+	$(PYTHON) tools/validate_external_parus_payload.py \
+		--manifest $(UEFI_EXTERNAL_MANIFEST) \
+		--payload $(UEFI_EXTERNAL_SOURCE) \
+		--result $@
+
+uefi-external-input-force:
+
+$(UEFI_FIXTURE_REGISTRY_C): \
+	$(UEFI_FIXTURE_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
+		--output $@ --report $(UEFI_FIXTURE_GRAPH)
+
+$(UEFI_EXTERNAL_REGISTRY_C): \
+	$(UEFI_EXTERNAL_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
+		--output $@ --report $(UEFI_EXTERNAL_GRAPH)
+
+$(UEFI_FIXTURE_PAYLOAD_SOURCE): tools/make_elf64_fixture.py
+	@mkdir -p $(@D)
+	$(PYTHON) $< --arch x86_64 --base 0x200000 --entry-at-base --output $@
+
+$(UEFI_FIXTURE_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_EXTERNAL_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_FIXTURE_DIR)/obj/generated/plugin_registry.o: \
+	$(UEFI_FIXTURE_REGISTRY_C)
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_EXTERNAL_DIR)/obj/generated/plugin_registry.o: \
+	$(UEFI_EXTERNAL_REGISTRY_C)
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_FIXTURE_APP): $(UEFI_FIXTURE_OBJS)
+	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/machine:x64 /map:$(UEFI_FIXTURE_DIR)/ribon.map /out:$@ \
+		$(UEFI_FIXTURE_OBJS)
+
+$(UEFI_EXTERNAL_APP): $(UEFI_EXTERNAL_OBJS)
+	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/machine:x64 /map:$(UEFI_EXTERNAL_DIR)/ribon.map /out:$@ \
+		$(UEFI_EXTERNAL_OBJS)
+
+$(UEFI_FIXTURE_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_FIXTURE_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(UEFI_EXTERNAL_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_EXTERNAL_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(UEFI_FIXTURE_CONFIG): tools/make_boot_config.py Makefile
 	@mkdir -p $(@D)
 	$(PYTHON) $< --output $@ --entry primary --priority 100 \
 		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
 		--init-image /RIBON/INIT.IMG
 
-$(UEFI_PAYLOAD): $(UEFI_SELECTED_PAYLOAD) $(UEFI_SELECTED_VALIDATION)
+$(UEFI_EXTERNAL_CONFIG): tools/make_boot_config.py Makefile
+	@mkdir -p $(@D)
+	$(PYTHON) $< --output $@ --entry primary --priority 100 \
+		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
+		--init-image /RIBON/INIT.IMG
+
+$(UEFI_FIXTURE_PAYLOAD): $(UEFI_FIXTURE_PAYLOAD_SOURCE)
 	@mkdir -p $(@D)
 	cp $< $@
 
-$(UEFI_INIT_IMAGE_FIXTURE): tools/make_init_image_fixture.py
+$(UEFI_EXTERNAL_PAYLOAD): \
+	$(UEFI_EXTERNAL_SOURCE) $(UEFI_EXTERNAL_VALIDATION) \
+	uefi-external-input-force
+	@test -n "$(UEFI_EXTERNAL_SOURCE)" || \
+		{ echo "UEFI_PARUS_PAYLOAD is required" >&2; exit 2; }
+	@mkdir -p $(@D)
+	cp $(UEFI_EXTERNAL_SOURCE) $@
+
+$(UEFI_FIXTURE_INIT_SOURCE): tools/make_init_image_fixture.py
 	@mkdir -p $(@D)
 	$(PYTHON) $< --output $@
 
-$(UEFI_INIT_IMAGE): $(UEFI_INIT_IMAGE_FIXTURE)
+$(UEFI_EXTERNAL_INIT_SOURCE): tools/make_init_image_fixture.py
+	@mkdir -p $(@D)
+	$(PYTHON) $< --output $@
+
+$(UEFI_FIXTURE_INIT_IMAGE): $(UEFI_FIXTURE_INIT_SOURCE)
 	@mkdir -p $(@D)
 	cp $< $@
 
-x86_64-uefi-app: $(UEFI_ESP)/EFI/BOOT/BOOTX64.EFI $(UEFI_CONFIG) $(UEFI_PAYLOAD) $(UEFI_INIT_IMAGE)
+$(UEFI_EXTERNAL_INIT_IMAGE): $(UEFI_EXTERNAL_INIT_SOURCE)
+	@mkdir -p $(@D)
+	cp $< $@
 
-x86_64-uefi-app-smoke: x86_64-uefi-app
-	$(PYTHON) tools/qemu_target_smoke.py \
-		--target x86_64-uefi --qemu $(QEMU_X86_64) \
-		--esp $(UEFI_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
-		--payload $(UEFI_PAYLOAD) --expected-payload-class fixture \
-		--init-image $(UEFI_INIT_IMAGE) \
-		--source-revision $(shell git rev-parse HEAD) \
-		--log $(RESULTS_DIR)/qemu-x86_64-uefi.log \
-		--result $(RESULTS_DIR)/qemu-x86_64-uefi.json
+x86_64-uefi-parus-fixture: \
+	$(UEFI_FIXTURE_ESP)/EFI/BOOT/BOOTX64.EFI \
+	$(UEFI_FIXTURE_CONFIG) $(UEFI_FIXTURE_PAYLOAD) \
+	$(UEFI_FIXTURE_INIT_IMAGE) $(UEFI_FIXTURE_INPUT_MANIFEST)
 
-x86_64-uefi-parus-smoke:
+x86_64-uefi-parus-external-product: \
+	$(UEFI_EXTERNAL_ESP)/EFI/BOOT/BOOTX64.EFI \
+	$(UEFI_EXTERNAL_CONFIG) $(UEFI_EXTERNAL_PAYLOAD) \
+	$(UEFI_EXTERNAL_INIT_IMAGE) $(UEFI_EXTERNAL_INPUT_MANIFEST)
+
+x86_64-uefi-parus-external:
 	@test -n "$(UEFI_PARUS_PAYLOAD)" || \
 		{ echo "UEFI_PARUS_PAYLOAD is required" >&2; exit 2; }
 	$(MAKE) --no-print-directory \
 		UEFI_PARUS_PAYLOAD=$(abspath $(UEFI_PARUS_PAYLOAD)) \
-		x86_64-uefi-app
+		x86_64-uefi-parus-external-product
+
+x86_64-uefi-parus-fixture-smoke: x86_64-uefi-parus-fixture
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
-		--esp $(UEFI_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
-		--payload $(UEFI_PARUS_PAYLOAD) --expected-payload-class kernel \
-		--init-image $(UEFI_INIT_IMAGE) \
+		--esp $(UEFI_FIXTURE_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--payload $(UEFI_FIXTURE_PAYLOAD) --expected-payload-class fixture \
+		--init-image $(UEFI_FIXTURE_INIT_IMAGE) \
+		--product-manifest $(UEFI_FIXTURE_MANIFEST) \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(UEFI_FIXTURE_DIR)/results/qemu.log \
+		--result $(UEFI_FIXTURE_DIR)/results/qemu.json
+
+x86_64-uefi-parus-external-smoke:
+	@test -n "$(UEFI_PARUS_PAYLOAD)" || \
+		{ echo "UEFI_PARUS_PAYLOAD is required" >&2; exit 2; }
+	$(MAKE) --no-print-directory \
+		UEFI_PARUS_PAYLOAD=$(abspath $(UEFI_PARUS_PAYLOAD)) \
+		x86_64-uefi-parus-external-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target x86_64-uefi --qemu $(QEMU_X86_64) \
+		--esp $(UEFI_EXTERNAL_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--payload $(UEFI_EXTERNAL_PAYLOAD) --expected-payload-class kernel \
+		--init-image $(UEFI_EXTERNAL_INIT_IMAGE) \
 		--product-manifest $(UEFI_EXTERNAL_MANIFEST) \
 		$(PARUS_SUCCESS_MARKER_ARGS) \
 		--source-revision $(shell git rev-parse HEAD) \
-		--log $(RESULTS_DIR)/qemu-x86_64-uefi-parus.log \
-		--result $(RESULTS_DIR)/qemu-x86_64-uefi-parus.json
+		--log $(UEFI_EXTERNAL_DIR)/results/qemu.log \
+		--result $(UEFI_EXTERNAL_DIR)/results/qemu.json
 
 $(BIOS_REGISTRY_C): $(BIOS_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
@@ -1796,8 +1888,9 @@ check-environment-persistent-inputs: $(ENVIRONMENT_PERSISTENT_INPUTS_TEST)
 check-media-pipeline: $(MEDIA_PIPELINE_TEST)
 	$(MEDIA_PIPELINE_TEST) --fuzz-smoke
 
-check-normal-media-surface: x86_64-uefi-app
-	$(PYTHON) tools/lint/normal_media_surface_lint.py $(UEFI_DIR)/ribon.map
+check-normal-media-surface: x86_64-uefi-parus-fixture
+	$(PYTHON) tools/lint/normal_media_surface_lint.py \
+		$(UEFI_FIXTURE_DIR)/ribon.map
 
 check-mode-descriptors: $(MODE_DESCRIPTOR_TESTS)
 	@for test_binary in $(MODE_DESCRIPTOR_TESTS); do \
@@ -1963,8 +2056,13 @@ check-one: $(HOST_REFERENCE) $(KERNEL_FIXTURE)
 	@echo "RIBON-R4-HOST-REFERENCE-OK $(RIBON_ARCH)"
 
 check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
-	qemu-aarch64-virt-raw-fdt x86_64-uefi-app
+	qemu-aarch64-virt-raw-fdt x86_64-uefi-parus-fixture
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
+
+check-uefi-product-hermeticity:
+	$(PYTHON) tools/check_uefi_product_hermeticity.py \
+		--make $(MAKE) --root $(ROOT) \
+		--work-root $(BUILD_ROOT)/tests/uefi-product-hermeticity
 
 check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-parser-pilot check-ribos-semantics check-ribos-schema \
@@ -1985,7 +2083,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-environment-persistent-inputs check-media-pipeline check-mode-descriptors check-plugin-descriptors \
 	check-protocol-contract check-parus-entry-contract check-os-packages \
 	check-library-embed check-composition-schemas \
-	check-qemu-evidence \
+	check-qemu-evidence check-uefi-product-hermeticity \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
 	check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs check-object-graphs check-normal-media-surface qstar-check

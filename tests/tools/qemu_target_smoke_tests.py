@@ -87,6 +87,11 @@ class QemuTargetSmokeTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
+        self.assertTrue(
+            result.is_file(),
+            "QEMU evidence harness did not publish its result:\n"
+            f"{completed.stdout}",
+        )
         return completed, json.loads(result.read_text(encoding="utf-8"))
 
     def test_external_kernel_payload_records_positive_provenance(self) -> None:
