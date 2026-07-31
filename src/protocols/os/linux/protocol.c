@@ -24,7 +24,7 @@ static int linux_match(const struct RibonManifestView *manifest) {
         RIBON_PROTOCOL_STATUS_BAD_MANIFEST;
 }
 
-/** @brief Linux kernel, 선택적 FDT와 boot module 구성을 bounded하게 검사한다. */
+/** @brief Linux kernel과 선택적 FDT 구성을 bounded하게 검사한다. */
 static int linux_validate_components(const struct RibonManifestView *manifest) {
     uint32_t kernels = 0u;
     uint32_t device_trees = 0u;
@@ -45,7 +45,7 @@ static int linux_validate_components(const struct RibonManifestView *manifest) {
             ++kernels;
         } else if (component->role == RIBON_COMPONENT_ROLE_DEVICE_TREE) {
             ++device_trees;
-        } else if (component->role != RIBON_COMPONENT_ROLE_BOOT_MODULE) {
+        } else {
             return RIBON_PROTOCOL_STATUS_BAD_COMPONENTS;
         }
     }
@@ -161,8 +161,7 @@ static const struct RibonBootProtocol linux_protocol = {
     .expectations =
         RIBON_PROTOCOL_EXPECT_MEMORY_MAP |
         RIBON_PROTOCOL_EXPECT_KERNEL_IMAGE_LAYOUT |
-        RIBON_PROTOCOL_ALLOW_DEVICE_TREE |
-        RIBON_PROTOCOL_ALLOW_BOOT_MODULES,
+        RIBON_PROTOCOL_ALLOW_DEVICE_TREE,
     .supported_modes =
         RIBON_MODE_MASK(RIBON_MODE_NORMAL) |
         RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),

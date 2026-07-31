@@ -44,6 +44,59 @@ static void write_le64(unsigned char *bytes, uint32_t offset, uint64_t value) {
     }
 }
 
+/** @brief Test-only module protocol이 typed inventory를 bounded bytes로 투영한다. */
+static int prepare_module_handoff(
+    const struct RibonBootPlan *plan,
+    const struct RibonBootEnvironment *environment,
+    const struct RibonMutableMemoryMap *normalized_memory_map,
+    void *buffer,
+    uint64_t capacity,
+    struct RibonHandoffArtifact *out) {
+    unsigned char *bytes = (unsigned char *)buffer;
+    uint64_t required;
+    (void)plan;
+    (void)normalized_memory_map;
+    if (environment == 0 || buffer == 0 || out == 0 ||
+        environment->boot_modules.modules == 0 ||
+        environment->boot_modules.module_count == 0u ||
+        environment->boot_modules.module_count > RIBON_BOOT_MODULE_CAPACITY) {
+        return RIBON_PROTOCOL_HANDOFF_STATUS_BAD_ARGUMENT;
+    }
+    required = 8u + (uint64_t)environment->boot_modules.module_count * 24u;
+    if (required > capacity) {
+        return RIBON_PROTOCOL_HANDOFF_STATUS_OUT_OF_CAPACITY;
+    }
+    memset(bytes, 0, (size_t)required);
+    bytes[0] = 'M';
+    bytes[1] = 'O';
+    bytes[2] = 'D';
+    bytes[3] = '1';
+    write_le32(bytes, 4u, environment->boot_modules.module_count);
+    for (uint32_t index = 0u;
+         index < environment->boot_modules.module_count;
+         ++index) {
+        const struct RibonBootModule *module =
+            &environment->boot_modules.modules[index];
+        const uint32_t offset = 8u + index * 24u;
+        if (module->physical_address == 0u || module->size == 0u ||
+            (module->role != RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE &&
+             module->role != RIBON_BOOT_MODULE_ROLE_AUXILIARY)) {
+            return RIBON_PROTOCOL_HANDOFF_STATUS_INVALID_PLAN;
+        }
+        write_le64(bytes, offset, module->physical_address);
+        write_le64(bytes, offset + 8u, module->size);
+        write_le32(bytes, offset + 16u, (uint32_t)module->role);
+    }
+    *out = (struct RibonHandoffArtifact){
+        .data = buffer,
+        .size = required,
+        .format = "test-modules-v1",
+        .version_major = 1u,
+        .section_count = 1u,
+    };
+    return RIBON_PROTOCOL_HANDOFF_STATUS_OK;
+}
+
 /** @brief Selected host architecture가 해석하는 최소 ELF64 payload를 만든다. */
 static void build_fixture_elf(
     unsigned char *bytes,
@@ -107,14 +160,16 @@ static int initialize_transaction(
 }
 
 /** @brief Fixture source와 caller-owned storage로 prepare stage를 실행한다. */
-static int prepare_transaction(
+static int prepare_transaction_with_modules(
     struct RibonBootTransaction *transaction,
     unsigned char *source_bytes,
     unsigned char *payload_bytes,
     struct RibonLoadedPayload *layout,
     struct RibonMutableMemoryMap *normalized,
     unsigned char *handoff_bytes,
-    struct RibonHandoffArtifact *handoff) {
+    struct RibonHandoffArtifact *handoff,
+    const struct RibonBootModule *modules,
+    uint32_t module_count) {
     struct RibonBootEnvironment environment;
     const struct RibonBootSource source = {
         .kind = RIBON_BOOT_MEDIA_MEMORY,
@@ -127,6 +182,19 @@ static int prepare_transaction(
         RIBON_SERVICE_STATUS_OK ||
         ribon_host_boot_source_bind(source_bytes, LIFECYCLE_IMAGE_CAPACITY) !=
             RIBON_SERVICE_STATUS_OK) {
+        return RIBON_BOOT_STATUS_BAD_ARGUMENT;
+    }
+    if (module_count != 0u &&
+        !ribon_boot_environment_apply_persistent_inputs(
+            &environment,
+            &(const struct RibonBootEnvironmentPersistentInputs){
+                .boot_media = environment.boot_media,
+                .boot_modules = {
+                    .modules = modules,
+                    .module_count = module_count,
+                },
+                .command_line = environment.command_line,
+            })) {
         return RIBON_BOOT_STATUS_BAD_ARGUMENT;
     }
     return ribon_boot_transaction_prepare(transaction, &(struct RibonBootTransactionInput){
@@ -143,6 +211,27 @@ static int prepare_transaction(
         .handoff_buffer_capacity = LIFECYCLE_HANDOFF_CAPACITY,
         .handoff_artifact = handoff,
     });
+}
+
+/** @brief Module-free 기존 fixture 호출을 보존한다. */
+static int prepare_transaction(
+    struct RibonBootTransaction *transaction,
+    unsigned char *source_bytes,
+    unsigned char *payload_bytes,
+    struct RibonLoadedPayload *layout,
+    struct RibonMutableMemoryMap *normalized,
+    unsigned char *handoff_bytes,
+    struct RibonHandoffArtifact *handoff) {
+    return prepare_transaction_with_modules(
+        transaction,
+        source_bytes,
+        payload_bytes,
+        layout,
+        normalized,
+        handoff_bytes,
+        handoff,
+        0,
+        0u);
 }
 
 /** @brief Unexpected prepare failure의 typed receipt를 test output에 보존한다. */
@@ -297,11 +386,138 @@ static void test_quiesce_failure(void) {
     CHECK(receipt != 0 && receipt->reason == RIBON_BOOT_FAILURE_QUIESCE);
 }
 
+/** @brief Module permission과 component 합산 budget을 generic transaction에서 검사한다. */
+static void test_boot_module_protocol_and_component_budget(void) {
+    unsigned char source[LIFECYCLE_IMAGE_CAPACITY];
+    unsigned char payload[LIFECYCLE_IMAGE_CAPACITY];
+    unsigned char handoff_bytes[LIFECYCLE_HANDOFF_CAPACITY];
+    struct RibonLoadSegment segments[LIFECYCLE_SEGMENT_CAPACITY];
+    struct RibonMemoryRegion normalized_regions[16];
+    struct RibonLoadedPayload layout = {
+        .segments = segments,
+        .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY,
+    };
+    struct RibonMutableMemoryMap normalized = {
+        .regions = normalized_regions,
+        .capacity = 16u,
+    };
+    struct RibonHandoffArtifact handoff = {0};
+    struct RibonBootTransaction transaction;
+    struct RibonCoreContext core;
+    struct RibonArena arena;
+    struct RibonBootProtocol module_protocol;
+    struct RibonBootProtocolOps module_ops;
+    struct RibonProductDescriptor bounded_product;
+    const struct RibonBootModule module = {
+        .name = "initial-user",
+        .physical_address = 0x03000000u,
+        .size = 4096u,
+        .role = RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE,
+    };
+    const struct RibonBootFailureReceipt *receipt;
+    int status;
+
+    build_fixture_elf(source, ribon_arch_selected_ops()->descriptor);
+    ribon_host_lifecycle_fixture_reset();
+    CHECK(initialize_transaction(&transaction, &core, &arena) ==
+          RIBON_BOOT_STATUS_OK);
+    module_protocol = *transaction.protocol;
+    module_protocol.expectations &= ~RIBON_PROTOCOL_ALLOW_BOOT_MODULES;
+    transaction.protocol = &module_protocol;
+    status = prepare_transaction_with_modules(
+        &transaction,
+        source,
+        payload,
+        &layout,
+        &normalized,
+        handoff_bytes,
+        &handoff,
+        &module,
+        1u);
+    CHECK(status == RIBON_BOOT_STATUS_INCOMPLETE_ENVIRONMENT);
+    receipt = ribon_boot_transaction_failure_receipt(&transaction);
+    CHECK(receipt != 0 &&
+          receipt->stage == RIBON_BOOT_STAGE_NORMALIZE_ENVIRONMENT);
+
+    ribon_host_lifecycle_fixture_reset();
+    CHECK(initialize_transaction(&transaction, &core, &arena) ==
+          RIBON_BOOT_STATUS_OK);
+    module_protocol = *transaction.protocol;
+    module_ops = *module_protocol.ops;
+    module_ops.prepare_handoff = prepare_module_handoff;
+    module_protocol.ops = &module_ops;
+    module_protocol.expectations |= RIBON_PROTOCOL_ALLOW_BOOT_MODULES;
+    transaction.protocol = &module_protocol;
+    layout = (struct RibonLoadedPayload){
+        .segments = segments,
+        .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY,
+    };
+    normalized = (struct RibonMutableMemoryMap){
+        .regions = normalized_regions,
+        .capacity = 16u,
+    };
+    handoff = (struct RibonHandoffArtifact){0};
+    status = prepare_transaction_with_modules(
+        &transaction,
+        source,
+        payload,
+        &layout,
+        &normalized,
+        handoff_bytes,
+        &handoff,
+        &module,
+        1u);
+    report_prepare_failure(status, &transaction);
+    CHECK(status == RIBON_BOOT_STATUS_OK);
+    CHECK(transaction.consumed_components == 2u);
+    CHECK(handoff.size == 32u &&
+          memcmp(handoff.data, "MOD1", 4u) == 0 &&
+          handoff_bytes[4] == 1u);
+
+    ribon_host_lifecycle_fixture_reset();
+    CHECK(initialize_transaction(&transaction, &core, &arena) ==
+          RIBON_BOOT_STATUS_OK);
+    module_protocol = *transaction.protocol;
+    module_ops = *module_protocol.ops;
+    module_ops.prepare_handoff = prepare_module_handoff;
+    module_protocol.ops = &module_ops;
+    module_protocol.expectations |= RIBON_PROTOCOL_ALLOW_BOOT_MODULES;
+    transaction.protocol = &module_protocol;
+    bounded_product = *core.product;
+    bounded_product.limits.max_load_segments = 1u;
+    bounded_product.limits.max_components = 1u;
+    core.product = &bounded_product;
+    layout = (struct RibonLoadedPayload){
+        .segments = segments,
+        .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY,
+    };
+    normalized = (struct RibonMutableMemoryMap){
+        .regions = normalized_regions,
+        .capacity = 16u,
+    };
+    handoff = (struct RibonHandoffArtifact){0};
+    status = prepare_transaction_with_modules(
+        &transaction,
+        source,
+        payload,
+        &layout,
+        &normalized,
+        handoff_bytes,
+        &handoff,
+        &module,
+        1u);
+    CHECK(status == RIBON_BOOT_STATUS_BUDGET_EXCEEDED);
+    receipt = ribon_boot_transaction_failure_receipt(&transaction);
+    CHECK(receipt != 0 && receipt->stage == RIBON_BOOT_STAGE_LOAD_IMAGE);
+    CHECK(receipt != 0 && receipt->reason == RIBON_BOOT_FAILURE_BUDGET);
+}
+
 int main(void) {
     test_success_path();
     test_source_retry_and_exhaustion();
     test_timeout_and_partial_commit_failure();
     test_quiesce_failure();
+    test_boot_module_protocol_and_component_budget();
     if (failures != 0) {
         fprintf(stderr, "lifecycle_tests: %d failure(s)\n", failures);
         return 1;

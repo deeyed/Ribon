@@ -493,13 +493,72 @@ int main(void) {
                 (RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND |
                  RIBON_PARUS_RPH1_SECTION_BORROWED_RANGE_DESCRIPTOR) &&
             read_u32(module_payload, 0u) == 2u &&
+            read_u32(module_payload, 4u) ==
+                RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE &&
+            read_u64(module_payload + 8u, 0u) == modules[0].physical_address &&
+            read_u64(module_payload + 8u, 8u) == modules[0].size &&
             read_u32(module_payload + 8u, 16u) ==
                 RIBON_PARUS_RPH1_MODULE_FLAG_INITIAL_IMAGE &&
+            read_u32(module_payload + 8u, 20u) == 0u &&
+            read_u64(module_payload + 8u, 24u) == 0u &&
+            read_u64(
+                module_payload + 8u + RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
+                0u) == modules[1].physical_address &&
+            read_u64(
+                module_payload + 8u + RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
+                8u) == modules[1].size &&
             read_u32(
                 module_payload + 8u +
                     RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
-                16u) == 0u,
-        "module section records required borrowed role semantics");
+                16u) == 0u &&
+            read_u32(
+                module_payload + 8u +
+                    RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
+                20u) == 0u &&
+            read_u64(
+                module_payload + 8u +
+                    RIBON_PARUS_RPH1_MODULE_ENTRY_SIZE,
+                24u) == 0u,
+        "module section preserves order, exact spans, roles, and zero fields");
+
+    expect(
+        build_fixture_with_inputs(
+            valid, &artifact, "protocol=parus", 14u, &modules[1], 1u) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_OK &&
+        ribon_parus_parse_rph1(valid, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_OK,
+        "builder and parser accept auxiliary-only inventory");
+    module_section = find_section(
+        valid, RIBON_PARUS_RPH1_SECTION_MODULES, &module_payload);
+    expect(
+        module_section != 0 && read_u32(module_payload, 0u) == 1u &&
+            read_u32(module_payload + 8u, 16u) == 0u,
+        "auxiliary-only inventory carries no initial-image bit");
+    expect(
+        build_fixture_with_inputs(
+            valid, &artifact, "protocol=parus", 14u, modules, 2u) ==
+            RIBON_PROTOCOL_HANDOFF_STATUS_OK,
+        "mixed module fixture restores for malformed corpus");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated, RIBON_PARUS_RPH1_SECTION_MODULES, &module_payload);
+    write_u32(module_payload, 0u, 0u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects zero module count section");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated, RIBON_PARUS_RPH1_SECTION_MODULES, &module_payload);
+    write_u32(module_payload, 0u, RIBON_PARUS_RPH1_MAX_MODULES + 1u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects ninth module count");
 
     memcpy(mutated, valid, artifact.size);
     module_section = find_section(
@@ -539,6 +598,27 @@ int main(void) {
         ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
             RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
         "parser rejects zero module address");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated, RIBON_PARUS_RPH1_SECTION_MODULES, &module_payload);
+    write_u64(module_payload + 8u, 8u, 0u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects zero module size");
+
+    memcpy(mutated, valid, artifact.size);
+    module_section = find_section(
+        mutated, RIBON_PARUS_RPH1_SECTION_MODULES, &module_payload);
+    write_u64(module_payload + 8u, 0u, UINT64_MAX - 0x10u);
+    write_u64(module_payload + 8u, 8u, 0x20u);
+    refresh_checksum(mutated);
+    expect(
+        ribon_parus_parse_rph1(mutated, artifact.size, &view) ==
+            RIBON_PARUS_RPH1_PARSE_BAD_SECTION,
+        "parser rejects wrapping module range");
 
     memcpy(mutated, valid, artifact.size);
     module_section = find_section(

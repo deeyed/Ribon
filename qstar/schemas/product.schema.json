@@ -56,6 +56,22 @@
         "load_size": {"type": "integer", "minimum": 1}
       }
     },
+    "boot_module_bundle": {
+      "type": "object",
+      "required": [
+        "component_manifest_schema",
+        "maximum_modules",
+        "provider"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "component_manifest_schema": {
+          "const": "ribon-boot-module-components-v1"
+        },
+        "maximum_modules": {"const": 8},
+        "provider": {"const": "generated-component-bundle-v1"}
+      }
+    },
     "ribos_policy": {
       "type": "object",
       "required": [

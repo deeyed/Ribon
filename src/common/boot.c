@@ -309,6 +309,9 @@ int ribon_boot_transaction_prepare(
     transaction->stage = RIBON_BOOT_STAGE_NORMALIZE_ENVIRONMENT;
     if (!ribon_boot_environment_is_valid(input->environment) ||
         input->environment->architecture != transaction->arch->descriptor->id ||
+        (input->environment->boot_modules.module_count != 0u &&
+         !ribon_boot_protocol_has_expectation(
+             transaction->protocol, RIBON_PROTOCOL_ALLOW_BOOT_MODULES)) ||
         (ribon_boot_protocol_has_expectation(
              transaction->protocol, RIBON_PROTOCOL_EXPECT_MEMORY_MAP) &&
          (input->environment->flags & RIBON_BOOT_ENV_HAS_MEMORY_MAP) == 0u)) {
@@ -395,13 +398,18 @@ int ribon_boot_transaction_prepare(
     if (input->kernel_layout->segment_count >
             transaction->core->product->limits.max_load_segments ||
         input->kernel_layout->segment_count >
-            transaction->core->product->limits.max_components) {
+            transaction->core->product->limits.max_components ||
+        transaction->environment.boot_modules.module_count >
+            transaction->core->product->limits.max_components -
+                input->kernel_layout->segment_count) {
         return boot_fail(transaction, RIBON_BOOT_STAGE_LOAD_IMAGE,
                          RIBON_BOOT_FAILURE_BUDGET,
                          ribon_executable_format_name(transaction->image_format->format),
                          RIBON_BOOT_STATUS_BUDGET_EXCEEDED);
     }
-    transaction->consumed_components = input->kernel_layout->segment_count;
+    transaction->consumed_components =
+        input->kernel_layout->segment_count +
+        transaction->environment.boot_modules.module_count;
     return boot_prepare_protocol_plan(transaction);
 }
 

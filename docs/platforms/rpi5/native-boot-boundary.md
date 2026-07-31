@@ -13,6 +13,7 @@ tests:
   - ribon-rpi5-package
   - ribon-rpi5-object-graph-lint
   - ribon-rpi5-live-uart
+  - make rpi5-aarch64-modules-fixture-package
 hardware:
   - rpi5
 supersedes:
@@ -89,6 +90,33 @@ firmware/image recipe의 bring-up 계약이다.
 
 Package 생성은 live boot evidence가 아니다. Package gate는 file, size, digest, target
 identity, image header, selected object manifest만 검증한다.
+
+### Embedded boot module package
+
+Module-free package는 `ribon-rpi5-package-v1`을 사용한다. Module-bearing product는
+`ribon-rpi5-package-v2`를 사용하고 다음 artifact를 추가한다.
+
+```text
+metadata/boot-modules.json
+metadata/product.json
+manifest.json.boot_modules[]
+manifest.json.boot_module_provenance
+```
+
+각 package entry는 generated provenance의 같은 순번 component와 `name`, `role`, exact
+`size`, SHA-256가 일치해야 한다. `image_offset`은 page-aligned이며 canonical linker contract에
+따라 module backing 전체가 `kernel8.img`의 닫힌 suffix를 이룬다. 따라서 같은 bytes를 가진 두
+module도 순번과 page backing으로 구별된다. `backing_size`는 exact bytes를 포함하는 page
+multiple, `physical_address`는 RPi5 image load base와 offset으로 계산한다.
+
+Copied product manifest의 SHA-256와 product ID는 provenance와 일치해야 하고 해당 product는
+exact boot-module service/capability를 소유해야 한다. Package manifest는 product digest,
+bundle digest와 component count를 `boot_module_provenance`에 다시 결합한다. Entry 순서,
+duplicate initial image, offset/backing overlap, component index/shape, bundle digest와 product
+provenance 변조는 package checker가 거부한다.
+
+이 metadata는 physical address와 bytes를 검사하는 package evidence이며 live firmware가
+`kernel8.img`를 로드하거나 OS가 module을 소비했다는 hardware evidence가 아니다.
 
 ## Boot Protocol
 

@@ -9,6 +9,32 @@ from pathlib import Path
 import sys
 
 
+BOOT_MODULE_BUNDLE_CONTRACT = {
+    "component_manifest_schema": "ribon-boot-module-components-v1",
+    "maximum_modules": 8,
+    "provider": "generated-component-bundle-v1",
+}
+
+BOOT_MODULE_SERVICE_CONTRACT = {
+    "id": "service.product.boot-module-bundle",
+    "kind": "boot-module-bundle",
+    "symbol": "ribon_generated_boot_module_bundle_service_descriptor",
+}
+
+RAW_FDT_LINKER_SCRIPTS = (
+    "targets/qemu-aarch64-virt-raw-fdt/linker.ld",
+    "targets/qemu-riscv64-virt-opensbi/linker.ld",
+    "targets/rpi5-aarch64-raw-fdt/linker.ld",
+)
+
+RAW_FDT_LINKER_SYMBOLS = (
+    "__bootloader_runtime_end",
+    "__ribon_boot_modules_start",
+    "__ribon_boot_modules_end",
+    "__image_end",
+)
+
+
 EXPECTED = {
     "qemu-riscv64-virt-opensbi": {
         "architecture": "riscv64",
@@ -18,6 +44,25 @@ EXPECTED = {
         "optional": True,
         "product_id": "bootmgr.qemu-riscv64-virt-parus-external",
         "payload_entry_abi": "riscv-rph1-v1",
+        "boot_module_bundle": False,
+        "needles": (
+            "src/arch/riscv64/arch",
+            "src/environments/raw-fdt/raw_fdt",
+            "ports/qemu/virt-riscv64/port",
+            "generated/embedded_payload",
+        ),
+        "forbidden": (
+            "src/arch/aarch64/arch",
+            "ports/qemu/virt-aarch64/port",
+        ),
+    },
+    "qemu-riscv64-virt-rph1-fixture": {
+        "architecture": "riscv64",
+        "environment": "raw-fdt",
+        "port": "qemu-virt-riscv64",
+        "map": "ribon.map",
+        "product_id": "bootmgr.qemu-riscv64-virt-rph1-fixture",
+        "boot_module_bundle": False,
         "needles": (
             "src/arch/riscv64/arch",
             "src/environments/raw-fdt/raw_fdt",
@@ -37,10 +82,41 @@ EXPECTED = {
         "optional": True,
         "product_id": "bootmgr.qemu-aarch64-virt-parus-external",
         "payload_entry_abi": "arm64-rph1-v1",
+        "boot_module_bundle": False,
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
             "ports/qemu/virt-aarch64/port",
             "generated/embedded_payload",
+        ),
+    },
+    "qemu-aarch64-virt-parus-modules": {
+        "architecture": "aarch64",
+        "environment": "raw-fdt",
+        "port": "qemu-virt-aarch64",
+        "map": "ribon.map",
+        "optional": True,
+        "product_id": "bootmgr.qemu-aarch64-virt-parus-modules",
+        "payload_entry_abi": "arm64-rph1-v1",
+        "boot_module_bundle": True,
+        "needles": (
+            "src/environments/raw-fdt/raw_fdt",
+            "ports/qemu/virt-aarch64/port",
+            "generated/boot-modules/descriptor.o",
+            "generated/boot-modules/bundle.o",
+        ),
+    },
+    "qemu-aarch64-virt-modules-fixture": {
+        "architecture": "aarch64",
+        "environment": "raw-fdt",
+        "port": "qemu-virt-aarch64",
+        "map": "ribon.map",
+        "product_id": "bootmgr.qemu-aarch64-virt-modules-fixture",
+        "boot_module_bundle": True,
+        "needles": (
+            "src/environments/raw-fdt/raw_fdt",
+            "ports/qemu/virt-aarch64/port",
+            "generated/boot-modules/descriptor.o",
+            "generated/boot-modules/bundle.o",
         ),
     },
     "qemu-aarch64-virt-raw-fdt": {
@@ -48,6 +124,7 @@ EXPECTED = {
         "environment": "raw-fdt",
         "port": "qemu-virt-aarch64",
         "map": "ribon.map",
+        "boot_module_bundle": False,
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
             "ports/qemu/virt-aarch64/port",
@@ -58,9 +135,40 @@ EXPECTED = {
         "environment": "raw-fdt",
         "port": "raspberrypi-rpi5",
         "map": "ribon.map",
+        "boot_module_bundle": False,
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
             "ports/raspberrypi/rpi5/port",
+        ),
+    },
+    "rpi5-aarch64-modules-fixture": {
+        "architecture": "aarch64",
+        "environment": "raw-fdt",
+        "port": "raspberrypi-rpi5",
+        "map": "ribon.map",
+        "product_id": "bootmgr.rpi5-aarch64-modules-fixture",
+        "boot_module_bundle": True,
+        "needles": (
+            "src/environments/raw-fdt/raw_fdt",
+            "ports/raspberrypi/rpi5/port",
+            "generated/boot-modules/descriptor.o",
+            "generated/boot-modules/bundle.o",
+        ),
+    },
+    "rpi5-aarch64-parus-modules": {
+        "architecture": "aarch64",
+        "environment": "raw-fdt",
+        "port": "raspberrypi-rpi5",
+        "map": "ribon.map",
+        "optional": True,
+        "product_id": "bootmgr.rpi5-aarch64-parus-modules",
+        "payload_entry_abi": "arm64-rph1-v1",
+        "boot_module_bundle": True,
+        "needles": (
+            "src/environments/raw-fdt/raw_fdt",
+            "ports/raspberrypi/rpi5/port",
+            "generated/boot-modules/descriptor.o",
+            "generated/boot-modules/bundle.o",
         ),
     },
     "x86_64-uefi-parus-fixture": {
@@ -103,10 +211,29 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def check_raw_fdt_linker_contract() -> None:
+    """All raw-FDT targets must publish the same separated image ranges."""
+
+    root = Path(__file__).resolve().parents[2]
+    tokens = (
+        "__bootloader_runtime_end = .;",
+        "__ribon_boot_modules_start = .;",
+        "KEEP(*(SORT_BY_NAME(.ribon.boot_modules.*)))",
+        "__ribon_boot_modules_end = .;",
+        "__image_end = .;",
+    )
+    for relative in RAW_FDT_LINKER_SCRIPTS:
+        linker = (root / relative).read_text(encoding="utf-8")
+        positions = [linker.find(token) for token in tokens]
+        if any(position < 0 for position in positions) or positions != sorted(positions):
+            fail(f"{relative}: canonical boot-module section contract is absent")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("target_root", type=Path)
     args = parser.parse_args()
+    check_raw_fdt_linker_contract()
     for target, expected in EXPECTED.items():
         directory = args.target_root / target
         report_path = directory / "results" / "object-graph.json"
@@ -136,6 +263,26 @@ def main() -> int:
                 or payload.get("entry_abi") != payload_entry_abi
             ):
                 fail(f"{target}: external payload product contract is not exact")
+        expected_bundle = expected.get("boot_module_bundle")
+        report_services = report.get("services")
+        if not isinstance(report_services, list):
+            fail(f"{target}: generated service report is absent")
+        module_services = [
+            service
+            for service in report_services
+            if isinstance(service, dict)
+            and service.get("kind") == "boot-module-bundle"
+        ]
+        if expected_bundle is True:
+            if (
+                report.get("boot_module_bundle") != BOOT_MODULE_BUNDLE_CONTRACT
+                or module_services != [BOOT_MODULE_SERVICE_CONTRACT]
+            ):
+                fail(f"{target}: boot-module bundle product contract is not exact")
+        elif expected_bundle is False and (
+            report.get("boot_module_bundle") is not None or module_services
+        ):
+            fail(f"{target}: module-free product selected a boot-module authority")
         map_name = expected.get("map")
         if map_name is None:
             continue
@@ -149,6 +296,27 @@ def main() -> int:
         for needle in expected.get("forbidden", ()):
             if needle in link_map:
                 fail(f"{target}: forbidden object leaked into link map: {needle}")
+        if expected["environment"] == "raw-fdt":
+            symbol_positions = [link_map.find(symbol) for symbol in RAW_FDT_LINKER_SYMBOLS]
+            if (
+                any(position < 0 for position in symbol_positions)
+                or symbol_positions != sorted(symbol_positions)
+            ):
+                fail(f"{target}: linked image range symbols are absent or unordered")
+            has_module_objects = (
+                "src/common/module_bundle.o" in link_map
+                and "generated/boot-modules/descriptor.o" in link_map
+                and "generated/boot-modules/bundle.o" in link_map
+                and ".ribon.boot_modules.000" in link_map
+            )
+            if expected_bundle is True and not has_module_objects:
+                fail(f"{target}: selected bundle objects are absent from the image")
+            if expected_bundle is False and (
+                "src/common/module_bundle.o" in link_map
+                or "generated/boot-modules/" in link_map
+                or ".ribon.boot_modules.000" in link_map
+            ):
+                fail(f"{target}: module object leaked into a module-free image")
         forbidden = (
             "raspberrypi/rpi5" if target.startswith("qemu-") else
             "qemu/virt-aarch64" if target.startswith("rpi5-") else

@@ -18,6 +18,7 @@ tests:
   - make check-ribos-product-graphs
   - make check-ribos-normal-no-network
   - make check-uefi-product-hermeticity
+  - make check-boot-modules
 hardware:
   - none
 supersedes:
@@ -81,6 +82,18 @@ dispatch하는 helper contract는 같은 manifest에서 나와야 한다. Callba
 pointer는 canonical digest에 포함하지 않는다.
 
 Generated output은 정본 source가 아니며 build directory 밖에 기록하지 않는다.
+
+### Build-time component bundle
+
+Build-time component를 embedded publication하는 product는 component 입력과 generated object를
+manifest 밖의 Make 변수만으로 활성화해서는 안 된다. Module-bearing raw-FDT product는
+`boot_module_bundle`, exact `boot-module-bundle` authority service와 required/allowed
+`BOOT_MODULE_BUNDLE` capability를 모두 선택한다. 이 네 항목은 양방향 일관성을 만족해야 한다.
+
+Module-free product에는 bundle metadata, service, capability와 generated/module support object가
+모두 없어야 한다. Linker의 빈 canonical section symbol은 provider로 세지 않는다. Component
+generator는 selected product manifest digest를 provenance에 봉인하고 product-owned build root
+밖에 snapshot 또는 generated source를 기록하지 않는다.
 
 ### Product별 output identity
 
@@ -161,3 +174,5 @@ Gate는 archive member와 final link map을 검사하여 다음을 거부한다.
 - firmware personality 없는 product의 runtime service
 - service authority 중복, collection owner 미선택, service ABI/lifetime/mode budget 불일치
 - external-media target의 runtime object graph에 embedded payload fixture object
+- module-free raw-FDT target의 module bundle service, capability 또는 module object
+- module-bearing raw-FDT target의 product authority와 generated provider 불일치

@@ -1,0 +1,69 @@
+{
+  "components": [
+    {
+      "expected_sha256": "495f0e114738c14002a9cb0a3fd40963322f8b902c9e825c3d1c52c02e42f431",
+      "expected_size": 29,
+      "maximum_size": 4096,
+      "name": "initial-user",
+      "role": "initial-image",
+      "source": "initial-image.bin"
+    },
+    {
+      "expected_sha256": "286aa810297b2e199bc4612377b8926a5457c6fe33ecc9ca0ca3caefaf437a71",
+      "expected_size": 27,
+      "maximum_size": 4096,
+      "name": "auxiliary-01",
+      "role": "auxiliary",
+      "source": "auxiliary-01.bin"
+    },
+    {
+      "expected_sha256": "4751856775c68f92c0b5ab6bf06e2d7504c603f2102f5d1d9f8e7a51ba285668",
+      "expected_size": 27,
+      "maximum_size": 4096,
+      "name": "auxiliary-02",
+      "role": "auxiliary",
+      "source": "auxiliary-02.bin"
+    },
+    {
+      "expected_sha256": "8329a9554364f615d7485a35c166ab23bb198dfec6d1dc4f8507d0d1a9911031",
+      "expected_size": 27,
+      "maximum_size": 4096,
+      "name": "auxiliary-03",
+      "role": "auxiliary",
+      "source": "auxiliary-03.bin"
+    },
+    {
+      "expected_sha256": "b6eb2384ac45cef7e8264b4445b8afe350c1e06ab07651539d2ca512e4be12cf",
+      "expected_size": 27,
+      "maximum_size": 4096,
+      "name": "auxiliary-04",
+      "role": "auxiliary",
+      "source": "auxiliary-04.bin"
+    },
+    {
+      "expected_sha256": "2daed595c1b7171923c196ed0900831582c1289896b18c38c5da13abadd327bc",
+      "expected_size": 27,
+      "maximum_size": 4096,
+      "name": "auxiliary-05",
+      "role": "auxiliary",
+      "source": "auxiliary-05.bin"
+    },
+    {
+      "expected_sha256": "dc94435cebc3268f2d98b4fd68ab0bb2913c3cfde88096f6404b16ea518f2793",
+      "expected_size": 27,
+      "maximum_size": 4096,
+      "name": "auxiliary-06",
+      "role": "auxiliary",
+      "source": "auxiliary-06.bin"
+    },
+    {
+      "expected_sha256": "b66f6317e4af43726417e3a08c62cc49b45fc76ddca1462841008a4e11b9f0d6",
+      "expected_size": 27,
+      "maximum_size": 4096,
+      "name": "auxiliary-07",
+      "role": "auxiliary",
+      "source": "auxiliary-07.bin"
+    }
+  ],
+  "schema": "ribon-boot-module-components-v1"
+}

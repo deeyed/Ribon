@@ -52,6 +52,7 @@ canonical/language/ribos-language-model
 contracts/core/library-plugin-protocol-boundary
 contracts/composition/product-plugin-composition
 contracts/frontends/environment-port-image-boundary
+contracts/frontends/raw-fdt-boot-module-bundle
 contracts/storage/deterministic-boot-media
 contracts/firmware/firmware-personality-plugin
 contracts/firmware/reference-provider-products
@@ -127,6 +128,7 @@ adr/0035-ribos-ribon-product-integration
 adr/0036-ribos-cross-architecture-qemu-validation
 adr/0037-uefi-product-scoped-hermetic-build
 adr/0038-ribos-executable-example-corpus
+adr/0039-raw-fdt-typed-module-bundle
 ```
 
 ```{toctree}
@@ -194,4 +196,5 @@ log/2026-07-31-ribos-ribon-product-integration
 log/2026-07-31-ribos-cross-architecture-vm-validation
 log/2026-07-31-r01-uefi-product-hermetic-build
 log/2026-07-31-r02-ribos-executable-corpus
+log/2026-07-31-rfdt-mod0-typed-boot-modules
 ```

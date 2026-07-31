@@ -32,7 +32,7 @@ static const struct RibonMemoryRegion host_memory_map[] = {
     {
         .base = 0x0000000001000000ull,
         .length = 0x0000000000100000ull,
-        .kind = RIBON_MEMORY_REGION_BOOT_MODULE,
+        .kind = RIBON_MEMORY_REGION_RESERVED,
         .attributes = RIBON_MEMORY_ATTR_READ,
     },
     {
@@ -40,15 +40,6 @@ static const struct RibonMemoryRegion host_memory_map[] = {
         .length = 0x0000000020000000ull,
         .kind = RIBON_MEMORY_REGION_USABLE,
         .attributes = RIBON_MEMORY_ATTR_READ | RIBON_MEMORY_ATTR_WRITE,
-    },
-};
-
-static const struct RibonBootModule host_boot_modules[] = {
-    {
-        .name = "host-initrd",
-        .physical_address = 0x0000000001000000ull,
-        .size = 0x0000000000100000ull,
-        .role = RIBON_BOOT_MODULE_ROLE_INITIAL_IMAGE,
     },
 };
 
@@ -499,15 +490,11 @@ int ribon_host_environment_collect(
         (uint32_t)(sizeof(host_memory_map) / sizeof(host_memory_map[0]));
     out->boot_media.kind = RIBON_BOOT_MEDIA_FILE;
     out->boot_media.path = "kernel/kernel.elf";
-    out->boot_modules.modules = host_boot_modules;
-    out->boot_modules.module_count =
-        (uint32_t)(sizeof(host_boot_modules) / sizeof(host_boot_modules[0]));
     out->command_line.text = "protocol=synthetic environment=host";
     out->command_line.length = 35u;
     out->flags =
         RIBON_BOOT_ENV_HAS_MEMORY_MAP |
         RIBON_BOOT_ENV_HAS_BOOT_MEDIA |
-        RIBON_BOOT_ENV_HAS_BOOT_MODULES |
         RIBON_BOOT_ENV_HAS_COMMAND_LINE;
     return RIBON_SERVICE_STATUS_OK;
 }

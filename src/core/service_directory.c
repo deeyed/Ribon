@@ -56,6 +56,8 @@ static uint64_t service_capabilities(enum RibonServiceKind kind) {
         return RIBON_CAP_MACHINE_DESCRIPTION;
     case RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT:
         return RIBON_CAP_PAYLOAD_PLACEMENT;
+    case RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE:
+        return RIBON_CAP_BOOT_MODULE_BUNDLE;
     default:
         return 0u;
     }
@@ -90,6 +92,8 @@ const char *ribon_service_kind_name(enum RibonServiceKind kind) {
         return "machine-description";
     case RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT:
         return "payload-placement";
+    case RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE:
+        return "boot-module-bundle";
     default:
         return "unknown";
     }
@@ -174,7 +178,8 @@ int ribon_service_directory_validate(
         RIBON_CAP_DIAGNOSTIC_SINK |
         RIBON_CAP_ENVIRONMENT_QUIESCE |
         RIBON_CAP_MACHINE_DESCRIPTION |
-        RIBON_CAP_PAYLOAD_PLACEMENT;
+        RIBON_CAP_PAYLOAD_PLACEMENT |
+        RIBON_CAP_BOOT_MODULE_BUNDLE;
 
     if (directory == 0 || product == 0 ||
         directory->size != sizeof(*directory) ||

@@ -41,7 +41,15 @@ PRODUCT_LOAD_WINDOWS = {
         "load_base": 0x41000000,
         "load_size": 16 * 1024 * 1024,
     },
+    "bootmgr.qemu-aarch64-virt-parus-modules": {
+        "load_base": 0x41000000,
+        "load_size": 16 * 1024 * 1024,
+    },
     "bootmgr.rpi5-aarch64-parus-external": {
+        "load_base": 0x04000000,
+        "load_size": 32 * 1024 * 1024,
+    },
+    "bootmgr.rpi5-aarch64-parus-modules": {
         "load_base": 0x04000000,
         "load_size": 32 * 1024 * 1024,
     },

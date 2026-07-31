@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import struct
 import tempfile
 import unittest
@@ -17,9 +18,17 @@ ARM64_MANIFEST = (
     ROOT
     / "products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json"
 )
+ARM64_MODULE_MANIFEST = (
+    ROOT
+    / "products/bootmgr/manifests/qemu-aarch64-virt-parus-modules.json"
+)
 RPI5_ARM64_MANIFEST = (
     ROOT
     / "products/bootmgr/manifests/rpi5-aarch64-parus-external.json"
+)
+RPI5_ARM64_MODULE_MANIFEST = (
+    ROOT
+    / "products/bootmgr/manifests/rpi5-aarch64-parus-modules.json"
 )
 RISCV64_MANIFEST = (
     ROOT
@@ -97,6 +106,17 @@ class ExternalParusPayloadTests(unittest.TestCase):
             )
             self.assertTrue(report["payload"]["immutable"])
 
+    def test_accepts_aarch64_module_product_in_same_payload_window(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            payload = Path(raw) / "parus.elf"
+            write_elf(payload)
+            report = self.validator.validate(ARM64_MODULE_MANIFEST, payload)
+            self.assertTrue(report["success"])
+            self.assertEqual(
+                report["product_id"],
+                "bootmgr.qemu-aarch64-virt-parus-modules",
+            )
+
     def test_accepts_riscv64_rph1_payload_in_product_window(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             payload = Path(raw) / "parus.elf"
@@ -122,12 +142,73 @@ class ExternalParusPayloadTests(unittest.TestCase):
                 "0x0000000004000000",
             )
 
+    def test_accepts_rpi5_module_product_in_same_payload_window(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            payload = Path(raw) / "parus.elf"
+            write_elf(payload, base=0x04000000)
+            report = self.validator.validate(RPI5_ARM64_MODULE_MANIFEST, payload)
+            self.assertTrue(report["success"])
+            self.assertEqual(
+                report["product_id"],
+                "bootmgr.rpi5-aarch64-parus-modules",
+            )
+
     def test_rejects_qemu_window_payload_for_rpi5_product(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             payload = Path(raw) / "wrong-window.elf"
             write_elf(payload)
             with self.assertRaisesRegex(ValueError, "product window"):
                 self.validator.validate(RPI5_ARM64_MANIFEST, payload)
+
+    def test_rpi5_module_package_revalidates_failed_payload_on_retry(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            payload = directory / "wrong-window.elf"
+            build_root = directory / "build"
+            write_elf(payload)
+            command = [
+                "make",
+                "--no-print-directory",
+                f"BUILD_ROOT={build_root}",
+                f"RPI5_PARUS_PAYLOAD={payload}",
+                "RPI5_PARUS_MODULE_COMPONENT_MANIFEST="
+                + str(ROOT / "tests/fixtures/boot-modules/manifest.json"),
+                "rpi5-aarch64-parus-modules-package",
+            ]
+
+            first = subprocess.run(
+                command,
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+            self.assertNotEqual(first.returncode, 0)
+
+            report_path = (
+                build_root
+                / "targets/rpi5-aarch64-parus-modules/results"
+                / "external-payload.json"
+            )
+            report_path.write_text(
+                json.dumps({"success": True}),
+                encoding="utf-8",
+            )
+
+            second = subprocess.run(
+                command,
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+            self.assertNotEqual(second.returncode, 0)
+            self.assertIn("product window", second.stdout + second.stderr)
+            self.assertFalse(
+                json.loads(report_path.read_text(encoding="utf-8"))["success"]
+            )
 
     def test_rejects_wrong_architecture(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

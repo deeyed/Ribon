@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import struct
 import sys
 
@@ -17,6 +17,48 @@ REQUIRED_FILES = (
     "config.txt",
     "cmdline.txt",
 )
+MODULE_PROVENANCE_FILE = "metadata/boot-modules.json"
+PRODUCT_MANIFEST_FILE = "metadata/product.json"
+PAGE_SIZE = 4096
+PROVENANCE_SCHEMA = "ribon-boot-module-bundle-provenance-v1"
+PROVENANCE_KEYS = {
+    "bundle_sha256",
+    "component_count",
+    "components",
+    "product_id",
+    "product_manifest_sha256",
+    "schema",
+}
+COMPONENT_KEYS = {
+    "index",
+    "maximum_size",
+    "name",
+    "role",
+    "sha256",
+    "size",
+    "snapshot",
+    "source",
+}
+PACKAGE_MODULE_KEYS = {
+    "backing_size",
+    "image_offset",
+    "name",
+    "physical_address",
+    "role",
+    "sha256",
+    "size",
+}
+MODULE_BINDING_KEYS = {
+    "bundle_sha256",
+    "component_count",
+    "product_id",
+    "product_manifest_sha256",
+}
+MODULE_SERVICE = {
+    "id": "service.product.boot-module-bundle",
+    "kind": "boot-module-bundle",
+    "symbol": "ribon_generated_boot_module_bundle_service_descriptor",
+}
 
 
 def fail(message: str) -> int:
@@ -28,6 +70,64 @@ def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def is_sha256(value: object) -> bool:
+    """Return whether value is one canonical lowercase SHA-256 string."""
+
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def product_is_bound(
+    raw: bytes,
+    provenance: dict[str, object],
+) -> bool:
+    """Return whether copied product bytes authorize this exact provenance."""
+
+    try:
+        product = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return False
+    services = product.get("services") if isinstance(product, dict) else None
+    module_services = (
+        [
+            service
+            for service in services
+            if isinstance(service, dict)
+            and service.get("kind") == "boot-module-bundle"
+        ]
+        if isinstance(services, list)
+        else []
+    )
+    return (
+        isinstance(product, dict)
+        and product.get("schema_version") == 1
+        and product.get("product_kind") == "bootloader"
+        and product.get("target_id") == "rpi5-aarch64-raw-fdt"
+        and product.get("architecture") == "aarch64"
+        and product.get("environment") == "raw-fdt"
+        and product.get("port") == "raspberrypi-rpi5"
+        and product.get("image") == {
+            "format": "raw-binary",
+            "recipe": "raspberrypi-firmware-image",
+            "artifact": "ribon-rpi5.img",
+        }
+        and product.get("boot_module_bundle") == {
+            "component_manifest_schema": "ribon-boot-module-components-v1",
+            "maximum_modules": 8,
+            "provider": "generated-component-bundle-v1",
+        }
+        and module_services == [MODULE_SERVICE]
+        and "BOOT_MODULE_BUNDLE" in product.get("required_capabilities", [])
+        and "BOOT_MODULE_BUNDLE" in product.get("allowed_capabilities", [])
+        and product.get("product_id") == provenance.get("product_id")
+        and hashlib.sha256(raw).hexdigest() ==
+            provenance.get("product_manifest_sha256")
+    )
 
 
 def payload_load_ranges(path: Path) -> list[tuple[int, int]]:
@@ -85,17 +185,22 @@ def main() -> int:
     if not manifest_path.is_file():
         return fail("manifest.json is missing")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    schema = manifest.get("schema")
     if (
-        manifest.get("schema") != "ribon-rpi5-package-v1"
+        schema not in ("ribon-rpi5-package-v1", "ribon-rpi5-package-v2")
         or manifest.get("port") != "raspberrypi-rpi5"
         or manifest.get("environment") != "raw-fdt"
         or manifest.get("claim") != "package-only; no live RPi5 execution"
     ):
         return fail("manifest identity or evidence boundary is invalid")
     recorded = manifest.get("files")
-    if not isinstance(recorded, dict) or set(recorded) != set(REQUIRED_FILES):
+    expected_files = set(REQUIRED_FILES)
+    if schema == "ribon-rpi5-package-v2":
+        expected_files.add(MODULE_PROVENANCE_FILE)
+        expected_files.add(PRODUCT_MANIFEST_FILE)
+    if not isinstance(recorded, dict) or set(recorded) != expected_files:
         return fail("manifest file set is not exact")
-    for relative in REQUIRED_FILES:
+    for relative in sorted(expected_files):
         path = args.package / relative
         entry = recorded[relative]
         if (
@@ -135,6 +240,146 @@ def main() -> int:
         for payload_start, payload_end in payload_ranges
     ):
         return fail("Ribon in-memory image overlaps a payload PT_LOAD range")
+    if schema == "ribon-rpi5-package-v2":
+        provenance = json.loads(
+            (args.package / MODULE_PROVENANCE_FILE).read_text(encoding="utf-8")
+        )
+        modules = manifest.get("boot_modules")
+        binding = manifest.get("boot_module_provenance")
+        provenance_components = provenance.get("components")
+        if (
+            set(manifest) != {
+                "boot_module_provenance",
+                "boot_modules",
+                "claim",
+                "environment",
+                "files",
+                "port",
+                "schema",
+            }
+            or not isinstance(provenance, dict)
+            or set(provenance) != PROVENANCE_KEYS
+            or provenance.get("schema") != PROVENANCE_SCHEMA
+            or not is_sha256(provenance.get("bundle_sha256"))
+            or not is_sha256(provenance.get("product_manifest_sha256"))
+            or not isinstance(provenance.get("product_id"), str)
+            or not provenance.get("product_id")
+            or not isinstance(modules, list)
+            or not isinstance(binding, dict)
+            or set(binding) != MODULE_BINDING_KEYS
+            or not isinstance(provenance_components, list)
+            or not 1 <= len(modules) <= 8
+            or provenance.get("component_count") != len(modules)
+            or len(provenance_components) != len(modules)
+            or binding != {
+                "bundle_sha256": provenance.get("bundle_sha256"),
+                "component_count": len(modules),
+                "product_id": provenance.get("product_id"),
+                "product_manifest_sha256": provenance.get(
+                    "product_manifest_sha256"
+                ),
+            }
+            or not product_is_bound(
+                (args.package / PRODUCT_MANIFEST_FILE).read_bytes(),
+                provenance,
+            )
+        ):
+            return fail("module provenance or package module count is invalid")
+        image = (args.package / "kernel8.img").read_bytes()
+        if any(
+            not isinstance(module, dict)
+            or not isinstance(module.get("backing_size"), int)
+            or isinstance(module.get("backing_size"), bool)
+            or module["backing_size"] <= 0
+            for module in modules
+        ):
+            return fail("module backing sizes are invalid")
+        total_backing = sum(module["backing_size"] for module in modules)
+        previous_end = len(image) - total_backing
+        if previous_end < 0 or previous_end % PAGE_SIZE != 0:
+            return fail("module backing is not a page-aligned image suffix")
+        initial_images = 0
+        names: set[str] = set()
+        bundle_digest = hashlib.sha256()
+        bundle_digest.update(PROVENANCE_SCHEMA.encode("ascii") + b"\0")
+        for index, module in enumerate(modules):
+            component = provenance_components[index]
+            if (
+                not isinstance(module, dict)
+                or set(module) != PACKAGE_MODULE_KEYS
+                or not isinstance(component, dict)
+                or set(component) != COMPONENT_KEYS
+            ):
+                return fail("module package entry is not an object")
+            offset = module.get("image_offset")
+            size = module.get("size")
+            backing_size = module.get("backing_size")
+            role = module.get("role")
+            name = module.get("name")
+            maximum_size = component.get("maximum_size")
+            source_value = component.get("source")
+            source = (
+                PurePosixPath(source_value)
+                if isinstance(source_value, str)
+                else None
+            )
+            expected_snapshot = (
+                "generated/boot-modules/boot-module-components/"
+                f"{index:03d}.bin"
+            )
+            if (
+                not isinstance(offset, int)
+                or not isinstance(size, int)
+                or not isinstance(backing_size, int)
+                or size <= 0
+                or backing_size < size
+                or backing_size % PAGE_SIZE != 0
+                or offset % PAGE_SIZE != 0
+                or offset != previous_end
+                or offset > len(image)
+                or size > len(image) - offset
+                or backing_size > len(image) - offset
+                or module.get("physical_address") != 0x80000 + offset
+                or role not in ("initial-image", "auxiliary")
+                or not isinstance(name, str)
+                or not 1 <= len(name) <= 63
+                or any(
+                    not (ch.isascii() and (ch.isalnum() or ch in "._-"))
+                    for ch in name
+                )
+                or name in names
+                or component.get("index") != index
+                or not isinstance(maximum_size, int)
+                or isinstance(maximum_size, bool)
+                or maximum_size < size
+                or not is_sha256(component.get("sha256"))
+                or component.get("snapshot") != expected_snapshot
+                or source is None
+                or source.is_absolute()
+                or any(part in ("", ".", "..") for part in source.parts)
+                or module.get("name") != component.get("name")
+                or role != component.get("role")
+                or size != component.get("size")
+                or module.get("sha256") != component.get("sha256")
+                or hashlib.sha256(image[offset : offset + size]).hexdigest() !=
+                    module.get("sha256")
+            ):
+                return fail(f"invalid embedded module entry {index}")
+            data = image[offset : offset + size]
+            previous_end = offset + backing_size
+            names.add(name)
+            bundle_digest.update(name.encode("ascii") + b"\0")
+            bundle_digest.update(str(role).encode("ascii") + b"\0")
+            bundle_digest.update(size.to_bytes(8, "little"))
+            bundle_digest.update(data)
+            if role == "initial-image":
+                initial_images += 1
+                if initial_images > 1:
+                    return fail("duplicate initial image in package")
+        if bundle_digest.hexdigest() != provenance.get("bundle_sha256"):
+            return fail("module bundle digest does not match package bytes")
+        if previous_end != len(image):
+            return fail("module backing does not close at the image end")
     print("RIBON-R4-RPI5-PACKAGE-OK package-only disjoint-load-ranges")
     return 0
 

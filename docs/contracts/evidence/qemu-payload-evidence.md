@@ -2,10 +2,13 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-07-31
 code_paths:
   - tools/qemu_target_smoke.py
   - tools/validate_external_parus_payload.py
+  - tools/generate_boot_module_bundle.py
+  - products/bootmgr/manifests/qemu-aarch64-virt-parus-modules.json
+  - products/bootmgr/manifests/qemu-aarch64-virt-modules-fixture.json
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
   - products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
   - products/bootmgr/manifests/x86_64-uefi-parus-fixture.json
@@ -15,7 +18,10 @@ code_paths:
   - tests/tools/external_parus_payload_tests.py
 tests:
   - make check-qemu-evidence
+  - make check-boot-modules
   - make check-uefi-product-hermeticity
+  - make qemu-aarch64-virt-modules-fixture-smoke
+  - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf QEMU_PARUS_MODULE_COMPONENT_MANIFEST=/path/to/components.json qemu-aarch64-virt-parus-modules-smoke
   - make x86_64-uefi-parus-fixture-smoke
   - make UEFI_PARUS_PAYLOAD=/path/to/parus.elf x86_64-uefi-parus-external-smoke
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
@@ -49,6 +55,25 @@ External-kernel class는 actual payload identity와 Ribon transfer 증거를 연
 boot stage 또는 runtime 성공은 별도 required marker graph와 Parus integration
 harness가 검증해야 하며, payload class만으로 열리지 않는다.
 
+## raw-FDT typed module 증거
+
+raw-FDT module evidence는 generated provenance만으로 열리지 않는다. Harness는 실행 전에
+다음 authority와 byte identity를 모두 검증한다.
+
+- 선택한 product manifest가 정확한 raw-FDT target tuple과 `bootloader` product kind를 가진다.
+- product가 `BOOT_MODULE_BUNDLE`을 required/allowed capability로 모두 선언한다.
+- product가 canonical `service.product.boot-module-bundle` provider를 정확히 하나 선택한다.
+- provenance의 product ID와 product manifest SHA-256이 선택한 product와 일치한다.
+- component는 1..8개이고, 이름·role·순서·크기·SHA-256·snapshot이 exact하다.
+- initial-image role은 최대 하나이며 bundle digest를 snapshot bytes에서 다시 계산한다.
+- ordinal snapshot bytes와 page-aligned backing 크기가 composed raw image의 canonical suffix와
+  정확히 일치한다. 동일 byte 내용을 가진 서로 다른 module도 ordinal로 구분한다.
+
+위 결합 중 하나라도 실패하면 QEMU를 launch하지 않고 preflight failure를 기록한다. 실행한
+경우 payload, product manifest, module provenance와 snapshot, composed image의 실행 전후
+SHA-256 및 재검증 결과를 모두 기록한다. 하나라도 변경되면 성공 marker가 관측되었더라도
+artifact identity failure다.
+
 ## x86_64 UEFI product 격리
 
 `bootmgr.x86_64-uefi-parus-fixture`와
@@ -61,6 +86,10 @@ Hermeticity gate가 synthetic external-input ELF를 사용하는 경우 그 실�
 output isolation의 host evidence일 뿐 external Parus runtime evidence가 아니다. External QEMU
 evidence는 별도의 실제 kernel payload, external product manifest와 Parus terminal marker graph를
 모두 요구한다.
+
+UEFI QEMU 실행은 ESP directory를 read-only VVFAT base로 열고 QEMU의 transient block snapshot에
+firmware NvVars write를 격리한다. 따라서 실행에 필요한 firmware write는 허용하되 선택한 ESP
+input의 byte identity는 실행 전후 동일해야 한다.
 
 ## RISC-V RPH1 contract fixture
 
@@ -88,6 +117,7 @@ Result는 다음 authority를 분리해 보존한다.
 - Ribon source revision
 - payload와 composed artifact SHA-256
 - 선택한 product manifest의 ID와 SHA-256
+- module provenance, component snapshot, bundle digest와 raw-image suffix binding
 - firmware SHA-256
 - QEMU version과 실제 command
 - bounded timeout과 terminal reason
@@ -96,8 +126,10 @@ Result는 다음 authority를 분리해 보존한다.
 - required marker count/order와 first divergence
 
 Preflight rejection처럼 QEMU를 launch하지 않은 결과도 `cleanup` record를 가진다.
-성공은 required marker가 정확히 한 번 순서대로 관측되고, payload가 immutable하며,
-cleanup complete와 forced kill false일 때만 성립한다.
+성공은 required marker가 정확히 한 번 순서대로 관측되고, 모든 선택 artifact가 immutable하며,
+cleanup complete와 forced kill false일 때만 성립한다. Required marker 관측 뒤 process cleanup에서
+추가로 읽은 serial tail도 다시 분류하며, panic, unhandled exception, target failure 또는 fixture
+failure가 있으면 앞선 성공을 취소한다.
 
 ## Claim 경계
 

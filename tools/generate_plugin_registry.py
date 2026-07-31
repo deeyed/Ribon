@@ -63,6 +63,7 @@ SERVICE_KIND_VALUES = {
     "environment-quiesce": "RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE",
     "machine-description": "RIBON_SERVICE_KIND_MACHINE_DESCRIPTION",
     "payload-placement": "RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT",
+    "boot-module-bundle": "RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE",
 }
 PERSONALITY_MASKS = {
     "uefi-compatible": "RIBON_PERSONALITY_MASK_UEFI_COMPATIBLE",
@@ -101,6 +102,7 @@ CAPABILITIES = {
         "RIBON_CAP_FIRMWARE_SERVICE_DIRECTORY",
         "RIBON_CAP_SDK_CONTRACT",
         "RIBON_CAP_PAYLOAD_PLACEMENT",
+        "RIBON_CAP_BOOT_MODULE_BUNDLE",
     )
 }
 LIMIT_KEYS = (
@@ -123,6 +125,11 @@ PAYLOAD_KEYS = {
     "load_base",
     "load_size",
 }
+BOOT_MODULE_BUNDLE_KEYS = {
+    "component_manifest_schema",
+    "maximum_modules",
+    "provider",
+}
 RIBOS_CAPABILITIES = {
     "INSPECT": 1 << 0,
     "DEVICE": 1 << 1,
@@ -138,6 +145,9 @@ RIBOS_EFFECTS = {
     "ephemeral": ("RIBOS_VM_HELPER_EFFECT_EPHEMERAL", 2),
     "journaled": ("RIBOS_VM_HELPER_EFFECT_JOURNALED", 3),
     "terminal": ("RIBOS_VM_HELPER_EFFECT_TERMINAL", 4),
+}
+RIBOS_ROUTABLE_SERVICE_KINDS = set(SERVICE_KIND_VALUES) - {
+    "boot-module-bundle"
 }
 RIBOS_DURABILITIES = {
     "none": ("RIBOS_VM_HELPER_DURABILITY_NONE", 0),
@@ -440,7 +450,7 @@ def _ribos_policy(
                 raise ValueError("service-free helper must not require a Ribon service")
         elif (
             not isinstance(service_kind, str)
-            or service_kind not in SERVICE_KIND_VALUES
+            or service_kind not in RIBOS_ROUTABLE_SERVICE_KINDS
             or not isinstance(service_id, str)
             or service_by_id.get(service_id, {}).get("kind") != service_kind
             or not helper_ribon
@@ -585,6 +595,22 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             or payload["load_size"] <= 0
         ):
             raise ValueError("payload must define one typed external kernel contract")
+    boot_module_bundle = manifest.get("boot_module_bundle")
+    if boot_module_bundle is not None:
+        if (
+            product_kind != "bootloader"
+            or environment != "raw-fdt"
+            or not isinstance(boot_module_bundle, dict)
+            or set(boot_module_bundle) != BOOT_MODULE_BUNDLE_KEYS
+            or boot_module_bundle.get("provider") !=
+                "generated-component-bundle-v1"
+            or boot_module_bundle.get("component_manifest_schema") !=
+                "ribon-boot-module-components-v1"
+            or boot_module_bundle.get("maximum_modules") != 8
+        ):
+            raise ValueError(
+                "boot_module_bundle requires the exact raw-FDT generated provider"
+            )
 
     plugins = manifest.get("plugins")
     if not isinstance(plugins, list) or not plugins:
@@ -653,6 +679,26 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
     allowed = _capabilities(manifest, "allowed_capabilities")
     if not set(required).issubset(allowed):
         raise ValueError("required capabilities must be allowed")
+    module_services = [
+        service
+        for service in services
+        if service["kind"] == "boot-module-bundle"
+    ]
+    module_service_is_exact = module_services == [{
+        "id": "service.product.boot-module-bundle",
+        "kind": "boot-module-bundle",
+        "symbol": "ribon_generated_boot_module_bundle_service_descriptor",
+    }]
+    bundle_is_selected = boot_module_bundle is not None
+    if (
+        (bundle_is_selected and not module_service_is_exact)
+        or (not bundle_is_selected and module_services)
+        or ("BOOT_MODULE_BUNDLE" in required) != bundle_is_selected
+        or ("BOOT_MODULE_BUNDLE" in allowed) != bundle_is_selected
+    ):
+        raise ValueError(
+            "boot_module_bundle, exact service, and capability authority must agree"
+        )
     limits = manifest.get("limits")
     if (
         not isinstance(limits, dict)
@@ -1101,6 +1147,7 @@ def main() -> int:
             "image": manifest["image"],
             "evidence": manifest["evidence"],
             "payload": manifest.get("payload"),
+            "boot_module_bundle": manifest.get("boot_module_bundle"),
             "ribos_policy": manifest.get("ribos_policy"),
             "source_manifest": str(args.manifest),
             "source_manifest_sha256": hashlib.sha256(

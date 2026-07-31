@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import signal
 import subprocess
 import time
@@ -61,6 +62,11 @@ FIXTURE_PROVENANCE = (
     b"RIBON-FIXTURE-PAYLOAD-V1",
     b"RIBON-RISCV64-RPH1-FIXTURE-V1",
 )
+FATAL_OUTPUT_MARKERS = (
+    b"PANIC",
+    b"Unhandled exception",
+    b"qemu: fatal",
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -85,6 +91,217 @@ def sha256_tree(path: Path) -> str:
 def artifact_sha256(path: Path) -> str:
     """Hash either a file artifact or a composed directory artifact."""
     return sha256_tree(path) if path.is_dir() else sha256_file(path)
+
+
+def load_module_provenance(path: Path) -> dict[str, object]:
+    """Validate one generated bundle report and all immutable snapshots."""
+
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot load module provenance: {error}") from error
+    expected_keys = {
+        "bundle_sha256",
+        "component_count",
+        "components",
+        "product_id",
+        "product_manifest_sha256",
+        "schema",
+    }
+    components = report.get("components") if isinstance(report, dict) else None
+    if (
+        not isinstance(report, dict)
+        or set(report) != expected_keys
+        or report.get("schema") != "ribon-boot-module-bundle-provenance-v1"
+        or not isinstance(report.get("component_count"), int)
+        or not 1 <= report["component_count"] <= 8
+        or not isinstance(components, list)
+        or len(components) != report["component_count"]
+        or not isinstance(report.get("product_id"), str)
+        or not report["product_id"]
+        or not isinstance(report.get("product_manifest_sha256"), str)
+        or len(report["product_manifest_sha256"]) != 64
+    ):
+        raise ValueError("module provenance has an invalid v1 envelope")
+    product_root = path.parent.parent.resolve()
+    bundle_digest = hashlib.sha256()
+    bundle_digest.update(report["schema"].encode("ascii") + b"\0")
+    names: set[str] = set()
+    initial_images = 0
+    component_keys = {
+        "index",
+        "maximum_size",
+        "name",
+        "role",
+        "sha256",
+        "size",
+        "snapshot",
+        "source",
+    }
+    for index, component in enumerate(components):
+        if not isinstance(component, dict) or set(component) != component_keys:
+            raise ValueError("module provenance component shape is invalid")
+        name = component.get("name")
+        role = component.get("role")
+        size = component.get("size")
+        maximum_size = component.get("maximum_size")
+        digest = component.get("sha256")
+        if (
+            component.get("index") != index
+            or not isinstance(name, str)
+            or not 1 <= len(name) <= 63
+            or not name.isascii()
+            or any(not (ch.isalnum() or ch in "._-") for ch in name)
+            or name in names
+            or role not in ("initial-image", "auxiliary")
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size <= 0
+            or not isinstance(maximum_size, int)
+            or isinstance(maximum_size, bool)
+            or maximum_size < size
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(ch not in "0123456789abcdef" for ch in digest)
+        ):
+            raise ValueError("module provenance component value is invalid")
+        logical_snapshot = PurePosixPath(str(component.get("snapshot")))
+        logical_source = PurePosixPath(str(component.get("source")))
+        if (
+            logical_snapshot.is_absolute()
+            or logical_source.is_absolute()
+            or any(part in ("", ".", "..") for part in logical_snapshot.parts)
+            or any(part in ("", ".", "..") for part in logical_source.parts)
+        ):
+            raise ValueError("module provenance path is not bounded")
+        snapshot = product_root.joinpath(*logical_snapshot.parts).resolve()
+        try:
+            snapshot.relative_to(product_root)
+        except ValueError as error:
+            raise ValueError("module snapshot escapes the product root") from error
+        if (
+            not snapshot.is_file()
+            or snapshot.stat().st_size != size
+            or sha256_file(snapshot) != digest
+        ):
+            raise ValueError("module snapshot identity is invalid")
+        names.add(name)
+        if role == "initial-image":
+            initial_images += 1
+            if initial_images > 1:
+                raise ValueError("module provenance has duplicate initial images")
+        data = snapshot.read_bytes()
+        bundle_digest.update(name.encode("ascii") + b"\0")
+        bundle_digest.update(role.encode("ascii") + b"\0")
+        bundle_digest.update(len(data).to_bytes(8, "little"))
+        bundle_digest.update(data)
+    if report.get("bundle_sha256") != bundle_digest.hexdigest():
+        raise ValueError("module bundle digest is invalid")
+    return report
+
+
+def module_product_is_bound(
+    product: object,
+    product_hash: str | None,
+    provenance: dict[str, object],
+    target: str,
+) -> bool:
+    """Return whether one raw-FDT product exactly authorizes module publication."""
+
+    services = product.get("services") if isinstance(product, dict) else None
+    module_services = (
+        [
+            service
+            for service in services
+            if isinstance(service, dict)
+            and service.get("kind") == "boot-module-bundle"
+        ]
+        if isinstance(services, list)
+        else []
+    )
+    exact_service = {
+        "id": "service.product.boot-module-bundle",
+        "kind": "boot-module-bundle",
+        "symbol": "ribon_generated_boot_module_bundle_service_descriptor",
+    }
+    expected_target = {
+        "aarch64-virt-raw-fdt": (
+            "qemu-aarch64-virt-raw-fdt",
+            "aarch64",
+            "qemu-virt-aarch64",
+        ),
+        "riscv64-virt-opensbi": (
+            "qemu-riscv64-virt-opensbi",
+            "riscv64",
+            "qemu-virt-riscv64",
+        ),
+    }.get(target)
+    return (
+        isinstance(product, dict)
+        and expected_target is not None
+        and product.get("schema_version") == 1
+        and product.get("product_kind") == "bootloader"
+        and product.get("target_id") == expected_target[0]
+        and product.get("architecture") == expected_target[1]
+        and product.get("environment") == "raw-fdt"
+        and product.get("port") == expected_target[2]
+        and product.get("boot_module_bundle") == {
+            "component_manifest_schema": "ribon-boot-module-components-v1",
+            "maximum_modules": 8,
+            "provider": "generated-component-bundle-v1",
+        }
+        and module_services == [exact_service]
+        and "BOOT_MODULE_BUNDLE" in product.get("required_capabilities", [])
+        and "BOOT_MODULE_BUNDLE" in product.get("allowed_capabilities", [])
+        and provenance.get("product_id") == product.get("product_id")
+        and provenance.get("product_manifest_sha256") == product_hash
+    )
+
+
+def module_image_binding(
+    image_path: Path,
+    provenance_path: Path,
+    provenance: dict[str, object],
+) -> list[dict[str, object]]:
+    """Bind ordinal snapshots to the canonical page-backed raw-image suffix."""
+
+    image = image_path.read_bytes()
+    components = provenance["components"]
+    assert isinstance(components, list)
+    backing_sizes = [
+        (int(component["size"]) + 4095) & ~4095
+        for component in components
+        if isinstance(component, dict)
+    ]
+    if len(backing_sizes) != len(components):
+        raise ValueError("module component table is invalid")
+    offset = len(image) - sum(backing_sizes)
+    if offset < 0 or offset % 4096 != 0:
+        raise ValueError("module section is not a page-aligned image suffix")
+    product_root = provenance_path.parent.parent.resolve()
+    bindings: list[dict[str, object]] = []
+    for index, (component, backing_size) in enumerate(
+        zip(components, backing_sizes)
+    ):
+        assert isinstance(component, dict)
+        logical_snapshot = PurePosixPath(str(component["snapshot"]))
+        snapshot = product_root.joinpath(*logical_snapshot.parts)
+        data = snapshot.read_bytes()
+        if image[offset : offset + len(data)] != data:
+            raise ValueError("module snapshot is not bound to the composed image")
+        bindings.append(
+            {
+                "backing_size": backing_size,
+                "image_offset": offset,
+                "index": index,
+                "sha256": component["sha256"],
+                "size": len(data),
+            }
+        )
+        offset += backing_size
+    if offset != len(image):
+        raise ValueError("module backing does not close at the image end")
+    return bindings
 
 
 def observed_payload_class(path: Path) -> str:
@@ -138,6 +355,7 @@ def command_for(args: argparse.Namespace) -> list[str]:
         ]
     if args.esp is None or args.firmware is None:
         raise ValueError("--esp and --firmware are required")
+    # Keep firmware NvVars writes in a transient overlay over the immutable ESP.
     return [
         args.qemu,
         "-machine", "q35",
@@ -148,8 +366,9 @@ def command_for(args: argparse.Namespace) -> list[str]:
         "-net", "none",
         "-no-reboot",
         "-no-shutdown",
+        "-snapshot",
         "-drive", f"if=pflash,format=raw,readonly=on,file={args.firmware}",
-        "-drive", f"format=raw,file=fat:rw:{args.esp}",
+        "-drive", f"format=raw,file=fat:{args.esp}",
     ]
 
 
@@ -191,6 +410,19 @@ def required_markers(args: argparse.Namespace) -> tuple[bytes, ...]:
     markers: list[bytes] = []
     seen: set[bytes] = set()
     for marker in candidates:
+        if marker not in seen:
+            markers.append(marker)
+            seen.add(marker)
+    return tuple(markers)
+
+
+def required_markers_anywhere(args: argparse.Namespace) -> tuple[bytes, ...]:
+    """Return unique receipts whose placement is outside Ribon's stage order."""
+
+    markers: list[bytes] = []
+    seen: set[bytes] = set()
+    for value in args.required_marker_anywhere:
+        marker = value.encode("utf-8")
         if marker not in seen:
             markers.append(marker)
             seen.add(marker)
@@ -246,6 +478,7 @@ def main() -> int:
     parser.add_argument("--payload", type=Path, required=True)
     parser.add_argument("--init-image", type=Path)
     parser.add_argument("--product-manifest", type=Path)
+    parser.add_argument("--module-provenance", type=Path)
     parser.add_argument(
         "--expected-payload-class",
         choices=("fixture", "kernel"),
@@ -254,6 +487,9 @@ def main() -> int:
     parser.add_argument("--expected-payload-sha256")
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--required-marker", action="append", default=[])
+    parser.add_argument(
+        "--required-marker-anywhere", action="append", default=[]
+    )
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
@@ -268,9 +504,23 @@ def main() -> int:
         if args.init_image is not None
         else None
     )
+    module_provenance_hash = (
+        artifact_sha256(args.module_provenance)
+        if args.module_provenance is not None
+        else None
+    )
+    module_report = None
+    module_image_bindings = None
+    product_report = None
+    product_manifest_hash = (
+        artifact_sha256(args.product_manifest)
+        if args.product_manifest is not None
+        else None
+    )
     composed_hash = artifact_sha256(composed_path)
     payload_class = observed_payload_class(args.payload)
     markers = required_markers(args)
+    anywhere_markers = required_markers_anywhere(args)
     started = time.monotonic()
     output = bytearray()
     outcome = "preflight-failure"
@@ -286,6 +536,48 @@ def main() -> int:
         preflight_error = "payload-hash-mismatch"
     elif payload_class != args.expected_payload_class:
         preflight_error = "payload-class-mismatch"
+    elif args.module_provenance is not None and args.product_manifest is None:
+        preflight_error = "module-product-manifest-required"
+    elif args.product_manifest is not None:
+        try:
+            product_report = json.loads(
+                args.product_manifest.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            preflight_error = "product-manifest-invalid"
+    if (
+        preflight_error is None
+        and args.module_provenance is None
+        and isinstance(product_report, dict)
+        and "boot_module_bundle" in product_report
+    ):
+        preflight_error = "module-provenance-required"
+    if preflight_error is None and args.module_provenance is not None:
+        try:
+            module_report = load_module_provenance(args.module_provenance)
+        except ValueError:
+            preflight_error = "module-provenance-invalid"
+        if (
+            preflight_error is None
+            and not module_product_is_bound(
+                product_report,
+                product_manifest_hash,
+                module_report,
+                args.target,
+            )
+        ):
+            preflight_error = "module-product-mismatch"
+        if preflight_error is None:
+            try:
+                if args.image is None:
+                    raise ValueError("module evidence requires a raw image")
+                module_image_bindings = module_image_binding(
+                    args.image,
+                    args.module_provenance,
+                    module_report,
+                )
+            except (OSError, ValueError):
+                preflight_error = "module-image-mismatch"
 
     if preflight_error is None:
         process = subprocess.Popen(
@@ -319,7 +611,7 @@ def main() -> int:
                         )
                         or line.startswith(b"PARUS:EXC:")
                         for line in output.splitlines()
-                    )
+                    ) or any(marker in output for marker in FATAL_OUTPUT_MARKERS)
                     if payload_failed:
                         outcome = "payload-failure"
                         terminal = "payload-failure"
@@ -335,8 +627,16 @@ def main() -> int:
                         bytes(output),
                         markers,
                     )
-                    if divergence is None and all(
-                        item["count"] == 1 for item in observations
+                    anywhere_observations, _ = marker_observations(
+                        bytes(output), anywhere_markers
+                    )
+                    if (
+                        divergence is None
+                        and all(item["count"] == 1 for item in observations)
+                        and all(
+                            item["count"] == 1
+                            for item in anywhere_observations
+                        )
                     ):
                         outcome = "passed"
                         terminal = "required-evidence-observed"
@@ -353,7 +653,7 @@ def main() -> int:
             if process.poll() is None:
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
                 try:
                     process.wait(timeout=2)
@@ -361,8 +661,8 @@ def main() -> int:
                     forced_kill = True
                     try:
                         os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
+                    except (ProcessLookupError, PermissionError):
+                        process.kill()
                     process.wait(timeout=2)
             assert process.stdout is not None
             tail = process.stdout.read()
@@ -380,6 +680,39 @@ def main() -> int:
     args.log.parent.mkdir(parents=True, exist_ok=True)
     args.log.write_bytes(output)
     observations, first_divergence = marker_observations(bytes(output), markers)
+    anywhere_observations, _ = marker_observations(
+        bytes(output), anywhere_markers
+    )
+    target_failed = any(
+        line.startswith(b"RIBON-R4-") and b"-FAIL" in line
+        for line in output.splitlines()
+    )
+    payload_failed = any(
+        (line.startswith(b"PARUS:BM:") and b":FAIL:" in line)
+        or line.startswith(b"PARUS:EXC:")
+        for line in output.splitlines()
+    ) or any(marker in output for marker in FATAL_OUTPUT_MARKERS)
+    fixture_failed = any(marker in output for marker in FIXTURE_FAILURE_MARKERS)
+    if outcome == "passed" and target_failed:
+        outcome = "target-failure"
+        terminal = "target-failure"
+        first_divergence = "target-failure-after-required-evidence"
+    elif outcome == "passed" and payload_failed:
+        outcome = "payload-failure"
+        terminal = "payload-failure"
+        first_divergence = "payload-failure-after-required-evidence"
+    elif outcome == "passed" and fixture_failed:
+        outcome = "payload-abi-failure"
+        terminal = "payload-abi-failure"
+        first_divergence = "payload-abi-failure-after-required-evidence"
+    if first_divergence is None:
+        for item in anywhere_observations:
+            if item["count"] == 0:
+                first_divergence = f"missing-anywhere:{item['marker']}"
+                break
+            if item["count"] != 1:
+                first_divergence = f"duplicate-anywhere:{item['marker']}"
+                break
     if preflight_error is not None:
         first_divergence = preflight_error
     if outcome == "passed" and first_divergence is not None:
@@ -391,6 +724,42 @@ def main() -> int:
         outcome = "payload-mutated"
         terminal = "artifact-identity-failure"
         first_divergence = "payload-mutated-during-run"
+    module_provenance_hash_after = (
+        artifact_sha256(args.module_provenance)
+        if args.module_provenance is not None
+        else None
+    )
+    module_snapshots_immutable = module_report is not None
+    if launched and args.module_provenance is not None:
+        try:
+            module_snapshots_immutable = (
+                load_module_provenance(args.module_provenance) == module_report
+            )
+        except ValueError:
+            module_snapshots_immutable = False
+    if launched and args.module_provenance is not None and (
+        module_provenance_hash_after != module_provenance_hash
+        or not module_snapshots_immutable
+    ):
+        outcome = "module-provenance-mutated"
+        terminal = "artifact-identity-failure"
+        first_divergence = "module-bundle-mutated-during-run"
+
+    product_manifest_hash_after = (
+        artifact_sha256(args.product_manifest)
+        if args.product_manifest is not None
+        else None
+    )
+    if launched and product_manifest_hash_after != product_manifest_hash:
+        outcome = "product-manifest-mutated"
+        terminal = "artifact-identity-failure"
+        first_divergence = "product-manifest-mutated-during-run"
+
+    composed_hash_after = artifact_sha256(composed_path)
+    if launched and composed_hash_after != composed_hash:
+        outcome = "composed-artifact-mutated"
+        terminal = "artifact-identity-failure"
+        first_divergence = "composed-artifact-mutated-during-run"
 
     report = {
         "schema": "ribon-qemu-payload-evidence-v1",
@@ -420,17 +789,39 @@ def main() -> int:
         "product_manifest": (
             {
                 "path": str(args.product_manifest),
-                "sha256": artifact_sha256(args.product_manifest),
-                "product_id": json.loads(
-                    args.product_manifest.read_text(encoding="utf-8")
-                ).get("product_id"),
+                "sha256": product_manifest_hash,
+                "sha256_after_run": product_manifest_hash_after,
+                "immutable":
+                    product_manifest_hash_after == product_manifest_hash,
+                "product_id": (
+                    product_report.get("product_id")
+                    if isinstance(product_report, dict)
+                    else None
+                ),
             }
             if args.product_manifest is not None
+            else None
+        ),
+        "boot_module_bundle": (
+            {
+                "path": str(args.module_provenance),
+                "sha256": module_provenance_hash,
+                "sha256_after_run": module_provenance_hash_after,
+                "immutable": (
+                    module_provenance_hash == module_provenance_hash_after
+                    and module_snapshots_immutable
+                ),
+                "provenance": module_report,
+                "image_binding": module_image_bindings,
+            }
+            if args.module_provenance is not None
             else None
         ),
         "composed_artifact": {
             "path": str(composed_path),
             "sha256": composed_hash,
+            "sha256_after_run": composed_hash_after,
+            "immutable": composed_hash_after == composed_hash,
         },
         "firmware": (
             {
@@ -467,6 +858,10 @@ def main() -> int:
             marker.decode("utf-8") for marker in markers
         ],
         "marker_observations": observations,
+        "required_markers_anywhere": [
+            marker.decode("utf-8") for marker in anywhere_markers
+        ],
+        "marker_observations_anywhere": anywhere_observations,
         "first_divergence": first_divergence,
         "outcome": outcome,
     }

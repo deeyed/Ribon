@@ -201,7 +201,8 @@ ribon_ribos_service_route_is_valid(
         return route->service_id == NULL &&
                route->required_ribon_capabilities == 0u;
     }
-    if (route->service_kind > RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT ||
+    if (route->service_kind > RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE ||
+        route->service_kind == RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE ||
         route->service_id == NULL ||
         route->required_ribon_capabilities == 0u) {
         return 0;

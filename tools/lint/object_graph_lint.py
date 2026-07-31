@@ -18,6 +18,7 @@ BOOT_MEMBERS = {
     "gpt.o",
     "image.o",
     "memory.o",
+    "module_bundle.o",
     "port.o",
     "protocol.o",
 }
@@ -33,6 +34,7 @@ CORE_FORBIDDEN_SYMBOLS = (
     "ribon_rpi_",
 )
 BOOT_FORBIDDEN_SYMBOLS = (
+    "ribon_generated_boot_module_",
     "ribon_parus_",
     "ribon_uefi_",
     "ribon_bios_",

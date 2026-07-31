@@ -33,6 +33,7 @@ static int registry_capability_is_service(uint64_t capability) {
     case RIBON_CAP_ENVIRONMENT_QUIESCE:
     case RIBON_CAP_MACHINE_DESCRIPTION:
     case RIBON_CAP_PAYLOAD_PLACEMENT:
+    case RIBON_CAP_BOOT_MODULE_BUNDLE:
         return 1;
     default:
         return 0;

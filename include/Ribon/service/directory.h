@@ -8,6 +8,7 @@
 #include <Ribon/plugin/descriptor.h>
 
 struct RibonProductDescriptor;
+struct RibonBootModuleBundle;
 
 /** @brief Typed service descriptor를 식별하는 magic이다. */
 #define RIBON_SERVICE_DESCRIPTOR_MAGIC 0x52425356u
@@ -49,6 +50,7 @@ enum RibonServiceKind {
     RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE = 10,
     RIBON_SERVICE_KIND_MACHINE_DESCRIPTION = 11,
     RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT = 12,
+    RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE = 13,
 };
 
 /** @brief Service directory 안에서 같은 role이 갖는 provider cardinality다. */
@@ -163,6 +165,15 @@ struct RibonPayloadPlacementServiceOperations {
     uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
     uint64_t physical_base; /**< 허용 physical window 시작이다. */
     uint64_t physical_size; /**< 허용 window byte 수다. */
+};
+
+/** @brief Product-generated immutable boot-module component table provider다. */
+struct RibonBootModuleBundleServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    const struct RibonBootModuleBundle *bundle; /**< Typed exact component table다. */
+    const unsigned char *section_start; /**< Canonical linked section start다. */
+    const unsigned char *section_end; /**< Canonical linked section end다. */
 };
 
 struct RibonServiceDescriptor;

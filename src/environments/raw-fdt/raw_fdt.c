@@ -2,8 +2,6 @@
 
 #include "../../common/sys/fdt/fdt.h"
 
-#define RIBON_RAW_FDT_MAX_RESERVATIONS 8u
-
 static struct RibonRawFdtEntry *raw_fdt_entry;
 static int raw_fdt_services_initialized;
 static unsigned char raw_fdt_attempt_metadata[64];
@@ -338,7 +336,8 @@ static int raw_fdt_build_memory_map(
     uint64_t memory_end;
     uint64_t cursor;
 
-    if (range_count + 1u > RIBON_RAW_FDT_MAX_RESERVATIONS ||
+    if (range_count > RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS ||
+        range_count + 1u > RIBON_RAW_FDT_MAX_RESERVATIONS ||
         facts->memory_size == 0u ||
         facts->memory_base > UINT64_MAX - facts->memory_size) {
         return RIBON_RAW_FDT_STATUS_BAD_RESERVATION;

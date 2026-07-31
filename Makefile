@@ -218,6 +218,7 @@ BOOT_LIB_SRCS := \
 	src/config/boot_config.c \
 	src/filesystems/fat32.c \
 	src/common/environment.c \
+	src/common/module_bundle.c \
 	src/common/protocol.c \
 	src/common/boot.c \
 	src/common/image.c \
@@ -248,6 +249,7 @@ HOST_MAIN_OBJ := $(BUILD_DIR)/obj/$(HOST_MAIN_SRC:.c=.o)
 LOADER_TEST := $(TEST_BUILD_DIR)/elf64_loader_tests
 PE_COFF_TEST := $(TEST_BUILD_DIR)/pe_coff_loader_tests
 FDT_TEST := $(TEST_BUILD_DIR)/fdt_parser_tests
+RAW_FDT_CAPACITY_TEST := $(TEST_BUILD_DIR)/raw_fdt_capacity_tests
 RPH1_TEST := $(TEST_BUILD_DIR)/rph1_builder_tests
 ARCH_X86_64_TEST := $(TEST_BUILD_DIR)/x86_64_direct_high_tests
 ARCH_AARCH64_TEST := $(TEST_BUILD_DIR)/aarch64_direct_high_tests
@@ -256,6 +258,7 @@ CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
 PORT_SERVICE_TEST := $(TEST_BUILD_DIR)/port_service_tests
 BOOT_LIFECYCLE_TEST := $(TEST_BUILD_DIR)/boot_lifecycle_tests
 ENVIRONMENT_PERSISTENT_INPUTS_TEST := $(TEST_BUILD_DIR)/environment_persistent_inputs_tests
+BOOT_MODULE_BUNDLE_TEST := $(TEST_BUILD_DIR)/boot_module_bundle_tests
 MEDIA_PIPELINE_TEST := $(TEST_BUILD_DIR)/media_pipeline_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
@@ -325,6 +328,41 @@ QEMU_PARUS_PAYLOAD ?=
 QEMU_PARUS_IMAGE := $(QEMU_PARUS_DIR)/ribon.bin
 QEMU_PARUS_VALIDATION := $(QEMU_PARUS_DIR)/results/external-payload.json
 
+QEMU_MODULE_FIXTURE_DIR := \
+	$(TARGET_BUILD_ROOT)/qemu-aarch64-virt-modules-fixture
+QEMU_MODULE_FIXTURE_MANIFEST := \
+	products/bootmgr/manifests/qemu-aarch64-virt-modules-fixture.json
+QEMU_MODULE_FIXTURE_COMPONENT_MANIFEST := \
+	tests/fixtures/boot-modules/manifest.json
+QEMU_MODULE_FIXTURE_IMAGE := $(QEMU_MODULE_FIXTURE_DIR)/ribon.bin
+QEMU_MODULE_FIXTURE_PAYLOAD := $(QEMU_MODULE_FIXTURE_DIR)/payload.elf
+QEMU_MODULE_FIXTURE_PROVENANCE := \
+	$(QEMU_MODULE_FIXTURE_DIR)/results/boot-modules.json
+
+QEMU_PARUS_MODULE_DIR := $(TARGET_BUILD_ROOT)/qemu-aarch64-virt-parus-modules
+QEMU_PARUS_MODULE_PRODUCT_MANIFEST := \
+	products/bootmgr/manifests/qemu-aarch64-virt-parus-modules.json
+QEMU_PARUS_MODULE_COMPONENT_MANIFEST ?=
+QEMU_PARUS_MODULE_IMAGE := $(QEMU_PARUS_MODULE_DIR)/ribon.bin
+QEMU_PARUS_MODULE_VALIDATION := \
+	$(QEMU_PARUS_MODULE_DIR)/results/external-payload.json
+QEMU_PARUS_MODULE_PROVENANCE := \
+	$(QEMU_PARUS_MODULE_DIR)/results/boot-modules.json
+
+QEMU_RAW_MODULE_COMPONENT_MANIFEST ?=
+ifneq ($(strip $(QEMU_RAW_MODULE_COMPONENT_MANIFEST)),)
+QEMU_RAW_MODULE_DIR := $(QEMU_RAW_DIR)/generated/boot-modules
+QEMU_RAW_MODULE_ASM := $(QEMU_RAW_MODULE_DIR)/bundle.S
+QEMU_RAW_MODULE_C := $(QEMU_RAW_MODULE_DIR)/descriptor.c
+QEMU_RAW_MODULE_STAMP := $(QEMU_RAW_MODULE_DIR)/generated.stamp
+QEMU_RAW_MODULE_PROVENANCE := $(QEMU_RAW_DIR)/results/boot-modules.json
+QEMU_RAW_MODULE_CPPFLAGS := -DRIBON_RAW_FDT_HAS_BOOT_MODULE_BUNDLE=1
+QEMU_RAW_OBJS += \
+	$(QEMU_RAW_DIR)/obj/src/common/module_bundle.o \
+	$(QEMU_RAW_DIR)/obj/generated/boot-modules/descriptor.o \
+	$(QEMU_RAW_DIR)/obj/generated/boot-modules/bundle.o
+endif
+
 QEMU_RISCV64_DIR := $(TARGET_BUILD_ROOT)/qemu-riscv64-virt-opensbi
 QEMU_RISCV64_MANIFEST := products/bootmgr/manifests/qemu-riscv64-virt-parus-external.json
 QEMU_RISCV64_REGISTRY_C := $(QEMU_RISCV64_DIR)/generated/plugin_registry.c
@@ -385,6 +423,32 @@ RPI5_OBJS += \
 	$(RPI5_DIR)/obj/generated/plugin_registry.o \
 	$(RPI5_DIR)/obj/generated/embedded_payload.o \
 	$(RPI5_DIR)/obj/targets/rpi5-aarch64-raw-fdt/entry.o
+
+RPI5_MODULE_COMPONENT_MANIFEST ?=
+ifneq ($(strip $(RPI5_MODULE_COMPONENT_MANIFEST)),)
+RPI5_MODULE_DIR := $(RPI5_DIR)/generated/boot-modules
+RPI5_MODULE_ASM := $(RPI5_MODULE_DIR)/bundle.S
+RPI5_MODULE_C := $(RPI5_MODULE_DIR)/descriptor.c
+RPI5_MODULE_STAMP := $(RPI5_MODULE_DIR)/generated.stamp
+RPI5_MODULE_PROVENANCE := $(RPI5_DIR)/results/boot-modules.json
+RPI5_MODULE_CPPFLAGS := -DRIBON_RAW_FDT_HAS_BOOT_MODULE_BUNDLE=1
+RPI5_OBJS += \
+	$(RPI5_DIR)/obj/src/common/module_bundle.o \
+	$(RPI5_DIR)/obj/generated/boot-modules/descriptor.o \
+	$(RPI5_DIR)/obj/generated/boot-modules/bundle.o
+endif
+
+RPI5_MODULE_FIXTURE_DIR := $(TARGET_BUILD_ROOT)/rpi5-aarch64-modules-fixture
+RPI5_MODULE_FIXTURE_MANIFEST := \
+	products/bootmgr/manifests/rpi5-aarch64-modules-fixture.json
+RPI5_MODULE_FIXTURE_COMPONENT_MANIFEST := \
+	tests/fixtures/boot-modules/manifest.json
+RPI5_MODULE_FIXTURE_PACKAGE := $(RPI5_MODULE_FIXTURE_DIR)/package
+RPI5_PARUS_MODULE_DIR := $(TARGET_BUILD_ROOT)/rpi5-aarch64-parus-modules
+RPI5_PARUS_MODULE_MANIFEST := \
+	products/bootmgr/manifests/rpi5-aarch64-parus-modules.json
+RPI5_PARUS_MODULE_COMPONENT_MANIFEST ?=
+RPI5_PARUS_MODULE_PACKAGE := $(RPI5_PARUS_MODULE_DIR)/package
 
 UEFI_FIXTURE_PRODUCT := x86_64-uefi-parus-fixture
 UEFI_EXTERNAL_PRODUCT := x86_64-uefi-parus-external
@@ -580,7 +644,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 .PHONY: all lib sdk-install host-reference check check-one check-loader check-pe-coff \
 	check-fdt check-rph1 check-arch-x86_64 check-arch-aarch64 \
 	check-arch-ops check-core-service check-port-services check-boot-lifecycle \
-	check-environment-persistent-inputs check-media-pipeline \
+	check-environment-persistent-inputs check-boot-modules check-media-pipeline \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
 	check-parus-entry-contract \
 	check-os-packages \
@@ -610,15 +674,21 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-r18 ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
-	qemu-aarch64-virt-parus-smoke x86_64-uefi-parus-fixture \
+	qemu-aarch64-virt-parus-smoke \
+	qemu-aarch64-virt-modules-fixture-product \
+	qemu-aarch64-virt-modules-fixture-smoke \
+	qemu-aarch64-virt-parus-modules-product \
+	qemu-aarch64-virt-parus-modules-smoke x86_64-uefi-parus-fixture \
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
 	qemu-riscv64-virt-rph1-fixture-product \
 	qemu-riscv64-virt-rph1-fixture-smoke \
 	x86_64-uefi-parus-external x86_64-uefi-parus-external-product \
 	x86_64-uefi-parus-fixture-smoke x86_64-uefi-parus-external-smoke \
-	uefi-external-input-force \
+	uefi-external-input-force rpi5-external-input-force \
 	bios-compile rpi5-aarch64-raw-fdt-package \
-	rpi5-aarch64-parus-package \
+	rpi5-aarch64-parus-package rpi5-aarch64-modules-fixture-package \
+	rpi5-aarch64-parus-modules-package \
+	boot-module-input-force qemu-module-input-force rpi5-module-input-force \
 	legacy-hard-cut qstar-check docs docs-lint docs-clean clean
 
 all: lib host-reference
@@ -1406,6 +1476,18 @@ $(ENVIRONMENT_PERSISTENT_INPUTS_TEST): \
 	$(TEST_BUILD_DIR)/obj/src/common/environment.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
+$(BOOT_MODULE_BUNDLE_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/boot/module_bundle_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/common/module_bundle.o
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(RAW_FDT_CAPACITY_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/fdt/raw_fdt_capacity_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/environments/raw-fdt/raw_fdt.o \
+	$(TEST_BUILD_DIR)/obj/src/common/sys/fdt/fdt.o \
+	$(TEST_BUILD_DIR)/obj/src/common/environment.o
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
 $(MEDIA_PIPELINE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/media/media_pipeline_tests.o \
 	$(TEST_BUILD_DIR)/obj/src/config/boot_config.o \
@@ -1461,9 +1543,42 @@ $(QEMU_RAW_FIXTURE): tools/make_elf64_fixture.py
 $(QEMU_RAW_EMBED_C): $(QEMU_RAW_PAYLOAD) tools/embed_binary.py
 	$(PYTHON) tools/embed_binary.py --input $< --output $@
 
-$(QEMU_RAW_DIR)/obj/%.o: %.c
+boot-module-input-force:
+
+ifneq ($(strip $(QEMU_RAW_MODULE_COMPONENT_MANIFEST)),)
+$(QEMU_RAW_MODULE_STAMP): \
+	$(QEMU_RAW_MODULE_COMPONENT_MANIFEST) \
+	$(QEMU_RAW_MANIFEST) \
+	tools/generate_boot_module_bundle.py boot-module-input-force
+	$(PYTHON) tools/generate_boot_module_bundle.py \
+		--manifest $(QEMU_RAW_MODULE_COMPONENT_MANIFEST) \
+		--product-manifest $(QEMU_RAW_MANIFEST) \
+		--output-root $(QEMU_RAW_DIR) \
+		--assembly $(QEMU_RAW_MODULE_ASM) \
+		--descriptors $(QEMU_RAW_MODULE_C) \
+		--provenance $(QEMU_RAW_MODULE_PROVENANCE)
+	@touch $@
+
+$(QEMU_RAW_MODULE_ASM) $(QEMU_RAW_MODULE_C) \
+		$(QEMU_RAW_MODULE_PROVENANCE): $(QEMU_RAW_MODULE_STAMP)
+	@test -f $@
+
+$(QEMU_RAW_DIR)/obj/generated/boot-modules/descriptor.o: \
+	$(QEMU_RAW_MODULE_C)
 	@mkdir -p $(@D)
 	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(QEMU_RAW_DIR)/obj/generated/boot-modules/bundle.o: \
+	$(QEMU_RAW_MODULE_ASM)
+	@mkdir -p $(@D)
+	$(AARCH64_CC) --target=aarch64-none-elf \
+		-I$(QEMU_RAW_MODULE_DIR) -c $< -o $@
+endif
+
+$(QEMU_RAW_DIR)/obj/%.o: %.c
+	@mkdir -p $(@D)
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(QEMU_RAW_MODULE_CPPFLAGS) \
+		$(DEPFLAGS) -c $< -o $@
 
 $(QEMU_RAW_DIR)/obj/generated/plugin_registry.o: $(QEMU_RAW_REGISTRY_C)
 	@mkdir -p $(@D)
@@ -1519,6 +1634,63 @@ qemu-aarch64-virt-parus-smoke: qemu-aarch64-virt-parus-product
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-aarch64-virt-parus.log \
 		--result $(RESULTS_DIR)/qemu-aarch64-virt-parus.json
+
+qemu-aarch64-virt-modules-fixture-product:
+	$(MAKE) --no-print-directory \
+		QEMU_RAW_DIR=$(abspath $(QEMU_MODULE_FIXTURE_DIR)) \
+		QEMU_RAW_MANIFEST=$(QEMU_MODULE_FIXTURE_MANIFEST) \
+		QEMU_RAW_MODULE_COMPONENT_MANIFEST=$(abspath $(QEMU_MODULE_FIXTURE_COMPONENT_MANIFEST)) \
+		$(abspath $(QEMU_MODULE_FIXTURE_IMAGE))
+
+qemu-aarch64-virt-modules-fixture-smoke: \
+	qemu-aarch64-virt-modules-fixture-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-virt-raw-fdt --qemu $(QEMU_AARCH64) \
+		--image $(QEMU_MODULE_FIXTURE_IMAGE) \
+		--payload $(QEMU_MODULE_FIXTURE_PAYLOAD) \
+		--expected-payload-class fixture \
+		--product-manifest $(QEMU_MODULE_FIXTURE_MANIFEST) \
+		--module-provenance $(QEMU_MODULE_FIXTURE_PROVENANCE) \
+		--required-marker-anywhere RIBON-RFDT-MODULES=0x0000000000000008 \
+		--required-marker-anywhere RIBON-RFDT-INITIAL-IMAGES=0x0000000000000001 \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(RESULTS_DIR)/qemu-aarch64-virt-modules-fixture.log \
+		--result $(RESULTS_DIR)/qemu-aarch64-virt-modules-fixture.json
+
+qemu-module-input-force:
+
+qemu-aarch64-virt-parus-modules-product: qemu-module-input-force
+	@test -n "$(QEMU_PARUS_PAYLOAD)" || \
+		{ echo "QEMU_PARUS_PAYLOAD is required" >&2; exit 2; }
+	@test -n "$(QEMU_PARUS_MODULE_COMPONENT_MANIFEST)" || \
+		{ echo "QEMU_PARUS_MODULE_COMPONENT_MANIFEST is required" >&2; exit 2; }
+	$(PYTHON) tools/validate_external_parus_payload.py \
+		--manifest $(QEMU_PARUS_MODULE_PRODUCT_MANIFEST) \
+		--payload $(QEMU_PARUS_PAYLOAD) \
+		--result $(QEMU_PARUS_MODULE_VALIDATION)
+	$(MAKE) --no-print-directory \
+		QEMU_RAW_DIR=$(abspath $(QEMU_PARUS_MODULE_DIR)) \
+		QEMU_RAW_MANIFEST=$(QEMU_PARUS_MODULE_PRODUCT_MANIFEST) \
+		QEMU_RAW_PAYLOAD=$(abspath $(QEMU_PARUS_PAYLOAD)) \
+		QEMU_RAW_MODULE_COMPONENT_MANIFEST=$(abspath $(QEMU_PARUS_MODULE_COMPONENT_MANIFEST)) \
+		$(abspath $(QEMU_PARUS_MODULE_IMAGE))
+
+qemu-aarch64-virt-parus-modules-smoke: \
+	qemu-aarch64-virt-parus-modules-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-virt-raw-fdt --qemu $(QEMU_AARCH64) \
+		--image $(QEMU_PARUS_MODULE_IMAGE) \
+		--payload $(QEMU_PARUS_PAYLOAD) --expected-payload-class kernel \
+		--product-manifest $(QEMU_PARUS_MODULE_PRODUCT_MANIFEST) \
+		--module-provenance $(QEMU_PARUS_MODULE_PROVENANCE) \
+		--required-marker-anywhere RIBON-RFDT-MODULES=0x0000000000000001 \
+		--required-marker-anywhere RIBON-RFDT-INITIAL-IMAGES=0x0000000000000001 \
+		--required-marker-anywhere PARUS:RUNTIME:v0:EXTERNAL_INITIAL_USER:ARTIFACT=ELF64:ROLE=INITIAL_IMAGE \
+		--required-marker-anywhere MODULES=1:RESULT=OK \
+		$(PARUS_SUCCESS_MARKER_ARGS) \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(RESULTS_DIR)/qemu-aarch64-virt-parus-modules.log \
+		--result $(RESULTS_DIR)/qemu-aarch64-virt-parus-modules.json
 
 $(QEMU_RISCV64_REGISTRY_C): $(QEMU_RISCV64_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
@@ -1624,11 +1796,13 @@ qemu-riscv64-virt-rph1-fixture-smoke: \
 
 $(RPI5_PARUS_VALIDATION): \
 	$(RPI5_EXTERNAL_MANIFEST) $(RPI5_SELECTED_PAYLOAD) \
-	tools/validate_external_parus_payload.py
+	tools/validate_external_parus_payload.py rpi5-external-input-force
 	$(PYTHON) tools/validate_external_parus_payload.py \
 		--manifest $(RPI5_EXTERNAL_MANIFEST) \
 		--payload $(RPI5_SELECTED_PAYLOAD) \
 		--result $@
+
+rpi5-external-input-force:
 
 $(RPI5_REGISTRY_C): $(RPI5_SELECTED_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
@@ -1642,9 +1816,40 @@ $(RPI5_EMBED_C): \
 	$(RPI5_SELECTED_PAYLOAD) $(RPI5_SELECTED_VALIDATION) tools/embed_binary.py
 	$(PYTHON) tools/embed_binary.py --input $< --output $@
 
-$(RPI5_DIR)/obj/%.o: %.c
+rpi5-module-input-force:
+
+ifneq ($(strip $(RPI5_MODULE_COMPONENT_MANIFEST)),)
+$(RPI5_MODULE_STAMP): \
+	$(RPI5_MODULE_COMPONENT_MANIFEST) \
+	$(RPI5_SELECTED_MANIFEST) \
+	tools/generate_boot_module_bundle.py rpi5-module-input-force
+	$(PYTHON) tools/generate_boot_module_bundle.py \
+		--manifest $(RPI5_MODULE_COMPONENT_MANIFEST) \
+		--product-manifest $(RPI5_SELECTED_MANIFEST) \
+		--output-root $(RPI5_DIR) \
+		--assembly $(RPI5_MODULE_ASM) \
+		--descriptors $(RPI5_MODULE_C) \
+		--provenance $(RPI5_MODULE_PROVENANCE)
+	@touch $@
+
+$(RPI5_MODULE_ASM) $(RPI5_MODULE_C) $(RPI5_MODULE_PROVENANCE): \
+	$(RPI5_MODULE_STAMP)
+	@test -f $@
+
+$(RPI5_DIR)/obj/generated/boot-modules/descriptor.o: $(RPI5_MODULE_C)
 	@mkdir -p $(@D)
 	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(RPI5_DIR)/obj/generated/boot-modules/bundle.o: $(RPI5_MODULE_ASM)
+	@mkdir -p $(@D)
+	$(AARCH64_CC) --target=aarch64-none-elf \
+		-I$(RPI5_MODULE_DIR) -c $< -o $@
+endif
+
+$(RPI5_DIR)/obj/%.o: %.c
+	@mkdir -p $(@D)
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(RPI5_MODULE_CPPFLAGS) \
+		$(DEPFLAGS) -c $< -o $@
 
 $(RPI5_DIR)/obj/generated/plugin_registry.o: $(RPI5_REGISTRY_C)
 	@mkdir -p $(@D)
@@ -1666,11 +1871,14 @@ $(RPI5_ELF): $(RPI5_OBJS) targets/rpi5-aarch64-raw-fdt/linker.ld
 $(RPI5_IMAGE): $(RPI5_ELF)
 	$(OBJCOPY) -O binary $< $@
 
-rpi5-aarch64-raw-fdt-package: $(RPI5_IMAGE) $(RPI5_SELECTED_PAYLOAD)
+rpi5-aarch64-raw-fdt-package: $(RPI5_IMAGE) $(RPI5_SELECTED_PAYLOAD) \
+	$(RPI5_MODULE_PROVENANCE)
 	$(PYTHON) tools/package_rpi5.py \
 		--image $(RPI5_IMAGE) --payload $(RPI5_SELECTED_PAYLOAD) \
 		--config targets/rpi5-aarch64-raw-fdt/package/config.txt \
 		--cmdline targets/rpi5-aarch64-raw-fdt/package/cmdline.txt \
+		$(if $(strip $(RPI5_MODULE_PROVENANCE)),--module-provenance $(RPI5_MODULE_PROVENANCE)) \
+		$(if $(strip $(RPI5_MODULE_PROVENANCE)),--product-manifest $(RPI5_SELECTED_MANIFEST)) \
 		--output $(RPI5_PACKAGE)
 	$(PYTHON) tools/check_rpi_package.py $(RPI5_PACKAGE)
 
@@ -1679,6 +1887,25 @@ rpi5-aarch64-parus-package:
 		{ echo "RPI5_PARUS_PAYLOAD is required" >&2; exit 2; }
 	$(MAKE) --no-print-directory \
 		RPI5_PARUS_PAYLOAD=$(abspath $(RPI5_PARUS_PAYLOAD)) \
+		rpi5-aarch64-raw-fdt-package
+
+rpi5-aarch64-modules-fixture-package:
+	$(MAKE) --no-print-directory \
+		RPI5_DIR=$(abspath $(RPI5_MODULE_FIXTURE_DIR)) \
+		RPI5_MANIFEST=$(RPI5_MODULE_FIXTURE_MANIFEST) \
+		RPI5_MODULE_COMPONENT_MANIFEST=$(abspath $(RPI5_MODULE_FIXTURE_COMPONENT_MANIFEST)) \
+		rpi5-aarch64-raw-fdt-package
+
+rpi5-aarch64-parus-modules-package:
+	@test -n "$(RPI5_PARUS_PAYLOAD)" || \
+		{ echo "RPI5_PARUS_PAYLOAD is required" >&2; exit 2; }
+	@test -n "$(RPI5_PARUS_MODULE_COMPONENT_MANIFEST)" || \
+		{ echo "RPI5_PARUS_MODULE_COMPONENT_MANIFEST is required" >&2; exit 2; }
+	$(MAKE) --no-print-directory \
+		RPI5_DIR=$(abspath $(RPI5_PARUS_MODULE_DIR)) \
+		RPI5_EXTERNAL_MANIFEST=$(RPI5_PARUS_MODULE_MANIFEST) \
+		RPI5_PARUS_PAYLOAD=$(abspath $(RPI5_PARUS_PAYLOAD)) \
+		RPI5_MODULE_COMPONENT_MANIFEST=$(abspath $(RPI5_PARUS_MODULE_COMPONENT_MANIFEST)) \
 		rpi5-aarch64-raw-fdt-package
 
 $(UEFI_FIXTURE_INPUT_MANIFEST): $(UEFI_FIXTURE_MANIFEST)
@@ -1893,6 +2120,12 @@ check-boot-lifecycle: $(BOOT_LIFECYCLE_TEST)
 check-environment-persistent-inputs: $(ENVIRONMENT_PERSISTENT_INPUTS_TEST)
 	$(ENVIRONMENT_PERSISTENT_INPUTS_TEST)
 
+check-boot-modules: $(BOOT_MODULE_BUNDLE_TEST) $(RAW_FDT_CAPACITY_TEST)
+	$(BOOT_MODULE_BUNDLE_TEST)
+	$(RAW_FDT_CAPACITY_TEST)
+	$(PYTHON) tests/tools/boot_module_bundle_tests.py
+	$(PYTHON) tests/tools/rpi_package_tests.py
+
 check-media-pipeline: $(MEDIA_PIPELINE_TEST)
 	$(MEDIA_PIPELINE_TEST) --fuzz-smoke
 
@@ -2064,7 +2297,9 @@ check-one: $(HOST_REFERENCE) $(KERNEL_FIXTURE)
 	@echo "RIBON-R4-HOST-REFERENCE-OK $(RIBON_ARCH)"
 
 check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
-	qemu-aarch64-virt-raw-fdt x86_64-uefi-parus-fixture
+	rpi5-aarch64-modules-fixture-package \
+	qemu-aarch64-virt-raw-fdt qemu-aarch64-virt-modules-fixture-product \
+	qemu-riscv64-virt-rph1-fixture-product x86_64-uefi-parus-fixture
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
 check-uefi-product-hermeticity:
@@ -2088,7 +2323,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \
-	check-environment-persistent-inputs check-media-pipeline check-mode-descriptors check-plugin-descriptors \
+	check-environment-persistent-inputs check-boot-modules check-media-pipeline check-mode-descriptors check-plugin-descriptors \
 	check-protocol-contract check-parus-entry-contract check-os-packages \
 	check-library-embed check-composition-schemas \
 	check-qemu-evidence check-uefi-product-hermeticity \

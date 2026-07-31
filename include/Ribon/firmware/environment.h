@@ -8,6 +8,9 @@
 #include <Ribon/core/capability.h>
 #include <Ribon/core/memory.h>
 
+/** @brief 한 boot environment가 운반할 수 있는 boot module 상한이다. */
+#define RIBON_BOOT_MODULE_CAPACITY 8u
+
 /** @brief 기존 execution environment를 소비하는 frontend 종류다. */
 enum RibonEnvironmentKind {
     RIBON_ENVIRONMENT_HOST = 0,

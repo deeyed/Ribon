@@ -77,7 +77,7 @@ int ribon_boot_environment_is_valid(const struct RibonBootEnvironment *environme
             (environment->boot_modules.module_count != 0u) ||
         (environment->boot_modules.module_count != 0u &&
          (environment->boot_modules.modules == 0 ||
-          environment->boot_modules.module_count > 8u))) {
+          environment->boot_modules.module_count > RIBON_BOOT_MODULE_CAPACITY))) {
         return 0;
     }
     if (((environment->flags & RIBON_BOOT_ENV_HAS_COMMAND_LINE) != 0u) !=

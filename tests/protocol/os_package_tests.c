@@ -44,6 +44,27 @@ int main(void) {
     };
     const struct RibonBootProtocol *freebsd =
         ribon_freebsd_protocol_plugin_descriptor.operations;
+    const struct RibonBootProtocol *linux =
+        ribon_linux_protocol_plugin_descriptor.operations;
+    const struct RibonComponentDescriptor linux_components[] = {
+        {
+            .role = RIBON_COMPONENT_ROLE_KERNEL,
+            .name = "kernel",
+            .size = 4096u,
+        },
+        {
+            .role = RIBON_COMPONENT_ROLE_BOOT_MODULE,
+            .name = "initrd",
+            .size = 4096u,
+        },
+    };
+    const struct RibonManifestView linux_module_manifest = {
+        .protocol_id = "linux",
+        .protocol_abi_min = 1u,
+        .protocol_abi_max = 1u,
+        .components = linux_components,
+        .component_count = 2u,
+    };
     struct RibonHandoffArtifact handoff = {0};
     unsigned char buffer[64];
 
@@ -56,6 +77,9 @@ int main(void) {
         !ribon_protocol_plugin_operations_are_valid(
             &ribon_zircon_protocol_plugin_descriptor) ||
         !ribon_zircon_zbi_is_valid(&zbi, sizeof(zbi)) ||
+        (linux->expectations & RIBON_PROTOCOL_ALLOW_BOOT_MODULES) != 0u ||
+        linux->ops->validate_components(&linux_module_manifest) !=
+            RIBON_PROTOCOL_STATUS_BAD_COMPONENTS ||
         freebsd->ops->prepare_handoff(
             0, 0, 0, buffer, sizeof(buffer), &handoff) !=
             RIBON_PROTOCOL_HANDOFF_STATUS_UNSUPPORTED) {

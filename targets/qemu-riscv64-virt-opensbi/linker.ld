@@ -35,9 +35,19 @@ SECTIONS
     __stack_top = .;
 
     . = ALIGN(4096);
+    __bootloader_runtime_end = .;
+
+    .ribon.boot_modules : ALIGN(4096) {
+        __ribon_boot_modules_start = .;
+        KEEP(*(SORT_BY_NAME(.ribon.boot_modules.*)))
+        . = ALIGN(4096);
+        __ribon_boot_modules_end = .;
+    }
+
+    . = ALIGN(4096);
     __image_end = .;
     ASSERT(__image_end <= 0x80400000,
-           "Ribon image overlaps the selected payload window")
+           "Ribon image and boot modules overlap the selected payload window")
 
     /DISCARD/ : {
         *(.comment)

@@ -6,6 +6,16 @@
 #include <Ribon/service/directory.h>
 #include <Ribon/plugin/descriptor.h>
 
+/** @brief Target-owned reservation: bootloader, kernel, 최대 boot modules다. */
+#define RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS \
+    (2u + RIBON_BOOT_MODULE_CAPACITY)
+/** @brief Firmware FDT 자체를 포함한 내부 reservation 상한이다. */
+#define RIBON_RAW_FDT_MAX_RESERVATIONS \
+    (RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS + 1u)
+/** @brief 단일 memory bank를 모든 reservation으로 분할한 최악 region 수다. */
+#define RIBON_RAW_FDT_MAX_MEMORY_REGIONS \
+    (2u * RIBON_RAW_FDT_MAX_RESERVATIONS + 1u)
+
 /** @brief Target가 raw-FDT capture에 제공하는 reserved physical range다. */
 struct RibonRawFdtReservation {
     uint64_t base; /**< Reserved range 시작이다. */
