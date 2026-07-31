@@ -55,7 +55,7 @@ language/ribos/
 | `schema` | immutable product/plugin descriptor | canonical schema bytes와 SHA-256 identity | parser AST와 VM opcode |
 | `ir` | resolved type, CFG, helper stable ID | typed module과 resource closure | Pegen, source token과 product C pointer |
 | `artifact` | validated Policy IR와 resource closure | canonical `.rba`, borrowed structural view | frontend AST, packed C wire image와 VM dispatch |
-| `vm` | untrusted `.rba`, selected product schema | two-stage semantic verification report, 향후 bounded execution | `.rbs`, Pegen, frontend AST와 Policy IR |
+| `vm` | untrusted `.rba`, selected product schema | two-stage verification, prepared program과 bounded execution | `.rbs`, Pegen, frontend AST와 Policy IR |
 
 `frontend/src/lower.c`는 frontend-private AST를 public `ribos/ir` builder API로
 변환하는 bridge다. IR module, validator, CFG/resource analyzer와 deterministic
@@ -69,6 +69,7 @@ Object graph는 다음 세 archive로 hard cut한다.
 ```text
 libribos-target-core.a
   = base + schema + artifact reader/codec/hash + independent verifier
+    + PreparedProgram + storage + interpreter + handle/helper/terminal runtime
 
 libribos-host-support.a
   = libc allocator + FILE writer + hosted format adapter
@@ -133,6 +134,11 @@ make check-ribos-resources
 make check-ribos-artifact
 make check-ribos-verifier
 make check-ribos-host-boundary
+make check-ribos-host-tools
+make check-ribos-replay
+make check-ribos-conformance
+make check-ribos-hostile
+make check-ribos-vm
 ```
 
 - parser gate는 `.rbs` syntax acceptance/rejection만 증명한다.
@@ -151,26 +157,34 @@ make check-ribos-host-boundary
   byte에서 재도출하고 hostile mutation을 거부함을 증명한다.
 - host-boundary gate는 freestanding target archive에서 hosted allocation/I/O,
   frontend, Policy IR와 emitter dependency가 제거되었음을 증명한다.
+- host replay gate는 같은 target-core VM을 `ribos-run`에 연결하고 deterministic
+  input tuple, ISA 24 opcode, cross-layer resource closure와 bounded hostile input을
+  증명한다.
 
 CLI는 host inspection을 위해 다음 mode를 제공한다.
 
 ```sh
-build/tools/ribos-parse --check policy.rbs
-build/tools/ribos-parse --dump-tokens policy.rbs
-build/tools/ribos-parse --dump-ast policy.rbs
-build/tools/ribos-parse --dump-semantics policy.rbs
-build/tools/ribos-parse --dump-ir policy.rbs
-build/tools/ribos-parse --dump-resources policy.rbs
-build/tools/ribos-parse --emit-artifact policy.rba policy.rbs
+build/tools/ribosc --check policy.rbs
+build/tools/ribosc --dump-tokens policy.rbs
+build/tools/ribosc --dump-ast policy.rbs
+build/tools/ribosc --dump-semantics policy.rbs
+build/tools/ribosc --dump-ir policy.rbs
+build/tools/ribosc --dump-resources policy.rbs
+build/tools/ribosc --emit-artifact policy.rba policy.rbs
+build/tools/ribos-verify policy.rba
+build/tools/ribos-run \
+    --context context.rbctx \
+    --transcript helpers.rbtr \
+    policy.rba
 ```
 
 Host compiler와 IR module은 caller-supplied allocator와 hard capacity를 가진 hosted
 도구다. Artifact
 structural reader와 two-stage verifier는 allocation하지 않는다. Stage-2 verifier는
 caller-owned workspace에서 exact instruction/helper resource bound까지 검사하지만
-Ed25519 trust, rollback과 VM runtime counter를 증명하지 않는다. 이 구현은 firmware
-VM, Ribon boot product 안의 policy dispatch, QEMU 또는 hardware 실행을 증명하지
-않는다.
+Ed25519 trust와 rollback을 증명하지 않는다. `ribos-run`은 target-core production
+VM을 host에서 실행하지만 firmware VM integration, Ribon boot product 안의 policy
+dispatch, QEMU 또는 hardware 실행을 증명하지 않는다.
 Production boot product는 `.rbs`, Pegen과 host compiler를 링크하지 않는다.
 
 Generated C source는 Python Software Foundation License Version 2로 제공된 CPython

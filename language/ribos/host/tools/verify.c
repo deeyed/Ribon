@@ -45,6 +45,12 @@ main(int argc, char **argv)
     int self_test_workspace = 0;
     const char *path;
 
+    if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+        (void)printf(
+            "usage: %s [--self-test-workspace] POLICY.rba\n",
+            argv[0]);
+        return 0;
+    }
     if (argc == 2) {
         path = argv[1];
     } else if (argc == 3 &&

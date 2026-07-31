@@ -84,7 +84,7 @@ GENERATED_REGISTRY_O := $(BUILD_DIR)/obj/generated/plugin_registry.o
 TEST_BUILD_DIR := $(BUILD_ROOT)/tests
 TARGET_BUILD_ROOT := $(BUILD_ROOT)/targets
 RESULTS_DIR := $(BUILD_ROOT)/results
-RIBOS_PARSER_PILOT := $(BUILD_ROOT)/tools/ribos-parse
+RIBOS_PARSER_PILOT := $(BUILD_ROOT)/tools/ribosc
 RIBOS_SCHEMA_TEST := $(TEST_BUILD_DIR)/ribos_schema_tests
 RIBOS_IR_MODULE_TEST := $(TEST_BUILD_DIR)/ribos_ir_module_tests
 RIBOS_IR_RESOURCE_TEST := $(TEST_BUILD_DIR)/ribos_ir_resource_tests
@@ -98,6 +98,7 @@ RIBOS_VM_CALLS_LOOPS_TEST := $(TEST_BUILD_DIR)/ribos_vm_calls_loops_tests
 RIBOS_VM_HANDLES_TEST := $(TEST_BUILD_DIR)/ribos_vm_handles_tests
 RIBOS_VM_TERMINAL_TEST := $(TEST_BUILD_DIR)/ribos_vm_terminal_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
+RIBOS_RUNNER := $(BUILD_ROOT)/tools/ribos-run
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
 RIBOS_OBJECT_DIR := $(RIBOS_BUILD_DIR)/obj
@@ -464,7 +465,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
-	ribos-parser-pilot check-ribos-parser-snapshot check-ribos-parser-pilot \
+	ribosc ribos-verify ribos-run ribos-parser-pilot \
+	check-ribos-parser-snapshot check-ribos-parser-pilot \
 	check-ribos-semantics check-ribos-schema check-ribos-ir \
 	check-ribos-resources check-ribos-artifact check-ribos-verifier \
 	check-ribos-runtime-contract check-ribos-prepared-program \
@@ -472,7 +474,9 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-vm-calls check-ribos-vm-loops \
 	check-ribos-vm-aggregates check-ribos-vm-handles \
 	check-ribos-vm-helpers check-ribos-vm-terminal \
-	check-ribos-vm-faults \
+	check-ribos-vm-faults check-ribos-host-tools \
+	check-ribos-replay check-ribos-conformance \
+	check-ribos-hostile check-ribos-vm \
 	check-ribos-host-boundary ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
@@ -575,6 +579,8 @@ $(RIBOS_PARSER_PILOT): $(RIBOS_OBJECT_DIR)/tools/parse.o \
 		$(RIBOS_HOST_COMPILER_LIB) $(RIBOS_TARGET_CORE_LIB) \
 		$(RIBOS_HOST_SUPPORT_LIB) -o $@
 
+ribosc: $(RIBOS_PARSER_PILOT)
+
 ribos-parser-pilot: $(RIBOS_PARSER_PILOT)
 
 check-ribos-parser-snapshot:
@@ -651,6 +657,22 @@ $(RIBOS_VERIFIER): language/ribos/host/tools/verify.c \
 	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) \
 		language/ribos/host/tools/verify.c \
 		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+ribos-verify: $(RIBOS_VERIFIER)
+
+$(RIBOS_OBJECT_DIR)/tools/run.o: language/ribos/host/tools/run.c \
+		$(RIBOS_HEADERS) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) $(RIBOS_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_RUNNER): $(RIBOS_OBJECT_DIR)/tools/run.o \
+		$(RIBOS_TARGET_CORE_LIB) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		$(RIBOS_OBJECT_DIR)/tools/run.o \
+		$(RIBOS_TARGET_CORE_LIB) -o $@
+
+ribos-run: $(RIBOS_RUNNER)
 
 check-ribos-host-boundary: ribos-libraries $(RIBOS_ALLOCATOR_TEST)
 	$(PYTHON) language/ribos/host/tests/check_boundary.py \
@@ -838,6 +860,37 @@ check-ribos-vm-terminal: check-ribos-vm-helpers \
 check-ribos-vm-faults: check-ribos-vm-terminal
 	@echo "RIBOS-VM-FAULT-CLOSURE-OK receipt=fixed-size \
 recovery=once authority=revoked rollback-claim=none evidence=host-unit"
+
+check-ribos-host-tools: check-ribos-parser-snapshot \
+		$(RIBOS_PARSER_PILOT) $(RIBOS_VERIFIER) $(RIBOS_RUNNER)
+	$(RIBOS_PARSER_PILOT) --help
+	$(RIBOS_VERIFIER) --help
+	$(RIBOS_RUNNER) --help
+	@echo "RIBOS-HOST-TOOLS-OK compiler=ribosc verifier=ribos-verify \
+runner=ribos-run vm-core=shared evidence=host-build"
+
+check-ribos-replay: check-ribos-vm-terminal check-ribos-host-tools
+	$(PYTHON) language/ribos/host/tests/replay_tests.py \
+		--compiler $(RIBOS_PARSER_PILOT) \
+		--verifier $(RIBOS_VERIFIER) \
+		--runner $(RIBOS_RUNNER)
+
+check-ribos-conformance: check-ribos-replay
+	$(PYTHON) language/ribos/host/tests/conformance_tests.py \
+		--compiler $(RIBOS_PARSER_PILOT) \
+		--verifier $(RIBOS_VERIFIER) \
+		--runner $(RIBOS_RUNNER)
+
+check-ribos-hostile: check-ribos-conformance
+	$(PYTHON) language/ribos/host/tests/hostile_tests.py \
+		--compiler $(RIBOS_PARSER_PILOT) \
+		--verifier $(RIBOS_VERIFIER) \
+		--runner $(RIBOS_RUNNER)
+
+check-ribos-vm: check-ribos-vm-faults check-ribos-hostile
+	@echo "RIBOS-VM-R16-AGGREGATE-OK core=production \
+replay=deterministic conformance=24-opcodes hostile=bounded \
+evidence=host-only"
 
 # Generation is intentionally explicit. Normal builds compile and validate the
 # tracked snapshot without importing or invoking Pegen.
@@ -1553,6 +1606,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-vm-loops check-ribos-vm-aggregates \
 	check-ribos-vm-handles check-ribos-vm-helpers \
 	check-ribos-vm-terminal check-ribos-vm-faults \
+	check-ribos-vm \
 	check-ribos-host-boundary \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \

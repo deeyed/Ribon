@@ -7,6 +7,19 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+static void
+ribos_usage(FILE *stream, const char *program)
+{
+    (void)fprintf(
+        stream,
+        "usage: %s [--check|--dump-tokens|--dump-ast|"
+        "--dump-semantics|--dump-ir|--dump-resources] SOURCE.rbs\n"
+        "       %s --emit-artifact OUTPUT.rba SOURCE.rbs\n",
+        program,
+        program);
+}
 
 static char *
 ribos_read_file(const char *path, size_t *source_length)
@@ -94,6 +107,10 @@ main(int argc, char **argv)
     const RibosAllocator *allocator = ribos_host_allocator();
     RibosWriter stdout_writer = ribos_host_file_writer(stdout);
 
+    if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+        ribos_usage(stdout, argv[0]);
+        return 0;
+    }
     if (argc == 2) {
         path = argv[1];
     } else if (argc == 3 &&
@@ -127,13 +144,7 @@ main(int argc, char **argv)
         artifact_path = argv[2];
         path = argv[3];
     } else {
-        (void)fprintf(
-            stderr,
-            "usage: %s [--check|--dump-tokens|--dump-ast|"
-            "--dump-semantics|--dump-ir|--dump-resources] SOURCE.rbs\n"
-            "       %s --emit-artifact OUTPUT.rba SOURCE.rbs\n",
-            argv[0],
-            argv[0]);
+        ribos_usage(stderr, argv[0]);
         return 64;
     }
     source = ribos_read_file(path, &source_length);

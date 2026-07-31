@@ -102,8 +102,17 @@ make check-ribos-vm-handles
 make check-ribos-vm-helpers
 make check-ribos-vm-terminal
 make check-ribos-vm-faults
+make check-ribos-host-tools
+make check-ribos-replay
+make check-ribos-conformance
+make check-ribos-hostile
+make check-ribos-vm
 make check-ribos-verifier
 build/tools/ribos-verify POLICY.rba
+build/tools/ribos-run \
+    --context CONTEXT.rbctx \
+    --transcript HELPERS.rbtr \
+    POLICY.rba
 ```
 
 VM 계층은 다음 규칙을 지켜야 한다.
@@ -130,5 +139,8 @@ Structural reader가 envelope, payload hash와 section range를 통과시킨 art
 이 README와 host gate는 runtime ABI, verifier, host-side
 scalar/direct-call/loop/aggregate dispatch, generation handle defense, fake-embedder
 typed helper execution, terminal action sealing과 fail-closed recovery를 설명한다.
+`ribos-run`은 별도 reference VM이 아니라 이 target-core runtime을 hosted embedder에
+연결하며 deterministic context/helper replay, 24-opcode conformance와
+compiler/verifier/runtime resource 비교를 제공한다.
 이는 실제 실행 권한 이전, production signature/rollback provider, Ribon product
 service linkage, QEMU 또는 hardware policy 실행 증거가 아니다.

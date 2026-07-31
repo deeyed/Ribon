@@ -297,7 +297,7 @@ Stage-2는 CFG에서 terminal action count를 `0`, `1`, `2 이상`으로 포화 
 - `Ok(policy action)` 성공 return은 정확히 한 terminal action을 가져야 한다.
 - `Err(policy error)` return과 `TRAP` fault path는 terminal action이 없어야 한다.
 - loop 또는 merge가 0/1/2 이상의 모호한 count를 만들면 거부한다.
-- 성공 return이 하나도 없는 policy도 거부한다.
+- 성공 return이 하나도 없는 policy도 유효하다.
 
 따라서 policy fault가 boot action 이후 정상 error처럼 되돌아가거나 두 개의 boot
 action을 발행할 수 없다. VM은 TRAP을 catchable language exception으로 노출하지

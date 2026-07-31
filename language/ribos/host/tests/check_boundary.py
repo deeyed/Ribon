@@ -115,7 +115,10 @@ def inspect_archives(
         "verifier.o",
         "prepared.o",
         "runtime_storage.o",
+        "runtime_handles.o",
+        "runtime_helpers.o",
         "runtime_interpreter.o",
+        "runtime_terminal.o",
     }
     missing_target = sorted(required_target_members.difference(target_members))
     if missing_target:

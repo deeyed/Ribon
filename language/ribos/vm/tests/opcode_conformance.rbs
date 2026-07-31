@@ -1,0 +1,15 @@
+@pure
+def unit_value() -> Unit {
+    return
+}
+
+@policy(
+    capabilities=[
+        Capability.BOOT,
+    ],
+    helper_budget=1,
+)
+def boot(ctx: BootContext) -> Result[BootAction, BootError] {
+    let ignored = unit_value()
+    return Ok(boot.recovery(RecoveryReason.REQUESTED))
+}

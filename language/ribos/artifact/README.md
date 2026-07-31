@@ -37,7 +37,7 @@ make check-ribos-artifact
 CLI로 source-map을 포함한 unsigned development artifact를 만들 수 있다.
 
 ```sh
-build/tools/ribos-parse --emit-artifact policy.rba policy.rbs
+build/tools/ribosc --emit-artifact policy.rba policy.rbs
 ```
 
 이 계층은 Ed25519 signature의 크기와 canonical signing message를 고정하지만
