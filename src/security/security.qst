@@ -7,3 +7,16 @@ qstar.staticlib "libribon_security_signature" {
     "//qstar/policies:ribon_host_c",
   },
 }
+
+qstar.staticlib "libribon_security_key_policy" {
+  artifact_name = "libribon-security-key-policy.a",
+  sources = {
+    "src/security/key_policy.c",
+  },
+  deps = {
+    "//src/security:libribon_security_signature",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}

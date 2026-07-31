@@ -166,6 +166,48 @@ qstar.test_suite "security_ed25519_provider_tests" {
   description = qstar.status("Ed25519 vectors and target graph isolation"),
 }
 
+qstar.test "security_key_policy_unit" {
+  sources = {
+    "tests/security/key_policy_tests.c",
+  },
+  deps = {
+    "//src/plugins:libribon_security_ed25519",
+    "//src/security:libribon_security_key_policy",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.run_target "security_key_policy_graphs" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-security-key-policy",
+    "check-security-key-policy",
+    "check-security-key-policy-graphs",
+  },
+  timeout = 240,
+  expect = {
+    contains = "RIBON-KEY-POLICY-GRAPHS-OK",
+  },
+  description = qstar.status("Verifying immutable product key-policy closure"),
+}
+
+qstar.test_suite "security_key_policy_tests" {
+  tests = {
+    "//tests:security_key_policy_unit",
+    "//tests:security_key_policy_graphs",
+  },
+  tags = {
+    "host",
+    "security",
+    "key-policy",
+    "bounded",
+  },
+  description = qstar.status("Product-bound key authorization and graph isolation"),
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
@@ -179,5 +221,7 @@ qstar.group "ribon_tests" {
     "//tests:ribos_executable_corpus",
     "//tests:security_ed25519_provider_unit",
     "//tests:security_ed25519_provider_graphs",
+    "//tests:security_key_policy_unit",
+    "//tests:security_key_policy_graphs",
   },
 }

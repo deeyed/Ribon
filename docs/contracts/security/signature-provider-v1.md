@@ -2,10 +2,11 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
   - include/Ribon/security/signature.h
   - include/Ribon/security/ed25519.h
+  - include/Ribon/security/key_policy.h
   - src/security/signature.c
   - src/plugins/security/ed25519/provider.c
   - tools/generate_plugin_registry.py
@@ -17,6 +18,7 @@ tests:
   - make check-security-ed25519-sanitizer
   - make check-security-ed25519-cross-compile
   - make check-security-provider-graphs
+  - make check-security-key-policy
 hardware:
   - none
 supersedes:
@@ -114,6 +116,7 @@ Monocypher 4.0.3의 upstream constant-time claim과 verification timing fix는 v
 Provider는 private key를 처리하지 않지만 target 전체의 cache, compiler, fault-injection 및
 physical timing non-interference를 증명하지 않는다.
 
-Unit, sanitizer와 compile-only evidence는 production key custody, key-policy authorization,
-revocation, protected rollback counter, secure boot chain, physical board와 인증된 side-channel
-resistance를 증명하지 않는다.
+Provider unit, sanitizer와 compile-only evidence 자체는 production key custody, key-policy
+authorization, protected rollback counter, secure boot chain, physical board와 인증된 side-channel
+resistance를 증명하지 않는다. Key-policy authorization과 revocation/delegation은 별도
+`check-security-key-policy` 및 final product graph gate가 소유한다.

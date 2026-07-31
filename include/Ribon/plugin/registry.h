@@ -8,6 +8,7 @@
 #include <Ribon/plugin/manifest.h>
 
 struct RibonSignatureProvider;
+struct RibonKeyPolicyStore;
 
 /** @brief Generated immutable plugin pointer array다. */
 struct RibonPluginRegistry {
@@ -52,5 +53,8 @@ const uint8_t *ribon_generated_product_source_digest(void);
 
 /** @brief Product graph가 선택한 signature provider 또는 NULL을 반환한다. */
 const struct RibonSignatureProvider *ribon_generated_signature_provider(void);
+
+/** @brief Product graph가 생성한 immutable key-policy store 또는 NULL을 반환한다. */
+const struct RibonKeyPolicyStore *ribon_generated_key_policy_store(void);
 
 #endif

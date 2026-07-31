@@ -107,7 +107,10 @@ RIBOS_RUNNER := $(BUILD_ROOT)/tools/ribos-run
 SECURITY_BUILD_DIR := $(BUILD_ROOT)/security
 SECURITY_TEST := $(TEST_BUILD_DIR)/ed25519_provider_tests
 SECURITY_SANITIZER_TEST := $(TEST_BUILD_DIR)/ed25519_provider_sanitizer_tests
+KEY_POLICY_TEST := $(TEST_BUILD_DIR)/key_policy_tests
+KEY_POLICY_SANITIZER_TEST := $(TEST_BUILD_DIR)/key_policy_sanitizer_tests
 SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
+SECURITY_KEY_POLICY_SRCS := src/security/key_policy.c
 SECURITY_PROVIDER_SRCS := \
 	src/security/signature.c \
 	src/plugins/security/ed25519/provider.c \
@@ -551,6 +554,7 @@ RIBOS_R18_COMMON_SRCS := \
 	src/image-formats/elf64.c \
 	src/protocols/synthetic/protocol.c \
 	src/plugins/policy/ribos/adapter.c \
+	$(SECURITY_KEY_POLICY_SRCS) \
 	$(SECURITY_PROVIDER_SRCS) \
 	products/validation/ribos-qemu/product.c \
 	products/validation/ribos-qemu/main.c
@@ -684,6 +688,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-r18 ribos-libraries \
 	check-security-ed25519-provider check-security-ed25519-sanitizer \
 	check-security-ed25519-cross-compile check-security-provider-graphs \
+	check-security-key-policy check-security-key-policy-sanitizer \
+	check-security-key-policy-graphs \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke \
@@ -1447,6 +1453,33 @@ check-security-ed25519-provider: $(SECURITY_TEST)
 check-security-ed25519-sanitizer: $(SECURITY_SANITIZER_TEST)
 	$(SECURITY_SANITIZER_TEST)
 
+$(KEY_POLICY_TEST): tests/security/key_policy_tests.c \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) \
+		include/Ribon/security/key_policy.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		tests/security/key_policy_tests.c $(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROVIDER_SRCS) -o $@
+
+$(KEY_POLICY_SANITIZER_TEST): tests/security/key_policy_tests.c \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) \
+		include/Ribon/security/key_policy.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(SECURITY_INCLUDE_FLAGS) tests/security/key_policy_tests.c \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) -o $@
+
+check-security-key-policy: $(KEY_POLICY_TEST)
+	$(KEY_POLICY_TEST)
+	$(PYTHON) tests/security/key_policy_manifest_tests.py \
+		--composer tools/generate_plugin_registry.py \
+		--manifest-tool tools/make_ribos_qemu_manifest.py \
+		--host-manifest $(HOST_MANIFEST)
+
+check-security-key-policy-sanitizer: $(KEY_POLICY_SANITIZER_TEST)
+	$(KEY_POLICY_SANITIZER_TEST)
+
 check-security-ed25519-cross-compile:
 	@set -e; \
 	for target in x86_64 aarch64 riscv64; do \
@@ -1478,6 +1511,19 @@ check-security-provider-graphs: check-ribos-cross-arch-objects
 		--image $(RIBOS_R18_RISCV64_ELF) \
 		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex
 
+check-security-key-policy-graphs: check-ribos-cross-arch-objects
+	$(PYTHON) tools/lint/key_policy_graph_lint.py \
+		--manifest $(RIBOS_R18_MANIFEST) \
+		--graph $(RIBOS_R18_AMD64_GRAPH) \
+		--graph $(RIBOS_R18_AARCH64_GRAPH) \
+		--graph $(RIBOS_R18_RISCV64_GRAPH) \
+		--map $(RIBOS_R18_AMD64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_AARCH64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_RISCV64_DIR)/ribon-ribos.map \
+		--image $(RIBOS_R18_AMD64_APP) \
+		--image $(RIBOS_R18_AARCH64_ELF) \
+		--image $(RIBOS_R18_RISCV64_ELF)
+
 check-ribos-cross-arch-qemu: \
 		$(RIBOS_R18_AMD64_ESP)/EFI/BOOT/BOOTX64.EFI \
 		$(RIBOS_R18_AARCH64_IMAGE) \
@@ -1498,6 +1544,7 @@ check-ribos-cross-arch-qemu: \
 
 check-ribos-r18: check-ribos-golden-artifact \
 		check-ribos-cross-arch-objects check-security-provider-graphs \
+		check-security-key-policy-graphs \
 		check-ribos-cross-arch-qemu
 	@echo "RIBOS-R18-AGGREGATE-OK artifact=golden targets=3 \
 qemu=guest-executed hardware=not-run"
@@ -2420,6 +2467,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-host-boundary check-ribos-r18 \
 	check-security-ed25519-provider check-security-ed25519-sanitizer \
 	check-security-ed25519-cross-compile check-security-provider-graphs \
+	check-security-key-policy check-security-key-policy-sanitizer \
+	check-security-key-policy-graphs \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

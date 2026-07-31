@@ -134,6 +134,7 @@ adr/0038-ribos-executable-example-corpus
 adr/0039-raw-fdt-typed-module-bundle
 adr/0040-product-bound-policy-trust
 adr/0041-freestanding-ed25519-provider
+adr/0042-product-bound-key-policy-engine
 ```
 
 ```{toctree}
@@ -204,4 +205,5 @@ log/2026-07-31-r02-ribos-executable-corpus
 log/2026-07-31-rfdt-mod0-typed-boot-modules
 log/2026-07-31-r03-production-trust-contracts
 log/2026-07-31-r04-freestanding-ed25519
+log/2026-08-01-r05-product-bound-key-policy
 ```

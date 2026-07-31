@@ -2,14 +2,19 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
+  - include/Ribon/security/key_policy.h
+  - src/security/key_policy.c
   - include/Ribon/policy/ribos.h
   - language/ribos/vm/include/ribos/vm/prepared.h
   - qstar/schemas/product.schema.json
   - tools/generate_plugin_registry.py
 tests:
-  - make check-ribos-artifact
+  - make check-security-key-policy
+  - make check-security-key-policy-sanitizer
+  - make check-security-key-policy-graphs
+  - make check-ribos-r18
   - ribon-trust-message-vector-v1
 hardware:
   - none
@@ -61,6 +66,23 @@ root -> intermediate -> signing leaf
 
 Arbitrary certificate parser, recursive chain discovery와 network key fetch는 허용하지 않는다.
 Composer가 stable key-ID 순서로 생성한 고정 table만 탐색한다.
+
+`RibonKeyPolicyStore`는 product manifest exact-byte digest, store generation과 bounded record
+table을 immutable image data로 소유한다. Runtime은 store를 승인하기 전에 다음을 독립적으로
+재검산한다.
+
+- ABI, flags, reserved와 record 수
+- strict key-ID 및 rollback-domain digest 정렬
+- public key의 SHA-256 identity와 nonzero identity
+- lifecycle과 무관한 public-key identity 중복 부재
+- issuer 존재, 선언 depth, cycle 부재와 최대 두 edge
+- child의 mode, usage, domain과 sequence authority가 issuer의 부분집합인지
+- pointer와 native C layout을 제외한 canonical store digest
+
+Canonical store serialization은 little-endian이며 32-byte magic, version, record count,
+generation, store-ID digest와 stable key-ID 순서의 record fields를 포함한다. Generated C의
+pointer 값, padding, `size_t`와 callback 주소는 identity에 들어가지 않는다. Composer와 runtime이
+같은 digest를 만들지 못하면 store 전체를 거부한다.
 
 ## Key lifecycle
 
@@ -187,8 +209,23 @@ Ribos helper와 terminal action은 다음 authority를 얻지 못한다.
 Policy는 product가 미리 승인한 candidate 중 선택하거나 trial/recovery intent를 반환할 수 있다.
 최종 key, signature와 rollback decision은 native product authority가 다시 검사한다.
 
+## Native authorization ABI
+
+`ribon_key_policy_authorize()`는 key ID를 exact record로 resolve한 뒤 product, mode, single usage,
+rollback domain, sequence, lifecycle과 issuer chain을 검사한다. 성공 결과인
+`RibonKeyPolicyDecision`에는 record index, delegation depth, store generation, key identity와
+store digest만 들어간다. Public key, store pointer와 provider callback은 decision에 포함하지
+않는다.
+
+`ribon_key_policy_verify()`는 위 authorization을 먼저 수행하고 성공한 exact record의 public
+key만 selected signature provider에 전달한다. Policy failure에서는 cryptographic callback을
+호출하지 않는다. 이 helper의 성공은 protected rollback state, bytecode verifier 또는 boot
+transaction 성공을 뜻하지 않는다.
+
 ## 증거 경계
 
-이 계약과 canonical message vector는 key-policy engine, protected-state provider, journal 또는
+Key-policy unit, manifest negative corpus와 final object-graph gate는 bounded immutable trust-store,
+rotation/revocation/delegation authorization 및 실제 Ed25519 호출 순서의 host/compile-only 증거다.
+이는 protected-state provider, journal, trust-store update transaction, private-key custody 또는
 physical rollback protection의 실행 증거가 아니다. Host file이나 memory provider는 state-machine
 unit 및 power-cut simulation에는 사용할 수 있지만 hostile replay-safe hardware claim을 열지 않는다.

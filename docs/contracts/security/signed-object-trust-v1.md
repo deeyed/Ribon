@@ -2,16 +2,20 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
   - language/ribos/artifact/include/ribos/artifact/format.h
   - language/ribos/artifact/src/codec.c
   - include/Ribon/security/signature.h
+  - include/Ribon/security/key_policy.h
+  - src/security/key_policy.c
   - src/plugins/security/ed25519/provider.c
   - tools/inspect_ribos_trust_message.py
 tests:
   - make check-ribos-artifact
   - make check-security-ed25519-provider
+  - make check-security-key-policy
+  - make check-security-key-policy-graphs
   - ribon-trust-message-vector-v1
 hardware:
   - none
@@ -202,10 +206,11 @@ Canonical vector와 codec unit test만으로는 다음을 증명하지 않는다
 
 - Selected Ed25519 provider의 정확성 또는 constant-time 성질
 - production public key와 private-key 보관 방식
-- revocation과 delegation engine 구현
 - TPM, RPMB, secure element 또는 fuse-backed rollback state
 - power-loss-safe journal과 physical flash 동작
 - update manifest와 boot image codec 구현
 
 Ed25519 equation과 strict input profile은 별도 signature-provider gate가 같은 message bytes로
-검사한다. 나머지 항목은 독립 key-policy, protected-state와 hardware evidence gate를 요구한다.
+검사한다. Bounded immutable key table, lifecycle, authority containment와 최대 두 edge delegation은
+key-policy gate가 검사한다. Protected state, trust-store update와 hardware 항목은 독립 evidence
+gate를 요구한다.

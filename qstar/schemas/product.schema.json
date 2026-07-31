@@ -83,6 +83,109 @@
         "symbol": {"type": "string", "pattern": "^ribon_"}
       }
     },
+    "key_policy": {
+      "type": "object",
+      "required": ["generation", "id", "keys"],
+      "additionalProperties": false,
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18446744073709551615
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "issuer",
+              "maximum_sequence",
+              "minimum_sequence",
+              "modes",
+              "public_key_hex",
+              "rollback_domains",
+              "status",
+              "usages"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+              },
+              "issuer": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                  },
+                  {"type": "null"}
+                ]
+              },
+              "maximum_sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 18446744073709551615
+              },
+              "minimum_sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 18446744073709551615
+              },
+              "modes": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "diagnostic",
+                    "normal",
+                    "provisioning",
+                    "recovery"
+                  ]
+                }
+              },
+              "public_key_hex": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "rollback_domains": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1, "maxLength": 128}
+              },
+              "status": {"enum": ["active", "retiring", "revoked"]},
+              "usages": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 6,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "boot-image",
+                    "policy-diagnostic",
+                    "policy-normal",
+                    "policy-provisioning",
+                    "policy-recovery",
+                    "update-manifest"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "ribos_policy": {
       "type": "object",
       "required": [

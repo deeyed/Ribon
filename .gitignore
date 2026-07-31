@@ -7,4 +7,4 @@ generated/
 !language/ribos/generated/parser.receipt.json
 !language/ribos/generated/tokens.h
 stage/
-tools/__pycache__/
+__pycache__/

@@ -131,6 +131,37 @@ BOOT_MODULE_BUNDLE_KEYS = {
     "provider",
 }
 SIGNATURE_PROVIDER_KEYS = {"algorithm", "class", "id", "symbol"}
+KEY_POLICY_KEYS = {"generation", "id", "keys"}
+KEY_POLICY_RECORD_KEYS = {
+    "id",
+    "issuer",
+    "maximum_sequence",
+    "minimum_sequence",
+    "modes",
+    "public_key_hex",
+    "rollback_domains",
+    "status",
+    "usages",
+}
+KEY_POLICY_MODES = {
+    "normal": 1,
+    "recovery": 2,
+    "provisioning": 3,
+    "diagnostic": 4,
+}
+KEY_POLICY_USAGES = {
+    "policy-normal": 1,
+    "policy-recovery": 2,
+    "policy-provisioning": 3,
+    "policy-diagnostic": 4,
+    "update-manifest": 5,
+    "boot-image": 6,
+}
+KEY_POLICY_LIFECYCLES = {
+    "active": "RIBON_KEY_POLICY_LIFECYCLE_ACTIVE",
+    "retiring": "RIBON_KEY_POLICY_LIFECYCLE_RETIRING",
+    "revoked": "RIBON_KEY_POLICY_LIFECYCLE_REVOKED",
+}
 RIBOS_CAPABILITIES = {
     "INSPECT": 1 << 0,
     "DEVICE": 1 << 1,
@@ -328,6 +359,276 @@ def _signature_provider(
     ):
         raise ValueError("signature_provider must select one typed Ed25519 provider")
     return {key: str(value[key]) for key in sorted(SIGNATURE_PROVIDER_KEYS)}
+
+
+def _key_policy_ascii_id(value: object, field: str) -> str:
+    """Validate one source-stable ASCII identity that is safe in generated C."""
+
+    accepted = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value.encode("ascii", errors="ignore")) <= 64
+        or any(character not in accepted for character in value)
+    ):
+        raise ValueError(f"{field} must be a 1..64 byte stable ASCII ID")
+    return value
+
+
+def _key_policy_string_list(
+    value: object,
+    field: str,
+    accepted: set[str] | None = None,
+    maximum: int = 32,
+) -> list[str]:
+    """Validate one bounded sorted unique manifest string list."""
+
+    if (
+        not isinstance(value, list)
+        or not 1 <= len(value) <= maximum
+        or any(not isinstance(item, str) or not item for item in value)
+        or value != sorted(set(value))
+        or (accepted is not None and any(item not in accepted for item in value))
+    ):
+        raise ValueError(f"{field} must be a bounded sorted unique list")
+    return value
+
+
+def _key_policy_mask(values: list[str], registry: dict[str, int]) -> int:
+    """Convert stable one-based registry values to an explicit bit mask."""
+
+    mask = 0
+    for value in values:
+        mask |= 1 << (registry[value] - 1)
+    return mask
+
+
+def _key_policy_contains(issuer: dict[str, object], child: dict[str, object]) -> bool:
+    """Check that one issuer record cannot delegate authority it does not own."""
+
+    return (
+        set(child["usages"]).issubset(issuer["usages"])
+        and set(child["modes"]).issubset(issuer["modes"])
+        and set(child["rollback_domains"]).issubset(issuer["rollback_domains"])
+        and child["minimum_sequence"] >= issuer["minimum_sequence"]
+        and child["maximum_sequence"] <= issuer["maximum_sequence"]
+    )
+
+
+def _key_policy_canonical_digest(
+    store_id: str,
+    generation: int,
+    records: list[dict[str, object]],
+    product_digest: bytes,
+) -> bytes:
+    """Serialize the pointer-free key-store identity and return its SHA-256."""
+
+    payload = bytearray(b"RIBON-KEY-STORE-V1".ljust(32, b"\0"))
+    payload.extend(struct.pack("<HHIQ", 1, 0, len(records), generation))
+    payload.extend(hashlib.sha256(store_id.encode("ascii")).digest())
+    for record in records:
+        key_id = str(record["id"]).encode("ascii")
+        public_key = bytes.fromhex(str(record["public_key_hex"]))
+        issuer = record["issuer"]
+        domain_digests = record["domain_digests"]
+        assert isinstance(domain_digests, list)
+        payload.extend(hashlib.sha256(key_id).digest())
+        payload.extend(public_key)
+        payload.extend(hashlib.sha256(public_key).digest())
+        payload.extend(product_digest)
+        payload.extend(struct.pack("<Q", int(record["usage_mask"])))
+        payload.extend(struct.pack("<I", int(record["mode_mask"])))
+        payload.extend(struct.pack(
+            "<I",
+            {"active": 1, "retiring": 2, "revoked": 3}[str(record["status"])],
+        ))
+        payload.extend(struct.pack("<I", 1 if issuer is None else 0))
+        payload.extend(struct.pack(
+            "<QQ",
+            int(record["minimum_sequence"]),
+            int(record["maximum_sequence"]),
+        ))
+        payload.extend(
+            bytes(32) if issuer is None
+            else hashlib.sha256(str(issuer).encode("ascii")).digest()
+        )
+        payload.extend(struct.pack(
+            "<II",
+            int(record["delegation_depth"]),
+            len(domain_digests),
+        ))
+        for digest in domain_digests:
+            assert isinstance(digest, bytes)
+            payload.extend(digest)
+    return hashlib.sha256(payload).digest()
+
+
+def _key_policy(
+    manifest: dict[str, object],
+    source_digest: bytes,
+) -> dict[str, object] | None:
+    """Validate and normalize one bounded immutable product trust store."""
+
+    raw = manifest.get("key_policy")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) != KEY_POLICY_KEYS:
+        raise ValueError("key_policy must define the complete bounded v1 store")
+    store_id = _key_policy_ascii_id(raw.get("id"), "key_policy.id")
+    generation = raw.get("generation")
+    if not isinstance(generation, int) or not 1 <= generation <= 0xFFFFFFFFFFFFFFFF:
+        raise ValueError("key_policy.generation must be a positive u64")
+    raw_records = raw.get("keys")
+    if not isinstance(raw_records, list) or not 1 <= len(raw_records) <= 32:
+        raise ValueError("key_policy.keys must contain 1..32 records")
+    records: list[dict[str, object]] = []
+    ids: list[str] = []
+    for raw_record in raw_records:
+        if not isinstance(raw_record, dict) or set(raw_record) != KEY_POLICY_RECORD_KEYS:
+            raise ValueError("key_policy record must define the exact v1 fields")
+        key_id = _key_policy_ascii_id(raw_record.get("id"), "key_policy key ID")
+        issuer_value = raw_record.get("issuer")
+        issuer = None if issuer_value is None else _key_policy_ascii_id(
+            issuer_value,
+            "key_policy issuer ID",
+        )
+        public_key_hex = raw_record.get("public_key_hex")
+        if (
+            not isinstance(public_key_hex, str)
+            or len(public_key_hex) != 64
+            or any(character not in "0123456789abcdef" for character in public_key_hex)
+            or bytes.fromhex(public_key_hex) == bytes(32)
+        ):
+            raise ValueError("key_policy public key must be 32 lowercase hex bytes")
+        modes = _key_policy_string_list(
+            raw_record.get("modes"),
+            "key_policy modes",
+            set(KEY_POLICY_MODES),
+            4,
+        )
+        usages = _key_policy_string_list(
+            raw_record.get("usages"),
+            "key_policy usages",
+            set(KEY_POLICY_USAGES),
+            6,
+        )
+        domains = _key_policy_string_list(
+            raw_record.get("rollback_domains"),
+            "key_policy rollback domains",
+            maximum=4,
+        )
+        if any(len(domain.encode("utf-8")) > 128 or "\0" in domain for domain in domains):
+            raise ValueError("rollback domain IDs must be 1..128 non-NUL UTF-8 bytes")
+        minimum = raw_record.get("minimum_sequence")
+        maximum = raw_record.get("maximum_sequence")
+        if (
+            not isinstance(minimum, int)
+            or not isinstance(maximum, int)
+            or minimum < 0
+            or maximum > 0xFFFFFFFFFFFFFFFF
+            or minimum > maximum
+        ):
+            raise ValueError("key policy sequence interval must be an inclusive u64 range")
+        status = raw_record.get("status")
+        if status not in KEY_POLICY_LIFECYCLES:
+            raise ValueError("key policy lifecycle is invalid")
+        ids.append(key_id)
+        records.append({
+            "id": key_id,
+            "issuer": issuer,
+            "maximum_sequence": maximum,
+            "minimum_sequence": minimum,
+            "modes": modes,
+            "mode_mask": _key_policy_mask(modes, KEY_POLICY_MODES),
+            "public_key_hex": public_key_hex,
+            "rollback_domains": domains,
+            "domain_digests": sorted(
+                hashlib.sha256(domain.encode("utf-8")).digest()
+                for domain in domains
+            ),
+            "status": status,
+            "usages": usages,
+            "usage_mask": _key_policy_mask(usages, KEY_POLICY_USAGES),
+        })
+    if ids != sorted(set(ids)):
+        raise ValueError("key policy IDs must be unique and sorted")
+    by_id = {str(record["id"]): record for record in records}
+    visiting: set[str] = set()
+    depths: dict[str, int] = {}
+
+    def depth(key_id: str) -> int:
+        if key_id in depths:
+            return depths[key_id]
+        if key_id in visiting:
+            raise ValueError("key policy issuer graph contains a cycle")
+        visiting.add(key_id)
+        record = by_id[key_id]
+        issuer = record["issuer"]
+        if issuer is None:
+            result = 0
+        else:
+            if issuer not in by_id:
+                raise ValueError("key policy issuer is unknown")
+            issuer_record = by_id[str(issuer)]
+            if not _key_policy_contains(issuer_record, record):
+                raise ValueError("key policy delegation expands issuer authority")
+            result = depth(str(issuer)) + 1
+        visiting.remove(key_id)
+        if result > 2:
+            raise ValueError("key policy delegation exceeds two edges")
+        depths[key_id] = result
+        return result
+
+    for record in records:
+        record["delegation_depth"] = depth(str(record["id"]))
+    identities: set[str] = set()
+    for record in records:
+        identity = hashlib.sha256(
+            bytes.fromhex(str(record["public_key_hex"]))
+        ).hexdigest()
+        record["key_identity_sha256"] = identity
+        if identity in identities:
+            raise ValueError("key records have duplicate public-key identity")
+        identities.add(identity)
+    if manifest.get("ribos_policy") is not None:
+        selected_mode = str(manifest["mode"])
+        selected_usage = f"policy-{selected_mode}"
+        if any(
+            record["modes"] != [selected_mode]
+            or record["usages"] != [selected_usage]
+            for record in records
+        ):
+            raise ValueError("Ribos key policy must be closed to its product mode and usage")
+    canonical_digest = _key_policy_canonical_digest(
+        store_id,
+        generation,
+        records,
+        source_digest,
+    )
+    manifest["_key_policy_records"] = records
+    manifest["_key_policy_digest"] = canonical_digest
+    return {
+        "id": store_id,
+        "generation": generation,
+        "keys": [
+            {
+                key: record[key]
+                for key in (
+                    "delegation_depth",
+                    "id",
+                    "issuer",
+                    "key_identity_sha256",
+                    "maximum_sequence",
+                    "minimum_sequence",
+                    "modes",
+                    "public_key_hex",
+                    "rollback_domains",
+                    "status",
+                    "usages",
+                )
+            }
+            for record in records
+        ],
+    }
 
 
 def _ribos_string_list(
@@ -741,6 +1042,14 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         allowed,
     )
     manifest["signature_provider"] = _signature_provider(manifest)
+    manifest["key_policy"] = _key_policy(
+        manifest,
+        manifest["_source_manifest_digest"],
+    )
+    if (manifest["signature_provider"] is None) != (manifest["key_policy"] is None):
+        raise ValueError(
+            "signature_provider and immutable key_policy must be selected together"
+        )
     return manifest
 
 
@@ -810,6 +1119,127 @@ def _ribos_helper_digest(policy: dict[str, object]) -> bytes:
 
 def _c_bytes(data: bytes) -> str:
     return ", ".join(f"0x{value:02x}u" for value in data)
+
+
+def _render_key_policy(manifest: dict[str, object]) -> str:
+    """Render one immutable bounded trust store or an explicit null getter."""
+
+    policy = manifest.get("key_policy")
+    if policy is None:
+        return """
+const struct RibonKeyPolicyStore *ribon_generated_key_policy_store(void) {
+    return 0;
+}
+"""
+    assert isinstance(policy, dict)
+    records = manifest["_key_policy_records"]
+    source_digest = manifest["_source_manifest_digest"]
+    canonical_digest = manifest["_key_policy_digest"]
+    assert isinstance(records, list)
+    assert isinstance(source_digest, bytes)
+    assert isinstance(canonical_digest, bytes)
+    id_indices = {
+        str(record["id"]): index for index, record in enumerate(records)
+    }
+    declarations: list[str] = [
+        "static const uint8_t generated_key_policy_store_id[] = "
+        f'"{policy["id"]}";'
+    ]
+    rows: list[str] = []
+    for index, record in enumerate(records):
+        assert isinstance(record, dict)
+        domains = record["domain_digests"]
+        assert isinstance(domains, list)
+        declarations.append(
+            f"static const uint8_t generated_key_policy_key_id_{index}[] = "
+            f'"{record["id"]}";'
+        )
+        domain_rows = ",\n".join(
+            "    { " + _c_bytes(digest) + " }"
+            for digest in domains
+            if isinstance(digest, bytes)
+        )
+        declarations.append(
+            "static const uint8_t "
+            f"generated_key_policy_domains_{index}[]"
+            f"[RIBON_KEY_POLICY_DIGEST_BYTES] = {{\n{domain_rows}\n}};"
+        )
+        issuer = record["issuer"]
+        issuer_value = "0"
+        issuer_size = "0u"
+        flags = "RIBON_KEY_POLICY_RECORD_ROOT"
+        if issuer is not None:
+            issuer_index = id_indices[str(issuer)]
+            issuer_value = f"generated_key_policy_key_id_{issuer_index}"
+            issuer_size = (
+                f"sizeof(generated_key_policy_key_id_{issuer_index}) - 1u"
+            )
+            flags = "0u"
+        public_key = bytes.fromhex(str(record["public_key_hex"]))
+        key_identity = hashlib.sha256(public_key).digest()
+        rows.append(
+            """    {
+        .size = sizeof(struct RibonKeyPolicyRecord),
+        .abi_version = RIBON_KEY_POLICY_ABI_VERSION,
+        .flags = %(flags)s,
+        .algorithm = RIBON_SIGNATURE_ALGORITHM_ED25519,
+        .lifecycle = %(lifecycle)s,
+        .mode_mask = %(mode_mask)su,
+        .usage_mask = UINT64_C(%(usage_mask)s),
+        .key_id = generated_key_policy_key_id_%(index)s,
+        .key_id_size = sizeof(generated_key_policy_key_id_%(index)s) - 1u,
+        .public_key = { %(public_key)s },
+        .key_identity_digest = { %(key_identity)s },
+        .product_digest = { %(product_digest)s },
+        .rollback_domain_digests = generated_key_policy_domains_%(index)s,
+        .rollback_domain_count = %(domain_count)su,
+        .delegation_depth = %(depth)su,
+        .issuer_key_id = %(issuer)s,
+        .issuer_key_id_size = %(issuer_size)s,
+        .minimum_sequence = UINT64_C(%(minimum)s),
+        .maximum_sequence = UINT64_C(%(maximum)s),
+    },""" % {
+                "flags": flags,
+                "lifecycle": KEY_POLICY_LIFECYCLES[str(record["status"])],
+                "mode_mask": record["mode_mask"],
+                "usage_mask": record["usage_mask"],
+                "index": index,
+                "public_key": _c_bytes(public_key),
+                "key_identity": _c_bytes(key_identity),
+                "product_digest": _c_bytes(source_digest),
+                "domain_count": len(domains),
+                "depth": record["delegation_depth"],
+                "issuer": issuer_value,
+                "issuer_size": issuer_size,
+                "minimum": record["minimum_sequence"],
+                "maximum": record["maximum_sequence"],
+            }
+        )
+    return f"""
+{chr(10).join(declarations)}
+
+static const struct RibonKeyPolicyRecord generated_key_policy_records[] = {{
+{chr(10).join(rows)}
+}};
+
+static const struct RibonKeyPolicyStore generated_key_policy_store = {{
+    .magic = RIBON_KEY_POLICY_STORE_MAGIC,
+    .size = sizeof(generated_key_policy_store),
+    .abi_version = RIBON_KEY_POLICY_ABI_VERSION,
+    .id = generated_key_policy_store_id,
+    .id_size = sizeof(generated_key_policy_store_id) - 1u,
+    .generation = UINT64_C({policy['generation']}),
+    .records = generated_key_policy_records,
+    .record_count = (uint32_t)(
+        sizeof(generated_key_policy_records) /
+        sizeof(generated_key_policy_records[0])),
+    .canonical_digest = {{ {_c_bytes(canonical_digest)} }},
+}};
+
+const struct RibonKeyPolicyStore *ribon_generated_key_policy_store(void) {{
+    return &generated_key_policy_store;
+}}
+"""
 
 
 def _render_ribos_policy(manifest: dict[str, object]) -> str:
@@ -1065,6 +1495,7 @@ def render(manifest: dict[str, object]) -> str:
     required = _capability_expression(manifest["required_capabilities"])  # type: ignore[arg-type]
     allowed = _capability_expression(manifest["allowed_capabilities"])  # type: ignore[arg-type]
     ribos_policy = _render_ribos_policy(manifest)
+    key_policy = _render_key_policy(manifest)
     signature_extern = (
         "extern const struct RibonSignatureProvider " +
         str(signature_provider["symbol"]) + ";"
@@ -1081,6 +1512,7 @@ def render(manifest: dict[str, object]) -> str:
 """ if manifest.get("ribos_policy") is not None else ""
     return f"""/* Generated by tools/generate_plugin_registry.py; do not edit. */
 #include <Ribon/plugin/registry.h>
+#include <Ribon/security/key_policy.h>
 #include <Ribon/security/signature.h>
 {ribos_includes}
 
@@ -1091,6 +1523,8 @@ def render(manifest: dict[str, object]) -> str:
 static const uint8_t generated_product_source_digest[32] = {{
     {_c_bytes(source_manifest_digest)}
 }};
+
+{key_policy}
 
 static const struct RibonPluginDescriptor *const generated_plugins[] = {{
 {pointers}
@@ -1202,6 +1636,11 @@ def main() -> int:
             "payload": manifest.get("payload"),
             "boot_module_bundle": manifest.get("boot_module_bundle"),
             "signature_provider": manifest.get("signature_provider"),
+            "key_policy": manifest.get("key_policy"),
+            "key_policy_digest_sha256": (
+                manifest["_key_policy_digest"].hex()
+                if manifest.get("key_policy") is not None else None
+            ),
             "ribos_policy": manifest.get("ribos_policy"),
             "source_manifest": str(args.manifest),
             "source_manifest_sha256": hashlib.sha256(

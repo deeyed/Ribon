@@ -3,6 +3,7 @@
 #include <Ribon/plugin/descriptor.h>
 #include <Ribon/plugin/registry.h>
 #include <Ribon/security/ed25519.h>
+#include <Ribon/security/key_policy.h>
 #include <Ribon/service/directory.h>
 
 #include <ribos/artifact/format.h>
@@ -14,13 +15,6 @@
 
 #define VALIDATION_ACTION_CAPACITY 64u
 #define VALIDATION_METADATA_CAPACITY 64u
-static const uint8_t validation_key_id[] = "ribon-r18-fixture-key";
-static const uint8_t validation_public_key[RIBON_ED25519_PUBLIC_KEY_BYTES] = {
-    0xd7u, 0x5au, 0x98u, 0x01u, 0x82u, 0xb1u, 0x0au, 0xb7u,
-    0xd5u, 0x4bu, 0xfeu, 0xd3u, 0xc9u, 0x64u, 0x07u, 0x3au,
-    0x0eu, 0xe1u, 0x72u, 0xf3u, 0xdau, 0xa6u, 0x23u, 0x25u,
-    0xafu, 0x02u, 0x1au, 0x68u, 0xf7u, 0x07u, 0x51u, 0x1au,
-};
 static const uint8_t validation_rollback_domain[] =
     "ribon.policy.ribos-qemu-validation.v1";
 
@@ -502,8 +496,10 @@ ribon_validation_environment_collect(
 static int
 validation_signature_is_allowed(
     const struct RibonValidationRibosFixture *fixture,
-    const RibosArtifactAuthorizationRequest *request)
+    const RibosArtifactAuthorizationRequest *request,
+    struct RibonKeyPolicyDecision *decision)
 {
+    const struct RibonKeyPolicyStore *key_policy;
     const struct RibonSignatureProvider *provider;
     const uint8_t *product_digest;
     RibosArtifactTrustContextV1 trust_context = {
@@ -515,18 +511,22 @@ validation_signature_is_allowed(
         .sequence = 18u,
     };
     RibosArtifactView view;
-    struct RibonSignatureVerification verification;
+    struct RibonKeyPolicyRequest key_request = {
+        .size = sizeof(key_request),
+        .abi_version = RIBON_KEY_POLICY_ABI_VERSION,
+        .mode = RIBON_KEY_POLICY_MODE_NORMAL,
+        .usage = RIBON_KEY_POLICY_USAGE_POLICY_NORMAL,
+        .sequence = 18u,
+    };
+    struct RibonKeyPolicySignatureVerification verification;
     uint8_t message[RIBOS_ARTIFACT_TRUST_MESSAGE_V1_BYTES];
 
-    if (fixture->reject_signature != 0u ||
+    if (decision == NULL || fixture->reject_signature != 0u ||
         request->envelope_flags != RIBOS_ARTIFACT_ENVELOPE_SIGNED ||
         request->signature_algorithm != RIBOS_ARTIFACT_SIGNATURE_ED25519 ||
-        request->key_id_size != sizeof(validation_key_id) - 1u ||
-        request->signature_size != RIBOS_ARTIFACT_ED25519_SIGNATURE_BYTES ||
-        memcmp(
-            request->key_id,
-            validation_key_id,
-            sizeof(validation_key_id) - 1u) != 0) {
+        request->key_id == NULL || request->key_id_size == 0u ||
+        request->key_id_size > RIBON_KEY_POLICY_MAX_KEY_ID_BYTES ||
+        request->signature_size != RIBOS_ARTIFACT_ED25519_SIGNATURE_BYTES) {
         return 0;
     }
     if (request->artifact_size > SIZE_MAX ||
@@ -537,11 +537,12 @@ validation_signature_is_allowed(
         return 0;
     }
     provider = ribon_generated_signature_provider();
+    key_policy = ribon_generated_key_policy_store();
     product_digest = ribon_generated_product_source_digest();
     if (provider != &ribon_ed25519_signature_provider_descriptor ||
         provider->provider_class !=
             RIBON_SIGNATURE_PROVIDER_CLASS_PRODUCTION ||
-        product_digest == NULL) {
+        key_policy == NULL || product_digest == NULL) {
         return 0;
     }
     memcpy(
@@ -552,6 +553,16 @@ validation_signature_is_allowed(
         validation_rollback_domain,
         sizeof(validation_rollback_domain) - 1u,
         trust_context.rollback_domain_digest);
+    key_request.key_id = request->key_id;
+    key_request.key_id_size = (size_t)request->key_id_size;
+    memcpy(
+        key_request.product_digest,
+        trust_context.product_digest,
+        sizeof(key_request.product_digest));
+    memcpy(
+        key_request.rollback_domain_digest,
+        trust_context.rollback_domain_digest,
+        sizeof(key_request.rollback_domain_digest));
     if (ribos_artifact_trust_message_v1(
             &view,
             RIBOS_ARTIFACT_SIGNATURE_ED25519,
@@ -561,19 +572,18 @@ validation_signature_is_allowed(
             message) != RIBOS_ARTIFACT_TRUST_OK) {
         return 0;
     }
-    verification = (struct RibonSignatureVerification){
+    verification = (struct RibonKeyPolicySignatureVerification){
         .size = sizeof(verification),
-        .abi_version = RIBON_SIGNATURE_PROVIDER_ABI_VERSION,
-        .algorithm = RIBON_SIGNATURE_ALGORITHM_ED25519,
-        .public_key = validation_public_key,
-        .public_key_size = sizeof(validation_public_key),
+        .abi_version = RIBON_KEY_POLICY_ABI_VERSION,
+        .policy = &key_request,
+        .provider = provider,
         .message = message,
         .message_size = sizeof(message),
         .signature = request->signature,
         .signature_size = (size_t)request->signature_size,
     };
-    return ribon_signature_verify(provider, &verification) ==
-        RIBON_SIGNATURE_STATUS_OK;
+    return ribon_key_policy_verify(key_policy, &verification, decision) ==
+        RIBON_KEY_POLICY_STATUS_OK;
 }
 
 uint32_t
@@ -583,10 +593,11 @@ ribon_validation_ribos_authorize(
     RibosArtifactAuthorizationReceipt *receipt)
 {
     struct RibonValidationRibosFixture *fixture = context;
+    struct RibonKeyPolicyDecision decision;
 
     if (fixture == NULL || fixture->binding == NULL ||
         request == NULL || receipt == NULL ||
-        !validation_signature_is_allowed(fixture, request)) {
+        !validation_signature_is_allowed(fixture, request, &decision)) {
         return RIBOS_VM_STATUS_NOT_AUTHORIZED;
     }
     *receipt = (RibosArtifactAuthorizationReceipt){
@@ -597,9 +608,12 @@ ribon_validation_ribos_authorize(
         .authority_generation = 18u,
         .manifest_sequence = 18u,
         .rollback_floor = 18u,
-        .key_identity_digest = {0x18u},
         .policy_identity_digest = {0x52u},
     };
+    memcpy(
+        receipt->key_identity_digest,
+        decision.key_identity_digest,
+        sizeof(receipt->key_identity_digest));
     memcpy(
         receipt->artifact_hash,
         request->artifact_hash,

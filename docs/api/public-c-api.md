@@ -139,12 +139,14 @@ personality lifetime을 벗어나지 않는다.
 ```text
 Ribon/security/signature.h
 Ribon/security/ed25519.h
+Ribon/security/key_policy.h
 ```
 
 Signature API는 verification-only provider descriptor, immutable byte view, optional caller-owned
-workspace와 stable fail-closed status를 제공한다. Signer, private key, key store, revocation과
-rollback storage는 이 ABI에 포함하지 않는다. Product graph는 production과 fixture class를
-분리해 정확한 provider symbol을 선택한다.
+workspace와 stable fail-closed status를 제공한다. Key-policy API는 product graph가 생성한 bounded
+immutable trust store, lifecycle/delegation authorization과 pointer-free decision을 제공한다.
+Signer, private key, mutable trust-store update와 rollback storage는 이 ABI에 포함하지 않는다.
+Product graph는 production과 fixture class를 분리해 정확한 provider 및 key-store symbol을 선택한다.
 
 ## Architecture API
 

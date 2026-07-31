@@ -38,6 +38,9 @@ REQUIRED = {
     "sdk/abi.h",
     "sdk/package.h",
     "sdk/host.h",
+    "security/ed25519.h",
+    "security/key_policy.h",
+    "security/signature.h",
 }
 FORBIDDEN_FLAT = {
     "arch.h",

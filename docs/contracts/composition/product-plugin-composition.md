@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
   - include/Ribon/policy/ribos.h
   - qstar.lua
@@ -20,6 +20,7 @@ tests:
   - make check-uefi-product-hermeticity
   - make check-boot-modules
   - make check-security-provider-graphs
+  - make check-security-key-policy-graphs
 hardware:
   - none
 supersedes:
@@ -95,6 +96,22 @@ source-manifest exact-byte digest를 같은 generated registry에 낸다. Produc
 class를 선택하거나 production/fixture callback을 함께 fallback closure로 링크할 수 없다.
 QStar는 generic signature library와 concrete Ed25519 provider library를 별도 target으로 유지하고,
 product security suite가 provider unit과 final generated product graph를 함께 선택한다.
+
+같은 product는 `key_policy`에 stable store ID, generation과 1..32개의 immutable key record를
+선택한다. Signature provider와 key policy는 함께 존재하거나 함께 없어야 한다. Source manifest의
+record는 stable key ID, Ed25519 public key, lifecycle, mode, usage, exact rollback domain,
+inclusive sequence 범위와 optional issuer를 명시한다. Composer는 다음 입력을 거부한다.
+
+- duplicate key ID 또는 lifecycle과 무관한 duplicate public-key identity
+- unknown issuer, cycle, 세 edge 이상의 delegation
+- issuer보다 넓은 mode, usage, domain 또는 sequence authority
+- normal Ribos product에서 normal mode/policy-normal 이외의 authority
+- signature provider만 있거나 key policy만 있는 product
+
+Generated registry는 immutable `RibonKeyPolicyStore`와 canonical store digest를 제공한다.
+Key-policy runtime은 generated metadata를 신뢰하지 않고 digest, 정렬, identity와 delegation을
+다시 유도한다. Product manifest에는 private key, signer command와 mutable revocation state를
+기록하지 않는다.
 
 ### Build-time component bundle
 
@@ -191,3 +208,4 @@ Gate는 archive member와 final link map을 검사하여 다음을 거부한다.
 - module-free raw-FDT target의 module bundle service, capability 또는 module object
 - module-bearing raw-FDT target의 product authority와 generated provider 불일치
 - production signed-object target의 fixture provider, signer symbol 또는 private-key material
+- key-policy target의 mutable store, cycle, authority expansion 또는 normal-role leakage

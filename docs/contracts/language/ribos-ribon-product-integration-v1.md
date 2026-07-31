@@ -2,8 +2,9 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
+  - include/Ribon/security/key_policy.h
   - include/Ribon/policy/ribos.h
   - src/plugins/policy/ribos/adapter.c
   - language/ribos/vm/
@@ -95,8 +96,10 @@ generated source와 linked object graph의 부재로 증명한다.
 ## Authorization과 arena
 
 Product authorizer는 product-bound 232-byte trust message, signature, key identity, rollback
-counter와 product trust policy를 소유한다. VM authorizer ABI는 receipt만 소비하며 generic
-adapter는 key format이나 secure storage를 해석하지 않는다.
+counter와 product trust policy를 소유한다. Generated immutable key store와 selected signature
+provider는 native authorizer 안에서만 결합한다. VM authorizer ABI는 pointer-free decision과
+receipt만 소비하며 generic adapter는 public key, store pointer, issuer chain이나 secure storage를
+해석하지 않는다.
 
 Authorization은 structural open, product/schema/mode/usage/domain identity, bounded key policy,
 Ed25519, protected rollback state, Stage-1/2 verifier 순서로 진행한다. Later stage 성공으로 앞선
@@ -203,7 +206,7 @@ semantic helper, single action consume, metadata write/flush, quiesce와 watchdo
 instruction/deadline fault, action rejection, post-consume commit failure와 missing
 external artifact recovery를 검사한다.
 
-별도 `make check-ribos-r18`은 같은 artifact와 generated binding 의미를 AMD64,
+별도 `make check-ribos-r18`은 같은 artifact, generated key-policy store와 binding 의미를 AMD64,
 AArch64와 RISC-V 64 QEMU guest에서 실행한다. 이 추가 증거도 production signature,
-rollback secure storage, recovery network/flash, QEMU OS transfer 또는 physical
+private-key custody, rollback secure storage, recovery network/flash, QEMU OS transfer 또는 physical
 hardware 실행을 증명하지 않는다.

@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
   - Makefile
   - products/validation/ribos-qemu/
@@ -14,11 +14,13 @@ code_paths:
   - tools/ribos_cross_arch_qemu.py
   - tools/lint/ribos_cross_arch_object_lint.py
   - tools/lint/security_provider_graph_lint.py
+  - tools/lint/key_policy_graph_lint.py
 tests:
   - make check-ribos-golden-artifact
   - make check-ribos-cross-arch-objects
   - make check-ribos-cross-arch-qemu
   - make check-security-provider-graphs
+  - make check-security-key-policy-graphs
   - make check-ribos-r18
   - make check
   - make docs
@@ -33,9 +35,9 @@ supersedes:
 ## 목적
 
 이 계약은 하나의 Ribos artifact를 서로 다른 native ABI에서 실행했을 때 target-core
-VM, generic Ribon adapter와 generated product binding의 의미가 같은지 검증하는
-diagnostic evidence product를 정의한다. OS payload 부팅이나 production signature
-key-policy/rollback 계약이 아니다.
+VM, generic Ribon adapter, generated immutable key store와 product binding의 의미가 같은지
+검증하는 diagnostic evidence product를 정의한다. OS payload 부팅, production key custody나
+protected rollback 계약이 아니다.
 
 ## Artifact authority
 
@@ -57,9 +59,10 @@ payload byte와 payload SHA-256을 바꾸지 않고 signed envelope의 key/signa
 `language/ribos/vm/tests/golden/aggregate_ownership-r18.sha256`과 같아야 한다.
 세 target은 이 완성 byte stream을 그대로 embed한다.
 
-세 target은 generated graph가 선택한 strict production-class Ed25519 provider로 message를
-검증한다. Test public key와 diagnostic product를 사용하므로 production key store, key policy와
-rollback counter의 증거로 사용할 수 없다.
+세 target은 generated graph가 선택한 immutable key-policy store로 product/mode/usage/domain,
+sequence와 key identity를 승인한 뒤 strict production-class Ed25519 provider로 message를
+검증한다. Public key는 공개 RFC fixture이고 private seed는 host-only test input이므로 production
+key custody, mutable trust-store update와 rollback counter의 증거로 사용할 수 없다.
 
 ## Target matrix
 
@@ -90,7 +93,7 @@ inactive-slot writer authority가 없어야 하며 QEMU NIC도 `-net none`으로
 1. artifact envelope와 payload hash open
 2. boot transaction prepare
 3. generated binding과 schema/helper digest 검증
-4. product-bound trust message와 strict Ed25519 signature authorization
+4. product-bound key-policy authorization과 strict Ed25519 signature authorization
 5. independent bytecode verifier와 PreparedProgram
 6. watchdog arm
 7. helper 네 번과 opaque handle transition
@@ -158,6 +161,10 @@ Unknown R18 marker, 중복, 순서 변경, `RIBOS-R18-QEMU-FAIL`, timeout 또는
 provider selection, `crypto_ed25519_check`, wrapper와 descriptor의 존재를 확인한다. Upstream
 signer symbol, host signer path, fixture provider와 test private seed는 final image에 없어야 한다.
 
+`check-security-key-policy-graphs`는 세 generated report, map과 final image에서 동일 immutable
+store identity, normal-only mode/usage, exact public key와 runtime validator 존재를 확인한다.
+Mutable trust-store API와 Ribos target/adapter public surface의 raw key authority는 없어야 한다.
+
 AArch64 target C flag에는 `-mstrict-align`이 필요하다. Source-level byte loop만으로
 compiler가 unaligned wide load/store를 만들지 않는다고 가정할 수 없다.
 
@@ -177,7 +184,7 @@ Gate 성공은 guest CPU에서 같은 artifact, verifier, VM, helper, transactio
 fallback 의미가 실행되었음을 증명한다. 다음은 증명하지 않는다.
 
 - OS entry transfer 또는 Parus/Linux/FreeBSD boot
-- production key authority, revocation과 protected anti-rollback
+- production private-key custody, mutable trust-store update와 protected anti-rollback
 - recovery/provisioning networking과 OTA flash
 - UEFI firmware provider 구현
 - physical AMD64, AArch64 또는 RISC-V hardware
