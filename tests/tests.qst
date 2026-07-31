@@ -124,6 +124,48 @@ qstar.test_suite "ribos_executable_corpus_tests" {
   description = qstar.status("Public Ribos source-to-VM conformance suite"),
 }
 
+qstar.test "security_ed25519_provider_unit" {
+  sources = {
+    "tests/security/ed25519_provider_tests.c",
+  },
+  deps = {
+    "//src/plugins:libribon_security_ed25519",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.run_target "security_ed25519_provider_graphs" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-security-ed25519",
+    "check-security-ed25519-provider",
+    "check-security-ed25519-cross-compile",
+    "check-security-provider-graphs",
+  },
+  timeout = 240,
+  expect = {
+    contains = "RIBON-SECURITY-PROVIDER-GRAPHS-OK",
+  },
+  description = qstar.status("Verifying the selected production Ed25519 provider closure"),
+}
+
+qstar.test_suite "security_ed25519_provider_tests" {
+  tests = {
+    "//tests:security_ed25519_provider_unit",
+    "//tests:security_ed25519_provider_graphs",
+  },
+  tags = {
+    "host",
+    "security",
+    "ed25519",
+    "compile-only",
+  },
+  description = qstar.status("Ed25519 vectors and target graph isolation"),
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
@@ -135,5 +177,7 @@ qstar.group "ribon_tests" {
     "//tests:os_package_tests",
     "//tests:port_service_tests",
     "//tests:ribos_executable_corpus",
+    "//tests:security_ed25519_provider_unit",
+    "//tests:security_ed25519_provider_graphs",
   },
 }

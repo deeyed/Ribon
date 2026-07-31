@@ -104,6 +104,15 @@ RIBOS_VM_TERMINAL_TEST := $(TEST_BUILD_DIR)/ribos_vm_terminal_tests
 RIBOS_RIBON_INTEGRATION_TEST := $(TEST_BUILD_DIR)/ribos_ribon_integration_tests
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_RUNNER := $(BUILD_ROOT)/tools/ribos-run
+SECURITY_BUILD_DIR := $(BUILD_ROOT)/security
+SECURITY_TEST := $(TEST_BUILD_DIR)/ed25519_provider_tests
+SECURITY_SANITIZER_TEST := $(TEST_BUILD_DIR)/ed25519_provider_sanitizer_tests
+SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
+SECURITY_PROVIDER_SRCS := \
+	src/security/signature.c \
+	src/plugins/security/ed25519/provider.c \
+	third_party/monocypher/4.0.3/monocypher.c \
+	third_party/monocypher/4.0.3/monocypher-ed25519.c
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
 RIBOS_OBJECT_DIR := $(RIBOS_BUILD_DIR)/obj
@@ -542,6 +551,7 @@ RIBOS_R18_COMMON_SRCS := \
 	src/image-formats/elf64.c \
 	src/protocols/synthetic/protocol.c \
 	src/plugins/policy/ribos/adapter.c \
+	$(SECURITY_PROVIDER_SRCS) \
 	products/validation/ribos-qemu/product.c \
 	products/validation/ribos-qemu/main.c
 
@@ -672,6 +682,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-host-boundary check-ribos-golden-artifact \
 	check-ribos-cross-arch-objects check-ribos-cross-arch-qemu \
 	check-ribos-r18 ribos-libraries \
+	check-security-ed25519-provider check-security-ed25519-sanitizer \
+	check-security-ed25519-cross-compile check-security-provider-graphs \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke \
@@ -1234,15 +1246,31 @@ $(RIBOS_R18_UNSIGNED_B): $(RIBOS_PARSER_PILOT) \
 		language/ribos/vm/tests/aggregate_ownership.rbs
 
 $(RIBOS_R18_ARTIFACT): $(RIBOS_R18_UNSIGNED_A) \
-		$(RIBOS_R18_GOLDEN_SHA256) tools/make_ribos_signed_fixture.py
-	$(PYTHON) tools/make_ribos_signed_fixture.py \
-		--input $< --output $@ \
+		$(RIBOS_R18_MANIFEST) $(RIBOS_R18_GOLDEN_SHA256) \
+		tests/fixtures/security/rfc8032-test1-seed.hex \
+		tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py \
+		--input $< --output $@ --product-manifest $(RIBOS_R18_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-r18-fixture-key \
+		--rollback-domain ribon.policy.ribos-qemu-validation.v1 \
+		--sequence 18 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a \
 		--expected-sha256 $(RIBOS_R18_GOLDEN_SHA256)
 
 $(RIBOS_R18_ARTIFACT_B): $(RIBOS_R18_UNSIGNED_B) \
-		$(RIBOS_R18_GOLDEN_SHA256) tools/make_ribos_signed_fixture.py
-	$(PYTHON) tools/make_ribos_signed_fixture.py \
-		--input $< --output $@ \
+		$(RIBOS_R18_MANIFEST) $(RIBOS_R18_GOLDEN_SHA256) \
+		tests/fixtures/security/rfc8032-test1-seed.hex \
+		tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py \
+		--input $< --output $@ --product-manifest $(RIBOS_R18_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-r18-fixture-key \
+		--rollback-domain ribon.policy.ribos-qemu-validation.v1 \
+		--sequence 18 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a \
 		--expected-sha256 $(RIBOS_R18_GOLDEN_SHA256)
 
 $(RIBOS_R18_EMBED_C): $(RIBOS_R18_ARTIFACT) tools/embed_binary.py
@@ -1263,7 +1291,8 @@ $(RIBOS_R18_AARCH64_REGISTRY_C): \
 $(RIBOS_R18_AARCH64_DIR)/obj/%.o: %.c Makefile
 	@mkdir -p $(@D)
 	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) \
-		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+		$(RIBOS_TARGET_INCLUDE_FLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		-ffunction-sections -fdata-sections -c $< -o $@
 
 $(RIBOS_R18_AARCH64_DIR)/obj/generated/plugin_registry.o: \
 		$(RIBOS_R18_AARCH64_REGISTRY_C) Makefile
@@ -1288,7 +1317,7 @@ $(RIBOS_R18_AARCH64_VM_LIB): $(RIBOS_R18_AARCH64_VM_OBJS) Makefile
 $(RIBOS_R18_AARCH64_ELF): $(RIBOS_R18_AARCH64_OBJS) \
 		$(RIBOS_R18_AARCH64_VM_LIB) \
 		targets/qemu-aarch64-virt-raw-fdt/linker.ld
-	$(LD_LLD) -m aarch64elf \
+	$(LD_LLD) -m aarch64elf --gc-sections \
 		-T targets/qemu-aarch64-virt-raw-fdt/linker.ld \
 		-Map=$(RIBOS_R18_AARCH64_DIR)/ribon-ribos.map \
 		-o $@ $(RIBOS_R18_AARCH64_OBJS) $(RIBOS_R18_AARCH64_VM_LIB)
@@ -1305,7 +1334,8 @@ $(RIBOS_R18_RISCV64_REGISTRY_C): \
 $(RIBOS_R18_RISCV64_DIR)/obj/%.o: %.c Makefile
 	@mkdir -p $(@D)
 	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) \
-		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+		$(RIBOS_TARGET_INCLUDE_FLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		-ffunction-sections -fdata-sections -c $< -o $@
 
 $(RIBOS_R18_RISCV64_DIR)/obj/generated/plugin_registry.o: \
 		$(RIBOS_R18_RISCV64_REGISTRY_C) Makefile
@@ -1331,7 +1361,7 @@ $(RIBOS_R18_RISCV64_VM_LIB): $(RIBOS_R18_RISCV64_VM_OBJS) Makefile
 $(RIBOS_R18_RISCV64_ELF): $(RIBOS_R18_RISCV64_OBJS) \
 		$(RIBOS_R18_RISCV64_VM_LIB) \
 		targets/qemu-riscv64-virt-opensbi/linker.ld
-	$(LD_LLD) -m elf64lriscv \
+	$(LD_LLD) -m elf64lriscv --gc-sections \
 		-T targets/qemu-riscv64-virt-opensbi/linker.ld \
 		-Map=$(RIBOS_R18_RISCV64_DIR)/ribon-ribos.map \
 		-o $@ $(RIBOS_R18_RISCV64_OBJS) $(RIBOS_R18_RISCV64_VM_LIB)
@@ -1348,7 +1378,8 @@ $(RIBOS_R18_AMD64_REGISTRY_C): \
 $(RIBOS_R18_AMD64_DIR)/obj/%.o: %.c Makefile
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) \
-		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+		$(RIBOS_TARGET_INCLUDE_FLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		-ffunction-sections -fdata-sections -c $< -o $@
 
 $(RIBOS_R18_AMD64_DIR)/obj/generated/plugin_registry.o: \
 		$(RIBOS_R18_AMD64_REGISTRY_C) Makefile
@@ -1367,7 +1398,7 @@ $(RIBOS_R18_AMD64_VM_LIB): $(RIBOS_R18_AMD64_VM_OBJS) Makefile
 
 $(RIBOS_R18_AMD64_APP): $(RIBOS_R18_AMD64_OBJS) \
 		$(RIBOS_R18_AMD64_VM_LIB)
-	$(LLD_LINK) /subsystem:efi_application /entry:efi_main /nodefaultlib \
+	$(LLD_LINK) /subsystem:efi_application /entry:efi_main /nodefaultlib /opt:ref \
 		/machine:x64 /map:$(RIBOS_R18_AMD64_DIR)/ribon-ribos.map \
 		/out:$@ $(RIBOS_R18_AMD64_OBJS) $(RIBOS_R18_AMD64_VM_LIB)
 
@@ -1386,6 +1417,66 @@ check-ribos-cross-arch-objects: \
 		--image $(RIBOS_R18_AMD64_APP) \
 		--image $(RIBOS_R18_AARCH64_ELF) \
 		--image $(RIBOS_R18_RISCV64_ELF)
+
+$(SECURITY_TEST): tests/security/ed25519_provider_tests.c \
+		$(SECURITY_PROVIDER_SRCS) include/Ribon/security/signature.h \
+		include/Ribon/security/ed25519.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		tests/security/ed25519_provider_tests.c \
+		$(SECURITY_PROVIDER_SRCS) -o $@
+
+$(SECURITY_SANITIZER_TEST): tests/security/ed25519_provider_tests.c \
+		$(SECURITY_PROVIDER_SRCS) include/Ribon/security/signature.h \
+		include/Ribon/security/ed25519.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(SECURITY_INCLUDE_FLAGS) tests/security/ed25519_provider_tests.c \
+		$(SECURITY_PROVIDER_SRCS) -o $@
+
+check-security-ed25519-provider: $(SECURITY_TEST)
+	$(SECURITY_TEST)
+	$(PYTHON) tests/security/ed25519_cross_tool_tests.py \
+		--openssl openssl \
+		--message-vector tests/fixtures/security/ribos-policy-trust-v1.json \
+		--signature-vector \
+			tests/fixtures/security/ribos-policy-trust-ed25519-v1.json \
+		--seed tests/fixtures/security/rfc8032-test1-seed.hex
+
+check-security-ed25519-sanitizer: $(SECURITY_SANITIZER_TEST)
+	$(SECURITY_SANITIZER_TEST)
+
+check-security-ed25519-cross-compile:
+	@set -e; \
+	for target in x86_64 aarch64 riscv64; do \
+		case "$$target" in \
+			x86_64) compiler=/usr/bin/clang; triple=x86_64-none-elf;; \
+			aarch64) compiler=$(AARCH64_CC); triple=aarch64-none-elf;; \
+			riscv64) compiler=$(RISCV64_CC); triple=riscv64-none-elf;; \
+		esac; \
+		for source in $(SECURITY_PROVIDER_SRCS); do \
+			object=$(SECURITY_BUILD_DIR)/$$target/$${source%.c}.o; \
+			mkdir -p "$$(dirname "$$object")"; \
+			"$$compiler" --target="$$triple" $(FREESTANDING_FLAGS) \
+				$(SECURITY_INCLUDE_FLAGS) -c "$$source" -o "$$object"; \
+		done; \
+	done
+	@echo "RIBON-ED25519-CROSS-COMPILE-OK targets=x86_64,aarch64,riscv64"
+
+check-security-provider-graphs: check-ribos-cross-arch-objects
+	$(PYTHON) tools/lint/security_provider_graph_lint.py \
+		--manifest $(RIBOS_R18_MANIFEST) \
+		--graph $(RIBOS_R18_AMD64_GRAPH) \
+		--graph $(RIBOS_R18_AARCH64_GRAPH) \
+		--graph $(RIBOS_R18_RISCV64_GRAPH) \
+		--map $(RIBOS_R18_AMD64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_AARCH64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_RISCV64_DIR)/ribon-ribos.map \
+		--image $(RIBOS_R18_AMD64_APP) \
+		--image $(RIBOS_R18_AARCH64_ELF) \
+		--image $(RIBOS_R18_RISCV64_ELF) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex
 
 check-ribos-cross-arch-qemu: \
 		$(RIBOS_R18_AMD64_ESP)/EFI/BOOT/BOOTX64.EFI \
@@ -1406,7 +1497,8 @@ check-ribos-cross-arch-qemu: \
 		--output-dir $(RESULTS_DIR)/ribos-r18
 
 check-ribos-r18: check-ribos-golden-artifact \
-		check-ribos-cross-arch-objects check-ribos-cross-arch-qemu
+		check-ribos-cross-arch-objects check-security-provider-graphs \
+		check-ribos-cross-arch-qemu
 	@echo "RIBOS-R18-AGGREGATE-OK artifact=golden targets=3 \
 qemu=guest-executed hardware=not-run"
 
@@ -2326,6 +2418,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-ribon-integration check-ribos-product-graphs \
 	check-ribos-normal-no-network check-ribos-factory-recovery \
 	check-ribos-host-boundary check-ribos-r18 \
+	check-security-ed25519-provider check-security-ed25519-sanitizer \
+	check-security-ed25519-cross-compile check-security-provider-graphs \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

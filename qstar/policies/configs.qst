@@ -59,3 +59,23 @@ qstar.config "ribon_ribos_target_c" {
     },
   },
 }
+
+qstar.config "ribon_security_ed25519_c" {
+  toolset = "//qstar/policies:host",
+  lang = {
+    c = {
+      include_dirs = {
+        "include",
+        "third_party/monocypher/4.0.3",
+      },
+      compile_options = {
+        "-std=c11",
+        "-O2",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+      },
+    },
+  },
+}

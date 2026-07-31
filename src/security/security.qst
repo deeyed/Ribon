@@ -1,0 +1,9 @@
+qstar.staticlib "libribon_security_signature" {
+  artifact_name = "libribon-security-signature.a",
+  sources = {
+    "src/security/signature.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}

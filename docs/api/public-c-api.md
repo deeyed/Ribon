@@ -13,6 +13,7 @@ code_paths:
   - include/Ribon/arch/
   - include/Ribon/port/
   - include/Ribon/policy/
+  - include/Ribon/security/
 tests:
   - ribon-public-api-lint
   - ribon-doxygen
@@ -132,6 +133,18 @@ Environment consumer와 firmware personality descriptor는 서로 다른 kind를
 UEFI native declaration과 BIOS register frame은 environment 또는 personality-private
 header에 둔다. Firmware service directory는 caller-owned storage이며 selected
 personality lifetime을 벗어나지 않는다.
+
+## Security provider API
+
+```text
+Ribon/security/signature.h
+Ribon/security/ed25519.h
+```
+
+Signature API는 verification-only provider descriptor, immutable byte view, optional caller-owned
+workspace와 stable fail-closed status를 제공한다. Signer, private key, key store, revocation과
+rollback storage는 이 ABI에 포함하지 않는다. Product graph는 production과 fixture class를
+분리해 정확한 provider symbol을 선택한다.
 
 ## Architecture API
 

@@ -52,6 +52,7 @@ canonical/language/ribos-language-model
 contracts/core/library-plugin-protocol-boundary
 contracts/composition/product-plugin-composition
 contracts/security/signed-object-trust-v1
+contracts/security/signature-provider-v1
 contracts/security/key-policy-rollback-v1
 contracts/frontends/environment-port-image-boundary
 contracts/frontends/raw-fdt-boot-module-bundle
@@ -132,6 +133,7 @@ adr/0037-uefi-product-scoped-hermetic-build
 adr/0038-ribos-executable-example-corpus
 adr/0039-raw-fdt-typed-module-bundle
 adr/0040-product-bound-policy-trust
+adr/0041-freestanding-ed25519-provider
 ```
 
 ```{toctree}
@@ -201,4 +203,5 @@ log/2026-07-31-r01-uefi-product-hermetic-build
 log/2026-07-31-r02-ribos-executable-corpus
 log/2026-07-31-rfdt-mod0-typed-boot-modules
 log/2026-07-31-r03-production-trust-contracts
+log/2026-07-31-r04-freestanding-ed25519
 ```

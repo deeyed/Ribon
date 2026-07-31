@@ -25,3 +25,18 @@ qstar.staticlib "libribon_policy_ribos" {
     "//qstar/policies:ribon_ribos_target_c",
   },
 }
+
+qstar.staticlib "libribon_security_ed25519" {
+  artifact_name = "libribon-security-ed25519.a",
+  sources = {
+    "src/plugins/security/ed25519/provider.c",
+    "third_party/monocypher/4.0.3/monocypher.c",
+    "third_party/monocypher/4.0.3/monocypher-ed25519.c",
+  },
+  deps = {
+    "//src/security:libribon_security_signature",
+  },
+  configs = {
+    "//qstar/policies:ribon_security_ed25519_c",
+  },
+}

@@ -84,6 +84,12 @@ def main() -> int:
             "generic Ribon adapter and target-neutral VM"
         ),
     }
+    manifest["signature_provider"] = {
+        "algorithm": "ed25519",
+        "class": "production",
+        "id": "security.signature.ed25519.monocypher-4.0.3",
+        "symbol": "ribon_ed25519_signature_provider_descriptor",
+    }
     policy = manifest["ribos_policy"]
     assert isinstance(policy, dict)
     policy["policy_id"] = "policy.ribos.qemu-validation.v1"

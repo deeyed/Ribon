@@ -19,6 +19,7 @@ tests:
   - make check-ribos-normal-no-network
   - make check-uefi-product-hermeticity
   - make check-boot-modules
+  - make check-security-provider-graphs
 hardware:
   - none
 supersedes:
@@ -88,6 +89,13 @@ single key usage, rollback-domain digest와 resource limit을 생성한다. Comp
 
 Generated output은 정본 source가 아니며 build directory 밖에 기록하지 않는다.
 
+Signed object를 승인하는 product는 `signature_provider`에 algorithm, production/fixture class,
+stable provider ID와 descriptor symbol을 정확히 하나 선택한다. Composer는 provider pointer와
+source-manifest exact-byte digest를 같은 generated registry에 낸다. Production graph는 fixture
+class를 선택하거나 production/fixture callback을 함께 fallback closure로 링크할 수 없다.
+QStar는 generic signature library와 concrete Ed25519 provider library를 별도 target으로 유지하고,
+product security suite가 provider unit과 final generated product graph를 함께 선택한다.
+
 ### Build-time component bundle
 
 Build-time component를 embedded publication하는 product는 component 입력과 generated object를
@@ -124,6 +132,7 @@ Bootloader product는 다음 provider 수를 만족한다.
 | entry environment | 1 |
 | selected mode object | 1 |
 | stable plugin ID | 1 이하 |
+| signature provider | signed object product에서 1, 그 외 0 또는 1 |
 
 Port service는 target이 실제로 필요한 role만 0개 이상 제공한다. 각 role의
 authority/collection cardinality는 service directory가 독립적으로 검증하며 generic
@@ -181,3 +190,4 @@ Gate는 archive member와 final link map을 검사하여 다음을 거부한다.
 - external-media target의 runtime object graph에 embedded payload fixture object
 - module-free raw-FDT target의 module bundle service, capability 또는 module object
 - module-bearing raw-FDT target의 product authority와 generated provider 불일치
+- production signed-object target의 fixture provider, signer symbol 또는 private-key material

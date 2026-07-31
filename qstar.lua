@@ -12,6 +12,7 @@ qstar.import_file("qstar/policies/configs.qst")
 
 qstar.subdir("src/core")
 qstar.subdir("src/common")
+qstar.subdir("src/security")
 qstar.subdir("src/arch")
 qstar.subdir("src/image-formats")
 qstar.subdir("src/environments/host")

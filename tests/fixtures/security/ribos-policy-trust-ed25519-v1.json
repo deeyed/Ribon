@@ -1,0 +1,8 @@
+{
+  "message_sha256": "e71a82609bfb3a646fa1be698da94f2c791aad4c5ec5c23f31c940e2e2315444",
+  "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "schema": "ribon-ed25519-cross-tool-vector-v1",
+  "signature_hex": "105f581f174db5f290d799b369c91caf5667a9327b117a6752a8fdfe2301897a9d8a8ee21304c0192c2b8f42cf4ea78b24fea049e81c720cd46035f0462faf0c",
+  "signer": "OpenSSL Ed25519 pkeyutl over RIBON-TRUST-MESSAGE-V1",
+  "source_seed": "RFC 8032 test 1 host-only fixture"
+}

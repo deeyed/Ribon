@@ -9,14 +9,16 @@ code_paths:
   - targets/ribos-validation/
   - language/ribos/vm/tests/aggregate_ownership.rbs
   - language/ribos/vm/tests/golden/aggregate_ownership-r18.sha256
-  - tools/make_ribos_signed_fixture.py
+  - tools/sign_ribos_policy.py
   - tools/make_ribos_qemu_manifest.py
   - tools/ribos_cross_arch_qemu.py
   - tools/lint/ribos_cross_arch_object_lint.py
+  - tools/lint/security_provider_graph_lint.py
 tests:
   - make check-ribos-golden-artifact
   - make check-ribos-cross-arch-objects
   - make check-ribos-cross-arch-qemu
+  - make check-security-provider-graphs
   - make check-ribos-r18
   - make check
   - make docs
@@ -33,27 +35,31 @@ supersedes:
 이 계약은 하나의 Ribos artifact를 서로 다른 native ABI에서 실행했을 때 target-core
 VM, generic Ribon adapter와 generated product binding의 의미가 같은지 검증하는
 diagnostic evidence product를 정의한다. OS payload 부팅이나 production signature
-검증 계약이 아니다.
+key-policy/rollback 계약이 아니다.
 
 ## Artifact authority
 
 입력 source는 `aggregate_ownership.rbs` 하나다. `ribosc`는 동일 입력으로 unsigned
 artifact 두 개를 독립 생성해야 하며 두 byte stream이 같아야 한다.
 
-Fixture wrapper는 다음만 바꿀 수 있다.
+Offline signer는 다음 binding으로 canonical trust message를 만든다.
 
-- signed envelope flag
-- algorithm ID의 Ed25519 wire value
+- selected validation product manifest exact bytes
+- artifact payload와 schema digest
+- normal mode와 normal-policy usage
 - 고정 key ID `ribon-r18-fixture-key`
-- 64-byte deterministic fixture signature
-- envelope의 key/signature offset과 total length
+- rollback domain `ribon.policy.ribos-qemu-validation.v1`
+- sequence 18
 
-Payload byte와 payload SHA-256은 바꾸지 않는다. 완성된 artifact의 SHA-256은
+Host-only RFC 8032 test seed와 OpenSSL Ed25519가 exact 232-byte message를 서명한다. Signer는
+payload byte와 payload SHA-256을 바꾸지 않고 signed envelope의 key/signature range만
+조립한다. 완성된 artifact의 SHA-256은
 `language/ribos/vm/tests/golden/aggregate_ownership-r18.sha256`과 같아야 한다.
 세 target은 이 완성 byte stream을 그대로 embed한다.
 
-이 fixture는 signature field의 구조와 authorization flow만 검증한다. Cryptographic
-Ed25519, production key store와 rollback counter의 증거로 사용할 수 없다.
+세 target은 generated graph가 선택한 strict production-class Ed25519 provider로 message를
+검증한다. Test public key와 diagnostic product를 사용하므로 production key store, key policy와
+rollback counter의 증거로 사용할 수 없다.
 
 ## Target matrix
 
@@ -84,7 +90,7 @@ inactive-slot writer authority가 없어야 하며 QEMU NIC도 `-net none`으로
 1. artifact envelope와 payload hash open
 2. boot transaction prepare
 3. generated binding과 schema/helper digest 검증
-4. fixture signature authorization
+4. product-bound trust message와 strict Ed25519 signature authorization
 5. independent bytecode verifier와 PreparedProgram
 6. watchdog arm
 7. helper 네 번과 opaque handle transition
@@ -148,6 +154,10 @@ Unknown R18 marker, 중복, 순서 변경, `RIBOS-R18-QEMU-FAIL`, timeout 또는
 - network transport와 network helper provider가 없는가
 - target image가 expected entry, adapter와 VM symbols를 실제 소유하는가
 
+`check-security-provider-graphs`는 세 generated report, map과 final image에서 production-class
+provider selection, `crypto_ed25519_check`, wrapper와 descriptor의 존재를 확인한다. Upstream
+signer symbol, host signer path, fixture provider와 test private seed는 final image에 없어야 한다.
+
 AArch64 target C flag에는 `-mstrict-align`이 필요하다. Source-level byte loop만으로
 compiler가 unaligned wide load/store를 만들지 않는다고 가정할 수 없다.
 
@@ -167,7 +177,7 @@ Gate 성공은 guest CPU에서 같은 artifact, verifier, VM, helper, transactio
 fallback 의미가 실행되었음을 증명한다. 다음은 증명하지 않는다.
 
 - OS entry transfer 또는 Parus/Linux/FreeBSD boot
-- production cryptographic signature와 anti-rollback
+- production key authority, revocation과 protected anti-rollback
 - recovery/provisioning networking과 OTA flash
 - UEFI firmware provider 구현
 - physical AMD64, AArch64 또는 RISC-V hardware

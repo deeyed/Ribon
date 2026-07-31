@@ -72,6 +72,17 @@
         "provider": {"const": "generated-component-bundle-v1"}
       }
     },
+    "signature_provider": {
+      "type": "object",
+      "required": ["algorithm", "class", "id", "symbol"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {"const": "ed25519"},
+        "class": {"enum": ["production", "fixture"]},
+        "id": {"type": "string", "pattern": "^security\\.signature\\."},
+        "symbol": {"type": "string", "pattern": "^ribon_"}
+      }
+    },
     "ribos_policy": {
       "type": "object",
       "required": [

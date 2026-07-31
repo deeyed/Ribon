@@ -7,6 +7,8 @@
 #include <Ribon/plugin/descriptor.h>
 #include <Ribon/plugin/manifest.h>
 
+struct RibonSignatureProvider;
+
 /** @brief Generated immutable plugin pointer array다. */
 struct RibonPluginRegistry {
     uint32_t size; /**< 이 registry descriptor의 byte 크기다. */
@@ -44,5 +46,11 @@ const struct RibonPluginRegistry *ribon_generated_plugin_registry(void);
 
 /** @brief QStar가 생성한 product descriptor를 반환한다. */
 const struct RibonProductDescriptor *ribon_generated_product_descriptor(void);
+
+/** @brief Source product manifest exact bytes의 SHA-256 identity를 반환한다. */
+const uint8_t *ribon_generated_product_source_digest(void);
+
+/** @brief Product graph가 선택한 signature provider 또는 NULL을 반환한다. */
+const struct RibonSignatureProvider *ribon_generated_signature_provider(void);
 
 #endif
