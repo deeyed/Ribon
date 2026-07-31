@@ -53,10 +53,7 @@ def expect_rejected(generator, manifest: dict[str, object], label: str) -> None:
 def require_ribos_isolation() -> None:
     """Ribos frontend/VM이 raw journal authority를 import하지 않는지 검사한다."""
 
-    roots = [
-        ROOT / "language" / "ribos",
-        ROOT / "src" / "plugins" / "policy" / "ribos",
-    ]
+    roots = [ROOT / "language" / "ribos"]
     forbidden = (
         "Ribon/security/protected_state.h",
         "RibonProtectedStateProvider",
@@ -136,7 +133,8 @@ def main() -> int:
     require_ribos_isolation()
     print(
         "RIBON-PROTECTED-STATE-GRAPHS-OK targets=3 provider=reference "
-        "signed-product=required ribos-authority=absent hardware-claim=none"
+        "signed-product=required language-authority=absent native-adapter=owner "
+        "hardware-claim=none"
     )
     return 0
 

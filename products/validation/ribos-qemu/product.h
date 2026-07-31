@@ -17,7 +17,6 @@ struct RibonValidationRibosFixture {
     uint32_t helper_calls;
     uint32_t fallback_calls;
     uint32_t drop_calls;
-    uint32_t reject_signature;
     uint32_t reject_action;
     uint32_t slot_object;
     uint32_t image_object;
@@ -35,10 +34,6 @@ int ribon_validation_environment_collect(
     enum RibonArchitectureId architecture,
     struct RibonBootEnvironment *out);
 
-uint32_t ribon_validation_ribos_authorize(
-    void *context,
-    const struct RibosArtifactAuthorizationRequest *request,
-    struct RibosArtifactAuthorizationReceipt *receipt);
 void ribon_validation_ribos_factory_recovery(
     void *context,
     const struct RibonRibosFailureReceipt *receipt);

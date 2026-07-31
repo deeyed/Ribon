@@ -244,7 +244,7 @@ RIBOS_HELPER_KEYS = {
 RIBOS_POLICY_KEYS = {
     "policy_id",
     "schema_symbol",
-    "authorize_symbol",
+    "authorization",
     "factory_recovery_symbol",
     "validate_boot_action_symbol",
     "timer_service_id",
@@ -257,6 +257,7 @@ RIBOS_POLICY_KEYS = {
     "limits",
     "helpers",
 }
+RIBOS_AUTHORIZATION_KEYS = {"class", "callback_symbol", "rollback_domain"}
 
 
 def _string(manifest: dict[str, object], key: str) -> str:
@@ -714,7 +715,6 @@ def _ribos_policy(
     strings = (
         "policy_id",
         "schema_symbol",
-        "authorize_symbol",
         "factory_recovery_symbol",
         "validate_boot_action_symbol",
         "timer_service_id",
@@ -723,7 +723,6 @@ def _ribos_policy(
         if not isinstance(raw.get(field), str) or not raw[field]:
             raise ValueError(f"ribos_policy.{field} must be a stable string")
     for field in (
-        "authorize_symbol",
         "factory_recovery_symbol",
         "validate_boot_action_symbol",
     ):
@@ -731,6 +730,28 @@ def _ribos_policy(
             raise ValueError(f"ribos_policy.{field} must be a Ribon symbol")
     if not str(raw["schema_symbol"]).startswith("ribos_"):
         raise ValueError("ribos_policy.schema_symbol must be a Ribos schema provider")
+    authorization = raw.get("authorization")
+    if (
+        not isinstance(authorization, dict)
+        or set(authorization) != RIBOS_AUTHORIZATION_KEYS
+        or authorization.get("class") not in {"fixture-callback", "signed-policy"}
+    ):
+        raise ValueError("ribos_policy.authorization must define one exact authority class")
+    callback = authorization.get("callback_symbol")
+    rollback_domain = authorization.get("rollback_domain")
+    if authorization["class"] == "fixture-callback":
+        if (
+            not isinstance(callback, str)
+            or not callback.startswith("ribon_")
+            or rollback_domain is not None
+        ):
+            raise ValueError("fixture authorization requires one callback and no domain")
+    elif (
+        callback is not None
+        or not isinstance(rollback_domain, str)
+        or not rollback_domain
+    ):
+        raise ValueError("signed authorization requires one rollback domain and no callback")
     if raw.get("phase") != "boot":
         raise ValueError("Ribos policy v1 executes only in boot phase")
     mode = str(manifest["mode"])
@@ -1113,6 +1134,22 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             raise ValueError("protected-state domains must exactly cover key-policy domains")
         if (signature["class"] == "fixture") != (protected["class"] == "fixture"):
             raise ValueError("fixture signature and protected-state providers cannot mix")
+    ribos_policy = manifest.get("ribos_policy")
+    if isinstance(ribos_policy, dict):
+        authorization = ribos_policy["authorization"]
+        assert isinstance(authorization, dict)
+        if authorization["class"] == "signed-policy":
+            if any(value is None for value in security_selections):
+                raise ValueError("signed Ribos policy requires complete security selections")
+            protected = manifest["protected_state_provider"]
+            signature = manifest["signature_provider"]
+            assert isinstance(protected, dict) and isinstance(signature, dict)
+            if signature["class"] != "production":
+                raise ValueError("signed Ribos policy requires a production signature provider")
+            if authorization["rollback_domain"] not in protected["rollback_domains"]:
+                raise ValueError("signed Ribos rollback domain is not product-authorized")
+        elif any(value is not None for value in security_selections):
+            raise ValueError("fixture Ribos authorization cannot select production trust state")
     return manifest
 
 
@@ -1371,7 +1408,10 @@ def _render_ribos_policy(manifest: dict[str, object]) -> str:
         "struct RibosVmHelperCall *);"
         for symbol in callback_symbols
     )
-    authorizer = str(policy["authorize_symbol"])
+    authorization = policy["authorization"]
+    assert isinstance(authorization, dict)
+    authorization_class = str(authorization["class"])
+    authorizer = authorization.get("callback_symbol")
     recovery = str(policy["factory_recovery_symbol"])
     action_validator = str(policy["validate_boot_action_symbol"])
     schema = str(policy["schema_symbol"])
@@ -1468,17 +1508,53 @@ def _render_ribos_policy(manifest: dict[str, object]) -> str:
     helper_digest = _ribos_helper_digest(policy)
     mode = str(manifest["mode"])
     watchdog_id = policy["watchdog_service_id"]
+    authorizer_extern = ""
+    signed_binding = ""
+    signed_pointer = "0"
+    fixture_pointer = "0"
+    if authorization_class == "fixture-callback":
+        assert isinstance(authorizer, str)
+        authorizer_extern = f"""extern uint32_t {authorizer}(
+    void *, const struct RibosArtifactAuthorizationRequest *,
+    struct RibosArtifactAuthorizationReceipt *);"""
+        authorization_value = "RIBON_RIBOS_AUTHORIZATION_FIXTURE_CALLBACK"
+        fixture_pointer = authorizer
+    else:
+        rollback_domain = str(authorization["rollback_domain"])
+        source_digest = manifest["_source_manifest_digest"]
+        signature = manifest["signature_provider"]
+        assert isinstance(source_digest, bytes)
+        assert isinstance(signature, dict)
+        signed_binding = f"""
+static const struct RibonRibosSignedPolicyBinding generated_ribos_signed_policy = {{
+    .size = sizeof(generated_ribos_signed_policy),
+    .abi_version = RIBON_RIBOS_POLICY_ABI_VERSION,
+    .trust_mode = {KEY_POLICY_MODES[mode]}u,
+    .key_usage = {KEY_POLICY_USAGES[f'policy-{mode}']}u,
+    .product_digest = {{ {_c_bytes(source_digest)} }},
+    .rollback_domain_digest = {{
+        {_c_bytes(hashlib.sha256(rollback_domain.encode('utf-8')).digest())}
+    }},
+    .policy_identity_digest = {{
+        {_c_bytes(hashlib.sha256(str(policy['policy_id']).encode('utf-8')).digest())}
+    }},
+    .signature_provider = &{signature['symbol']},
+    .key_policy = &generated_key_policy_store,
+    .protected_state = &generated_protected_state_binding,
+}};
+"""
+        authorization_value = "RIBON_RIBOS_AUTHORIZATION_SIGNED_POLICY"
+        signed_pointer = "&generated_ribos_signed_policy"
     return f"""
 extern const struct RibosProductSchema *{schema}(void);
-extern uint32_t {authorizer}(
-    void *, const struct RibosArtifactAuthorizationRequest *,
-    struct RibosArtifactAuthorizationReceipt *);
+{authorizer_extern}
 extern void {recovery}(
     void *, const struct RibonRibosFailureReceipt *);
 extern int {action_validator}(
     void *, const struct RibosVmBootAction *,
     const struct RibonBootTransaction *);
 {callbacks}
+{signed_binding}
 
 static const RibosVmHelperBinding generated_ribos_helper_bindings[] = {{
 {chr(10).join(binding_rows)}
@@ -1542,7 +1618,9 @@ static const struct RibonRibosProductBinding generated_ribos_binding = {{
     .watchdog_service_id =
         {f'"{watchdog_id}"' if watchdog_id is not None else "0"},
     .limits = &generated_ribos_limits,
-    .authorize = {authorizer},
+    .authorization_class = {authorization_value},
+    .signed_policy = {signed_pointer},
+    .fixture_authorize = {fixture_pointer},
     .factory_recovery = {recovery},
     .validate_boot_action = {action_validator},
 }};

@@ -135,10 +135,43 @@
       "symbol": "ribon_synthetic_protocol_plugin_descriptor"
     }
   ],
+  "signature_provider": {
+    "algorithm": "ed25519",
+    "class": "production",
+    "id": "security.signature.ed25519.monocypher-4.0.3",
+    "symbol": "ribon_ed25519_signature_provider_descriptor"
+  },
+  "key_policy": {
+    "generation": 1,
+    "id": "trust.host-reference.v1",
+    "keys": [
+      {
+        "id": "ribon-host-reference-key",
+        "issuer": null,
+        "maximum_sequence": 2,
+        "minimum_sequence": 1,
+        "modes": ["normal"],
+        "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        "rollback_domains": ["ribon.policy.host-reference.v1"],
+        "status": "active",
+        "usages": ["policy-normal"]
+      }
+    ]
+  },
+  "protected_state_provider": {
+    "class": "reference",
+    "id": "security.protected-state.reference.host-reference",
+    "rollback_domains": ["ribon.policy.host-reference.v1"],
+    "symbol": "ribon_host_protected_state_provider_descriptor"
+  },
   "ribos_policy": {
     "policy_id": "policy.ribos.host-reference.v1",
     "schema_symbol": "ribos_schema_reference_v1",
-    "authorize_symbol": "ribon_host_ribos_authorize",
+    "authorization": {
+      "class": "signed-policy",
+      "callback_symbol": null,
+      "rollback_domain": "ribon.policy.host-reference.v1"
+    },
     "factory_recovery_symbol": "ribon_host_ribos_factory_recovery",
     "validate_boot_action_symbol": "ribon_host_ribos_validate_boot_action",
     "timer_service_id": "service.host.monotonic-timer",

@@ -23,8 +23,6 @@ SYMBOL_RENAMES = {
         "ribon_validation_watchdog_service_descriptor",
     "ribon_host_environment_plugin_descriptor":
         "ribon_validation_environment_plugin_descriptor",
-    "ribon_host_ribos_authorize":
-        "ribon_validation_ribos_authorize",
     "ribon_host_ribos_factory_recovery":
         "ribon_validation_ribos_factory_recovery",
     "ribon_host_ribos_validate_boot_action":
@@ -121,6 +119,9 @@ def derive_manifest(source: dict[str, object]) -> dict[str, object]:
     policy = manifest["ribos_policy"]
     assert isinstance(policy, dict)
     policy["policy_id"] = "policy.ribos.qemu-validation.v1"
+    authorization = policy["authorization"]
+    assert isinstance(authorization, dict)
+    authorization["rollback_domain"] = "ribon.policy.ribos-qemu-validation.v1"
     return manifest
 
 

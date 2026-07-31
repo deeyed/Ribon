@@ -59,6 +59,8 @@ def main() -> int:
         "generated_ribos_limits",
         "ribon_generated_ribos_policy_binding",
         "ribon_ribos_policy_helper_dispatch",
+        "generated_ribos_signed_policy",
+        "RIBON_RIBOS_AUTHORIZATION_SIGNED_POLICY",
     )
     if any(fragment not in first for fragment in required_fragments):
         raise RuntimeError("generated product source omits a Ribos binding section")
@@ -78,6 +80,21 @@ def main() -> int:
     missing_watchdog = json.loads(args.manifest.read_text(encoding="utf-8"))
     missing_watchdog["ribos_policy"]["watchdog_service_id"] = "service.missing"
     reject_mutation(generator, missing_watchdog, args.architecture)
+    callback_escape = json.loads(args.manifest.read_text(encoding="utf-8"))
+    callback_escape["ribos_policy"]["authorization"]["callback_symbol"] = (
+        "ribon_host_ribos_authorize"
+    )
+    reject_mutation(generator, callback_escape, args.architecture)
+    wrong_domain = json.loads(args.manifest.read_text(encoding="utf-8"))
+    wrong_domain["ribos_policy"]["authorization"]["rollback_domain"] = (
+        "ribon.policy.other.v1"
+    )
+    reject_mutation(generator, wrong_domain, args.architecture)
+    missing_security = json.loads(args.manifest.read_text(encoding="utf-8"))
+    missing_security.pop("signature_provider")
+    missing_security.pop("key_policy")
+    missing_security.pop("protected_state_provider")
+    reject_mutation(generator, missing_security, args.architecture)
     print(
         "RIBOS-PRODUCT-GRAPH-OK schema=selected helper-table=generated "
         "digest=canonical routes=typed deterministic=yes"

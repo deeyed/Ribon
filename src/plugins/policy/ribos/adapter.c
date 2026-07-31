@@ -1,4 +1,7 @@
 #include <Ribon/policy/ribos.h>
+#include <Ribon/security/key_policy.h>
+#include <Ribon/security/protected_state.h>
+#include <Ribon/security/signature.h>
 
 #include <ribos/artifact/format.h>
 #include <ribos/schema/schema.h>
@@ -7,6 +10,7 @@
 #include <ribos/vm/prepared.h>
 #include <ribos/vm/storage.h>
 #include <ribos/vm/terminal.h>
+#include <ribos/vm/verifier.h>
 
 #include <limits.h>
 #include <string.h>
@@ -30,8 +34,20 @@ struct RibonRibosAdapterContext {
     uint32_t terminal_helper_id;
     uint32_t action_consumed;
     uint32_t recovery_notified;
+    enum RibonRibosAuthorizationFailure authorization_failure;
+    uint32_t rollback_authority;
+    uint64_t manifest_sequence;
+    uint64_t rollback_floor;
+    uint64_t rollback_generation;
+    uint32_t trial_attempts_remaining;
     uint64_t arena_start;
 };
+
+static int ribon_ribos_arena_allocate(
+    struct RibonRibosAdapterContext *adapter,
+    size_t size,
+    size_t alignment,
+    void **memory);
 
 static int
 ribon_ribos_streq(const char *left, const char *right)
@@ -61,6 +77,72 @@ ribon_ribos_digest_equal(
         difference |= (uint8_t)(left[index] ^ right[index]);
     }
     return difference == 0;
+}
+
+static int
+ribon_ribos_digest_is_nonzero(const uint8_t digest[RIBOS_SCHEMA_DIGEST_BYTES])
+{
+    uint8_t value = 0u;
+    uint32_t index;
+
+    if (digest == NULL) {
+        return 0;
+    }
+    for (index = 0u; index < RIBOS_SCHEMA_DIGEST_BYTES; ++index) {
+        value |= digest[index];
+    }
+    return value != 0u;
+}
+
+/** @brief Native Ribon mode를 stable signed-policy registry로 명시 변환한다. */
+static uint32_t
+ribon_ribos_trust_mode(enum RibonMode mode)
+{
+    switch (mode) {
+    case RIBON_MODE_NORMAL:
+        return RIBON_KEY_POLICY_MODE_NORMAL;
+    case RIBON_MODE_RECOVERY:
+        return RIBON_KEY_POLICY_MODE_RECOVERY;
+    case RIBON_MODE_PROVISIONING:
+        return RIBON_KEY_POLICY_MODE_PROVISIONING;
+    case RIBON_MODE_DIAGNOSTIC:
+        return RIBON_KEY_POLICY_MODE_DIAGNOSTIC;
+    default:
+        return RIBON_KEY_POLICY_MODE_INVALID;
+    }
+}
+
+/**
+ * Signed binding의 immutable product authority와 stable registry를 재검산한다.
+ * 이 검사는 storage state를 읽거나 artifact byte를 승인하지 않는다.
+ */
+static int
+ribon_ribos_signed_binding_is_valid(
+    const struct RibonRibosSignedPolicyBinding *binding)
+{
+    if (binding == NULL || binding->size != sizeof(*binding) ||
+        binding->abi_version != RIBON_RIBOS_POLICY_ABI_VERSION ||
+        binding->trust_mode < RIBON_KEY_POLICY_MODE_NORMAL ||
+        binding->trust_mode > RIBON_KEY_POLICY_MODE_DIAGNOSTIC ||
+        binding->key_usage < RIBON_KEY_POLICY_USAGE_POLICY_NORMAL ||
+        binding->key_usage > RIBON_KEY_POLICY_USAGE_POLICY_DIAGNOSTIC ||
+        binding->trust_mode != binding->key_usage ||
+        !ribon_ribos_digest_is_nonzero(binding->product_digest) ||
+        !ribon_ribos_digest_is_nonzero(binding->rollback_domain_digest) ||
+        !ribon_ribos_digest_is_nonzero(binding->policy_identity_digest) ||
+        binding->signature_provider == NULL ||
+        binding->signature_provider->provider_class !=
+            RIBON_SIGNATURE_PROVIDER_CLASS_PRODUCTION ||
+        !ribon_signature_provider_is_valid(binding->signature_provider) ||
+        binding->key_policy == NULL ||
+        ribon_key_policy_store_validate(binding->key_policy) !=
+            RIBON_KEY_POLICY_STATUS_OK ||
+        binding->protected_state == NULL ||
+        ribon_protected_state_binding_validate(binding->protected_state) !=
+            RIBON_PROTECTED_STATE_STATUS_OK) {
+        return 0;
+    }
+    return 1;
 }
 
 static const struct RibonPluginDescriptor *
@@ -99,12 +181,18 @@ ribon_ribos_fill_failure(
         .terminal_helper_id = adapter->terminal_helper_id,
         .action_consumed = adapter->action_consumed,
         .recovery_notified = 1u,
+        .authorization_failure = adapter->authorization_failure,
+        .rollback_authority = adapter->rollback_authority,
         .transaction_stage =
             transaction != NULL ? transaction->stage : RIBON_BOOT_STAGE_FAILED,
         .arena_bytes =
             arena != NULL && arena->used >= adapter->arena_start ?
                 arena->used - adapter->arena_start : 0u,
         .context_generation = adapter->request->context_generation,
+        .manifest_sequence = adapter->manifest_sequence,
+        .rollback_floor = adapter->rollback_floor,
+        .rollback_generation = adapter->rollback_generation,
+        .trial_attempts_remaining = adapter->trial_attempts_remaining,
     };
 }
 
@@ -258,7 +346,6 @@ ribon_ribos_binding_validate(
         binding->limits == NULL ||
         binding->limits->maximum_arena_bytes > binding->arena_budget ||
         binding->timer_service_id == NULL ||
-        binding->authorize == NULL ||
         binding->factory_recovery == NULL ||
         binding->validate_boot_action == NULL ||
         (binding->required_ribon_capabilities &
@@ -273,6 +360,23 @@ ribon_ribos_binding_validate(
         !ribon_ribos_digest_equal(
             helper_digest,
             binding->helper_contract->digest)) {
+        return 0;
+    }
+    if (binding->authorization_class ==
+            RIBON_RIBOS_AUTHORIZATION_SIGNED_POLICY) {
+        if (binding->fixture_authorize != NULL ||
+            !ribon_ribos_signed_binding_is_valid(binding->signed_policy) ||
+            binding->signed_policy->trust_mode !=
+                ribon_ribos_trust_mode(request->core->mode->mode)) {
+            return 0;
+        }
+    } else if (binding->authorization_class ==
+                   RIBON_RIBOS_AUTHORIZATION_FIXTURE_CALLBACK) {
+        if (binding->signed_policy != NULL ||
+            binding->fixture_authorize == NULL) {
+            return 0;
+        }
+    } else {
         return 0;
     }
     if (request->core->mode->mode == RIBON_MODE_NORMAL &&
@@ -342,6 +446,294 @@ ribon_ribos_binding_validate(
 }
 
 static uint32_t
+ribon_ribos_authorization_reject(
+    struct RibonRibosAdapterContext *adapter,
+    enum RibonRibosAuthorizationFailure failure)
+{
+    if (adapter != NULL &&
+        adapter->authorization_failure ==
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_NONE) {
+        adapter->authorization_failure = failure;
+    }
+    return RIBOS_VM_STATUS_NOT_AUTHORIZED;
+}
+
+/**
+ * Candidate trial state를 쓰기 전에 copied artifact의 Stage-1/2를 독립 실행한다.
+ * Scratch는 Core arena에서 단방향 할당하며 실패 뒤 rewind하지 않는다.
+ */
+static int
+ribon_ribos_candidate_is_verified(
+    struct RibonRibosAdapterContext *adapter,
+    const RibosArtifactAuthorizationRequest *request)
+{
+    RibosVerifierReport report;
+    const struct RibosProductSchema *schema = adapter->binding->schema();
+    void *workspace = NULL;
+    size_t workspace_size = 0u;
+
+    if (request->artifact_size > SIZE_MAX ||
+        ribos_verifier_workspace_size_v1(
+            request->artifact,
+            (size_t)request->artifact_size,
+            &workspace_size,
+            &report) != RIBOS_VERIFIER_OK ||
+        !ribon_ribos_arena_allocate(
+            adapter,
+            workspace_size,
+            8u,
+            &workspace) ||
+        ribos_verify_artifact_stage1_v1(
+            request->artifact,
+            (size_t)request->artifact_size,
+            schema,
+            workspace,
+            workspace_size,
+            &report) != RIBOS_VERIFIER_OK ||
+        ribos_verify_artifact_stage2_v1(
+            request->artifact,
+            (size_t)request->artifact_size,
+            schema,
+            workspace,
+            workspace_size,
+            &report) != RIBOS_VERIFIER_OK) {
+        return 0;
+    }
+    return 1;
+}
+
+/**
+ * Generated trust tuple, real signature/key policy와 protected journal을 결합한다.
+ * Pending authority는 verifier preflight 뒤 열고 attempt 감소를 commit한 뒤 승인한다.
+ */
+static uint32_t
+ribon_ribos_authorize_signed(
+    struct RibonRibosAdapterContext *adapter,
+    const RibosArtifactAuthorizationRequest *request,
+    RibosArtifactAuthorizationReceipt *receipt)
+{
+    const struct RibonRibosSignedPolicyBinding *binding =
+        adapter->binding->signed_policy;
+    RibosArtifactView view;
+    RibosArtifactTrustContextV1 trust = {
+        .size = sizeof(trust),
+        .trust_major = RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MAJOR,
+        .trust_minor = RIBOS_ARTIFACT_TRUST_MESSAGE_V1_MINOR,
+    };
+    struct RibonKeyPolicyRequest key_request = {
+        .size = sizeof(key_request),
+        .abi_version = RIBON_KEY_POLICY_ABI_VERSION,
+    };
+    struct RibonKeyPolicySignatureVerification verification = {
+        .size = sizeof(verification),
+        .abi_version = RIBON_KEY_POLICY_ABI_VERSION,
+    };
+    struct RibonKeyPolicyDecision key_decision;
+    struct RibonProtectedStateJournal journal;
+    struct RibonProtectedStateSnapshot snapshot;
+    struct RibonProtectedStateDecision state_decision;
+    uint8_t message[RIBOS_ARTIFACT_TRUST_MESSAGE_V1_BYTES];
+    void *signature_workspace = NULL;
+    int key_status;
+    int state_status;
+
+    if (!ribon_ribos_signed_binding_is_valid(binding) ||
+        request->envelope_flags != RIBOS_ARTIFACT_ENVELOPE_SIGNED ||
+        request->signature_algorithm != RIBOS_ARTIFACT_SIGNATURE_ED25519 ||
+        request->artifact_size > SIZE_MAX || request->key_id == NULL ||
+        request->key_id_size == 0u || request->key_id_size > SIZE_MAX ||
+        request->signature == NULL || request->signature_size > SIZE_MAX ||
+        ribos_artifact_open_v1(
+            request->artifact,
+            (size_t)request->artifact_size,
+            &view) != RIBOS_ARTIFACT_OK) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_MALFORMED);
+    }
+    if (!ribon_ribos_digest_equal(
+            request->schema_digest,
+            adapter->schema_digest)) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_IDENTITY);
+    }
+    if ((adapter->request->activation !=
+             RIBON_RIBOS_POLICY_ACTIVATION_EXISTING &&
+         adapter->request->activation !=
+             RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL) ||
+        (adapter->request->activation ==
+             RIBON_RIBOS_POLICY_ACTIVATION_EXISTING &&
+         adapter->request->trial_attempts != 0u) ||
+        (adapter->request->activation ==
+             RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL &&
+         (adapter->request->trial_attempts == 0u ||
+          adapter->request->trial_attempts >
+              RIBON_PROTECTED_STATE_MAX_TRIAL_ATTEMPTS))) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_ROLLBACK);
+    }
+
+    trust.mode = (uint16_t)binding->trust_mode;
+    trust.key_usage = (uint16_t)binding->key_usage;
+    trust.sequence = adapter->request->manifest_sequence;
+    memcpy(trust.product_digest, binding->product_digest,
+           sizeof(trust.product_digest));
+    memcpy(trust.rollback_domain_digest, binding->rollback_domain_digest,
+           sizeof(trust.rollback_domain_digest));
+    if (ribos_artifact_trust_message_v1(
+            &view,
+            RIBOS_ARTIFACT_SIGNATURE_ED25519,
+            request->key_id,
+            (size_t)request->key_id_size,
+            &trust,
+            message) != RIBOS_ARTIFACT_TRUST_OK) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_MODE_USAGE);
+    }
+
+    key_request.mode = (enum RibonKeyPolicyMode)binding->trust_mode;
+    key_request.usage = (enum RibonKeyPolicyUsage)binding->key_usage;
+    key_request.key_id = request->key_id;
+    key_request.key_id_size = (size_t)request->key_id_size;
+    key_request.sequence = adapter->request->manifest_sequence;
+    memcpy(key_request.product_digest, binding->product_digest,
+           sizeof(key_request.product_digest));
+    memcpy(key_request.rollback_domain_digest, binding->rollback_domain_digest,
+           sizeof(key_request.rollback_domain_digest));
+    if (binding->signature_provider->workspace_bytes != 0u &&
+        !ribon_ribos_arena_allocate(
+            adapter,
+            binding->signature_provider->workspace_bytes,
+            binding->signature_provider->workspace_alignment,
+            &signature_workspace)) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_SIGNATURE);
+    }
+    verification.policy = &key_request;
+    verification.provider = binding->signature_provider;
+    verification.message = message;
+    verification.message_size = sizeof(message);
+    verification.signature = request->signature;
+    verification.signature_size = (size_t)request->signature_size;
+    verification.workspace = signature_workspace;
+    verification.workspace_size =
+        binding->signature_provider->workspace_bytes;
+    key_status = ribon_key_policy_verify(
+        binding->key_policy,
+        &verification,
+        &key_decision);
+    if (key_status != RIBON_KEY_POLICY_STATUS_OK) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            key_status == RIBON_KEY_POLICY_STATUS_SIGNATURE_INVALID ||
+                    key_status ==
+                        RIBON_KEY_POLICY_STATUS_UNSUPPORTED_ALGORITHM ?
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_SIGNATURE :
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_KEY_POLICY);
+    }
+
+    state_status = ribon_protected_state_journal_bind(
+        binding->protected_state,
+        binding->rollback_domain_digest,
+        &journal);
+    if (state_status == RIBON_PROTECTED_STATE_STATUS_OK) {
+        state_status = ribon_protected_state_open(&journal, &snapshot);
+    }
+    if (state_status != RIBON_PROTECTED_STATE_STATUS_OK) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            state_status == RIBON_PROTECTED_STATE_STATUS_UNAVAILABLE ||
+                    state_status == RIBON_PROTECTED_STATE_STATUS_IO_ERROR ?
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_UNAVAILABLE :
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_INVALID);
+    }
+    if (adapter->request->activation ==
+        RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL) {
+        if (snapshot.kind != RIBON_PROTECTED_STATE_KIND_CONFIRMED ||
+            snapshot.confirmed_floor == UINT64_MAX ||
+            adapter->request->manifest_sequence !=
+                snapshot.confirmed_floor + 1u) {
+            return ribon_ribos_authorization_reject(
+                adapter,
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_ROLLBACK);
+        }
+        if (!ribon_ribos_candidate_is_verified(adapter, request)) {
+            return ribon_ribos_authorization_reject(
+                adapter,
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_VERIFIER);
+        }
+        state_status = ribon_protected_state_begin_trial(
+            &journal,
+            adapter->request->manifest_sequence,
+            adapter->request->trial_attempts,
+            &snapshot);
+        if (state_status != RIBON_PROTECTED_STATE_STATUS_OK) {
+            return ribon_ribos_authorization_reject(
+                adapter,
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_INVALID);
+        }
+    }
+    state_status = ribon_protected_state_authorize(
+        &journal,
+        adapter->request->manifest_sequence,
+        &state_decision);
+    if (state_status != RIBON_PROTECTED_STATE_STATUS_OK) {
+        return ribon_ribos_authorization_reject(
+            adapter,
+            state_status == RIBON_PROTECTED_STATE_STATUS_UNAVAILABLE ||
+                    state_status == RIBON_PROTECTED_STATE_STATUS_IO_ERROR ?
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_UNAVAILABLE :
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_ROLLBACK);
+    }
+    if (state_decision.authority == RIBON_PROTECTED_STATE_AUTHORITY_TRIAL) {
+        state_status = ribon_protected_state_consume_trial_attempt(
+            &journal,
+            adapter->request->manifest_sequence,
+            &snapshot);
+        if (state_status != RIBON_PROTECTED_STATE_STATUS_OK) {
+            return ribon_ribos_authorization_reject(
+                adapter,
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_INVALID);
+        }
+        state_decision.generation = snapshot.generation;
+        state_decision.trial_attempts_remaining =
+            snapshot.trial_attempts_remaining;
+    }
+
+    adapter->manifest_sequence = adapter->request->manifest_sequence;
+    adapter->rollback_floor = snapshot.confirmed_floor;
+    adapter->rollback_generation = state_decision.generation;
+    adapter->rollback_authority = state_decision.authority;
+    adapter->trial_attempts_remaining =
+        state_decision.trial_attempts_remaining;
+    *receipt = (RibosArtifactAuthorizationReceipt){
+        .size = sizeof(*receipt),
+        .authorization_major = RIBOS_VM_AUTHORIZATION_V1_MAJOR,
+        .authorization_minor = RIBOS_VM_AUTHORIZATION_V1_MINOR,
+        .decision = RIBOS_ARTIFACT_AUTHORIZATION_GRANTED,
+        .authority_generation = state_decision.generation,
+        .manifest_sequence = adapter->request->manifest_sequence,
+        .rollback_floor = snapshot.confirmed_floor,
+    };
+    memcpy(receipt->artifact_hash, request->artifact_hash,
+           sizeof(receipt->artifact_hash));
+    memcpy(receipt->schema_digest, request->schema_digest,
+           sizeof(receipt->schema_digest));
+    memcpy(receipt->helper_execution_digest,
+           adapter->binding->helper_contract->digest,
+           sizeof(receipt->helper_execution_digest));
+    memcpy(receipt->key_identity_digest, key_decision.key_identity_digest,
+           sizeof(receipt->key_identity_digest));
+    memcpy(receipt->policy_identity_digest, binding->policy_identity_digest,
+           sizeof(receipt->policy_identity_digest));
+    return RIBOS_VM_STATUS_OK;
+}
+
+static uint32_t
 ribon_ribos_authorize(
     void *context,
     const RibosArtifactAuthorizationRequest *request,
@@ -354,9 +746,15 @@ ribon_ribos_authorize(
         !ribon_ribos_digest_equal(
             request->schema_digest,
             adapter->schema_digest)) {
-        return RIBOS_VM_STATUS_NOT_AUTHORIZED;
+        return ribon_ribos_authorization_reject(
+            adapter,
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_IDENTITY);
     }
-    status = adapter->binding->authorize(
+    if (adapter->binding->authorization_class ==
+        RIBON_RIBOS_AUTHORIZATION_SIGNED_POLICY) {
+        return ribon_ribos_authorize_signed(adapter, request, receipt);
+    }
+    status = adapter->binding->fixture_authorize(
         adapter->request->product_context,
         request,
         receipt);
@@ -367,7 +765,11 @@ ribon_ribos_authorize(
         !ribon_ribos_digest_equal(
             receipt->helper_execution_digest,
             adapter->binding->helper_contract->digest)) {
-        return RIBOS_VM_STATUS_NOT_AUTHORIZED;
+        return ribon_ribos_authorization_reject(
+            adapter,
+            status == RIBOS_VM_STATUS_OK ?
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_IDENTITY :
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_FIXTURE);
     }
     return RIBOS_VM_STATUS_OK;
 }
@@ -528,12 +930,18 @@ ribon_ribos_fill_receipt(
         .terminal_helper_id = adapter->terminal_helper_id,
         .action_consumed = adapter->action_consumed,
         .recovery_notified = adapter->recovery_notified,
+        .authorization_failure = adapter->authorization_failure,
+        .rollback_authority = adapter->rollback_authority,
         .transaction_stage =
             transaction != NULL ? transaction->stage : RIBON_BOOT_STAGE_FAILED,
         .arena_bytes =
             arena != NULL && arena->used >= adapter->arena_start ?
                 arena->used - adapter->arena_start : 0u,
         .context_generation = adapter->request->context_generation,
+        .manifest_sequence = adapter->manifest_sequence,
+        .rollback_floor = adapter->rollback_floor,
+        .rollback_generation = adapter->rollback_generation,
+        .trial_attempts_remaining = adapter->trial_attempts_remaining,
     };
 }
 
@@ -547,6 +955,7 @@ ribon_ribos_policy_execute(
         .binding = request != NULL ? request->binding : NULL,
         .stage = RIBON_RIBOS_POLICY_STAGE_VALIDATE,
         .status = RIBON_RIBOS_POLICY_STATUS_BAD_ARGUMENT,
+        .manifest_sequence = request != NULL ? request->manifest_sequence : 0u,
     };
     RibosArtifactAuthorizer authorizer;
     const RibosAuthorizedArtifact *authorized = NULL;
@@ -903,6 +1312,116 @@ ribon_ribos_policy_execute(
     adapter.stage = RIBON_RIBOS_POLICY_STAGE_COMPLETE;
     adapter.status = RIBON_RIBOS_POLICY_STATUS_OK;
     ribon_ribos_fill_receipt(&adapter, receipt);
+    return RIBON_RIBOS_POLICY_STATUS_OK;
+}
+
+/** @brief Signed binding의 protected-state 전이 receipt를 pointer-free로 채운다. */
+static void
+ribon_ribos_fill_state_receipt(
+    struct RibonRibosPolicyStateReceipt *receipt,
+    int status,
+    const struct RibonProtectedStateSnapshot *snapshot)
+{
+    *receipt = (struct RibonRibosPolicyStateReceipt){
+        .size = sizeof(*receipt),
+        .abi_version = RIBON_RIBOS_POLICY_ABI_VERSION,
+        .status = status,
+        .state_kind = snapshot != NULL ? snapshot->kind : 0u,
+        .confirmed_floor = snapshot != NULL ? snapshot->confirmed_floor : 0u,
+        .pending_sequence = snapshot != NULL ? snapshot->pending_sequence : 0u,
+        .generation = snapshot != NULL ? snapshot->generation : 0u,
+        .trial_attempts_remaining =
+            snapshot != NULL ? snapshot->trial_attempts_remaining : 0u,
+    };
+}
+
+int
+ribon_ribos_policy_confirm(
+    const struct RibonRibosProductBinding *binding,
+    uint64_t pending_sequence,
+    struct RibonRibosPolicyStateReceipt *receipt)
+{
+    struct RibonProtectedStateJournal journal;
+    struct RibonProtectedStateSnapshot snapshot;
+    int state_status;
+
+    if (receipt == NULL) {
+        return RIBON_RIBOS_POLICY_STATUS_BAD_ARGUMENT;
+    }
+    ribon_ribos_fill_state_receipt(
+        receipt,
+        RIBON_RIBOS_POLICY_STATUS_BAD_BINDING,
+        NULL);
+    if (binding == NULL ||
+        binding->authorization_class !=
+            RIBON_RIBOS_AUTHORIZATION_SIGNED_POLICY ||
+        !ribon_ribos_signed_binding_is_valid(binding->signed_policy)) {
+        return RIBON_RIBOS_POLICY_STATUS_BAD_BINDING;
+    }
+    state_status = ribon_protected_state_journal_bind(
+        binding->signed_policy->protected_state,
+        binding->signed_policy->rollback_domain_digest,
+        &journal);
+    if (state_status == RIBON_PROTECTED_STATE_STATUS_OK) {
+        state_status = ribon_protected_state_confirm(
+            &journal,
+            pending_sequence,
+            &snapshot);
+    }
+    if (state_status != RIBON_PROTECTED_STATE_STATUS_OK) {
+        ribon_ribos_fill_state_receipt(
+            receipt,
+            RIBON_RIBOS_POLICY_STATUS_ROLLBACK_STATE,
+            NULL);
+        return RIBON_RIBOS_POLICY_STATUS_ROLLBACK_STATE;
+    }
+    ribon_ribos_fill_state_receipt(
+        receipt,
+        RIBON_RIBOS_POLICY_STATUS_OK,
+        &snapshot);
+    return RIBON_RIBOS_POLICY_STATUS_OK;
+}
+
+int
+ribon_ribos_policy_fail_trial(
+    const struct RibonRibosProductBinding *binding,
+    struct RibonRibosPolicyStateReceipt *receipt)
+{
+    struct RibonProtectedStateJournal journal;
+    struct RibonProtectedStateSnapshot snapshot;
+    int state_status;
+
+    if (receipt == NULL) {
+        return RIBON_RIBOS_POLICY_STATUS_BAD_ARGUMENT;
+    }
+    ribon_ribos_fill_state_receipt(
+        receipt,
+        RIBON_RIBOS_POLICY_STATUS_BAD_BINDING,
+        NULL);
+    if (binding == NULL ||
+        binding->authorization_class !=
+            RIBON_RIBOS_AUTHORIZATION_SIGNED_POLICY ||
+        !ribon_ribos_signed_binding_is_valid(binding->signed_policy)) {
+        return RIBON_RIBOS_POLICY_STATUS_BAD_BINDING;
+    }
+    state_status = ribon_protected_state_journal_bind(
+        binding->signed_policy->protected_state,
+        binding->signed_policy->rollback_domain_digest,
+        &journal);
+    if (state_status == RIBON_PROTECTED_STATE_STATUS_OK) {
+        state_status = ribon_protected_state_fail_trial(&journal, &snapshot);
+    }
+    if (state_status != RIBON_PROTECTED_STATE_STATUS_OK) {
+        ribon_ribos_fill_state_receipt(
+            receipt,
+            RIBON_RIBOS_POLICY_STATUS_ROLLBACK_STATE,
+            NULL);
+        return RIBON_RIBOS_POLICY_STATUS_ROLLBACK_STATE;
+    }
+    ribon_ribos_fill_state_receipt(
+        receipt,
+        RIBON_RIBOS_POLICY_STATUS_OK,
+        &snapshot);
     return RIBON_RIBOS_POLICY_STATUS_OK;
 }
 

@@ -1,6 +1,7 @@
 #include <Ribon/arch/ops.h>
 #include <Ribon/boot/plan.h>
 #include <Ribon/policy/ribos.h>
+#include <Ribon/security/key_policy.h>
 
 #include <ribos/artifact/format.h>
 #include <ribos/schema/schema.h>
@@ -384,6 +385,9 @@ execute_policy(
     const struct RibonRibosProductBinding *binding,
     const uint8_t *artifact_bytes,
     size_t artifact_size,
+    uint64_t manifest_sequence,
+    enum RibonRibosPolicyActivation activation,
+    uint32_t trial_attempts,
     struct RibonRibosPolicyReceipt *receipt)
 {
     uint8_t context[TEST_CONTEXT_CAPACITY] = {0};
@@ -403,6 +407,9 @@ execute_policy(
             .context_bytes = context,
             .context_size = artifact->context_size,
             .context_generation = 17u,
+            .activation = activation,
+            .trial_attempts = trial_attempts,
+            .manifest_sequence = manifest_sequence,
             .product_context = fixture,
             .transaction = &transaction->transaction,
         },
@@ -417,7 +424,7 @@ alternate_schema_provider(void)
 }
 
 static void
-test_success(const struct TestArtifact *artifact)
+test_signed_success(const struct TestArtifact *artifact)
 {
     struct TestTransaction test;
     struct RibonHostRibosFixture fixture;
@@ -425,149 +432,124 @@ test_success(const struct TestArtifact *artifact)
     const struct RibonRibosProductBinding *binding =
         ribon_generated_ribos_policy_binding();
 
+    CHECK(ribon_host_ribos_protected_state_provision(binding, 1u));
     CHECK(initialize_transaction(&test));
     initialize_fixture(&fixture, artifact, binding);
     ribon_host_lifecycle_fixture_set_timer_step(1u);
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              binding,
-              artifact->bytes,
-              artifact->size,
+    CHECK(execute_policy(&test, &fixture, artifact, binding,
+              artifact->bytes, artifact->size, 1u,
+              RIBON_RIBOS_POLICY_ACTIVATION_EXISTING, 0u,
               &receipt) == RIBON_RIBOS_POLICY_STATUS_OK);
     CHECK(receipt.stage == RIBON_RIBOS_POLICY_STAGE_COMPLETE);
-    CHECK(receipt.action_consumed == 1u);
-    CHECK(receipt.recovery_notified == 0u);
-    CHECK(receipt.terminal_helper_id == 21u);
-    CHECK(receipt.transaction_stage ==
-          RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT);
-    CHECK(fixture.helper_calls == 4u);
-    CHECK(fixture.fallback_calls == 0u);
+    CHECK(receipt.rollback_authority ==
+          RIBON_PROTECTED_STATE_AUTHORITY_CONFIRMED);
+    CHECK(receipt.manifest_sequence == 1u && receipt.rollback_floor == 1u);
+    CHECK(receipt.action_consumed == 1u && receipt.recovery_notified == 0u);
+    CHECK(fixture.helper_calls == 4u && fixture.fallback_calls == 0u);
     CHECK(ribon_host_lifecycle_fixture_write_count() == 1u);
     CHECK(ribon_host_lifecycle_fixture_flush_count() == 1u);
     CHECK(ribon_host_lifecycle_fixture_quiesce_count() == 1u);
-    CHECK(ribon_host_lifecycle_fixture_watchdog_arm_count() == 1u);
-    CHECK(ribon_host_lifecycle_fixture_watchdog_timeout_ms() == 30000u);
 }
 
 static void
-test_unsigned_and_corrupt_fallback(const struct TestArtifact *artifact)
+expect_authorization_failure(
+    const struct TestArtifact *shape,
+    const struct RibonRibosProductBinding *binding,
+    const uint8_t *bytes,
+    size_t size,
+    uint64_t sequence,
+    enum RibonRibosAuthorizationFailure failure)
 {
     struct TestTransaction test;
     struct RibonHostRibosFixture fixture;
     struct RibonRibosPolicyReceipt receipt;
-    const struct RibonRibosProductBinding *binding =
-        ribon_generated_ribos_policy_binding();
-    uint8_t *corrupt = malloc(artifact->size);
-
-    CHECK(corrupt != NULL);
-    if (corrupt == NULL) {
-        return;
-    }
-    memcpy(corrupt, artifact->bytes, artifact->size);
-    corrupt[artifact->size - 1u] ^= 0x80u;
-    CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, binding);
-    fixture.reject_unsigned = 1u;
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              binding,
-              artifact->bytes,
-              artifact->size,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION);
-    CHECK(fixture.fallback_calls == 1u);
-    CHECK(fixture.helper_calls == 0u);
-    CHECK(receipt.action_consumed == 0u);
-    CHECK(test.transaction.stage == RIBON_BOOT_STAGE_PREPARE_PROTOCOL);
 
     CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, binding);
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              binding,
-              corrupt,
-              artifact->size,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION);
-    CHECK(fixture.fallback_calls == 1u);
-    CHECK(fixture.helper_calls == 0u);
+    initialize_fixture(&fixture, shape, binding);
+    CHECK(execute_policy(&test, &fixture, shape, binding, bytes, size,
+              sequence, RIBON_RIBOS_POLICY_ACTIVATION_EXISTING, 0u,
+              &receipt) == RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION);
+    CHECK(receipt.authorization_failure == failure);
+    CHECK(receipt.action_consumed == 0u && receipt.recovery_notified == 1u);
+    CHECK(fixture.helper_calls == 0u && fixture.fallback_calls == 1u);
     CHECK(test.transaction.stage == RIBON_BOOT_STAGE_PREPARE_PROTOCOL);
-    free(corrupt);
 }
 
 static void
-test_schema_budget_and_deadline_fallback(
-    const struct TestArtifact *artifact)
+test_hostile_authorization(
+    const struct TestArtifact *signed_a,
+    const struct TestArtifact *signed_b,
+    const struct TestArtifact *unsigned_artifact,
+    const struct TestArtifact *wrong_key)
 {
-    struct TestTransaction test;
-    struct RibonHostRibosFixture fixture;
-    struct RibonRibosPolicyReceipt receipt;
     const struct RibonRibosProductBinding *generated =
         ribon_generated_ribos_policy_binding();
     struct RibonRibosProductBinding binding = *generated;
-    RibosVmLimits limits = *generated->limits;
+    struct RibonRibosSignedPolicyBinding signed_binding =
+        *generated->signed_policy;
+    struct TestTransaction test;
+    struct RibonHostRibosFixture fixture;
+    struct RibonRibosPolicyReceipt receipt;
+    uint8_t *corrupt = malloc(signed_a->size);
 
+    CHECK(corrupt != NULL);
+    CHECK(ribon_host_ribos_protected_state_provision(generated, 1u));
+    expect_authorization_failure(signed_a, generated,
+        unsigned_artifact->bytes, unsigned_artifact->size, 1u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_MALFORMED);
+    if (corrupt != NULL) {
+        memcpy(corrupt, signed_a->bytes, signed_a->size);
+        corrupt[signed_a->size - 1u] ^= 0x80u;
+        expect_authorization_failure(signed_a, generated, corrupt,
+            signed_a->size, 1u, RIBON_RIBOS_AUTHORIZATION_FAILURE_SIGNATURE);
+        free(corrupt);
+    }
+    expect_authorization_failure(signed_a, generated,
+        wrong_key->bytes, wrong_key->size, 1u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_KEY_POLICY);
+
+    signed_binding.product_digest[0] ^= 0x80u;
+    binding.signed_policy = &signed_binding;
+    expect_authorization_failure(signed_a, &binding,
+        signed_a->bytes, signed_a->size, 1u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_KEY_POLICY);
+
+    binding = *generated;
     alternate_schema = *ribos_schema_reference_v1();
     alternate_schema.product_id = "ribon.schema-mismatch.fixture";
     binding.schema = alternate_schema_provider;
-    CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, &binding);
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              &binding,
-              artifact->bytes,
-              artifact->size,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION);
-    CHECK(fixture.fallback_calls == 1u);
+    expect_authorization_failure(signed_a, &binding,
+        signed_a->bytes, signed_a->size, 1u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_IDENTITY);
 
     binding = *generated;
-    limits.maximum_instructions = 1u;
-    binding.limits = &limits;
+    signed_binding = *generated->signed_policy;
+    signed_binding.trust_mode = RIBON_KEY_POLICY_MODE_RECOVERY;
+    signed_binding.key_usage = RIBON_KEY_POLICY_USAGE_POLICY_RECOVERY;
+    binding.signed_policy = &signed_binding;
     CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, &binding);
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              &binding,
-              artifact->bytes,
-              artifact->size,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_VERIFICATION);
-    CHECK(fixture.fallback_calls == 1u);
-    CHECK(fixture.helper_calls == 0u);
+    initialize_fixture(&fixture, signed_a, &binding);
+    CHECK(execute_policy(&test, &fixture, signed_a, &binding,
+              signed_a->bytes, signed_a->size, 1u,
+              RIBON_RIBOS_POLICY_ACTIVATION_EXISTING, 0u,
+              &receipt) == RIBON_RIBOS_POLICY_STATUS_BAD_BINDING);
+    CHECK(fixture.fallback_calls == 1u && fixture.helper_calls == 0u);
 
-    binding = *generated;
-    CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, &binding);
-    ribon_host_lifecycle_fixture_set_timer_step(20000u);
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              &binding,
-              artifact->bytes,
-              artifact->size,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_VM_FAULT);
-    CHECK(receipt.outcome_kind == RIBOS_VM_OUTCOME_VM_FAULT);
-    CHECK(fixture.fallback_calls == 1u);
-    CHECK(receipt.recovery_notified == 1u);
-    CHECK(test.transaction.stage == RIBON_BOOT_STAGE_PREPARE_PROTOCOL);
+    CHECK(ribon_host_ribos_protected_state_provision(generated, 1u));
+    expect_authorization_failure(signed_a, generated,
+        signed_b->bytes, signed_b->size, 2u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_ROLLBACK);
+    CHECK(ribon_host_ribos_protected_state_provision(generated, 1u));
+    ribon_host_ribos_protected_state_corrupt();
+    expect_authorization_failure(signed_a, generated,
+        signed_a->bytes, signed_a->size, 1u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_INVALID);
 }
 
 static void
-test_action_commit_and_factory_fallback(
-    const struct TestArtifact *artifact)
+test_verifier_before_trial_mutation(
+    const struct TestArtifact *signed_a,
+    const struct TestArtifact *verifier_invalid)
 {
     struct TestTransaction test;
     struct RibonHostRibosFixture fixture;
@@ -575,75 +557,106 @@ test_action_commit_and_factory_fallback(
     const struct RibonRibosProductBinding *binding =
         ribon_generated_ribos_policy_binding();
 
+    CHECK(ribon_host_ribos_protected_state_provision(binding, 1u));
     CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, binding);
+    initialize_fixture(&fixture, signed_a, binding);
+    CHECK(execute_policy(&test, &fixture, signed_a, binding,
+              verifier_invalid->bytes, verifier_invalid->size, 2u,
+              RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL, 2u,
+              &receipt) == RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION);
+    CHECK(receipt.authorization_failure ==
+          RIBON_RIBOS_AUTHORIZATION_FAILURE_VERIFIER);
+    CHECK(initialize_transaction(&test));
+    initialize_fixture(&fixture, signed_a, binding);
+    CHECK(execute_policy(&test, &fixture, signed_a, binding,
+              signed_a->bytes, signed_a->size, 1u,
+              RIBON_RIBOS_POLICY_ACTIVATION_EXISTING, 0u,
+              &receipt) == RIBON_RIBOS_POLICY_STATUS_OK);
+}
+
+static void
+test_ab_confirm_and_fallback(
+    const struct TestArtifact *signed_a,
+    const struct TestArtifact *signed_b)
+{
+    struct TestTransaction test;
+    struct RibonHostRibosFixture fixture;
+    struct RibonRibosPolicyReceipt receipt;
+    struct RibonRibosPolicyStateReceipt state_receipt;
+    const struct RibonRibosProductBinding *binding =
+        ribon_generated_ribos_policy_binding();
+
+    CHECK(ribon_host_ribos_protected_state_provision(binding, 1u));
+    CHECK(initialize_transaction(&test));
+    initialize_fixture(&fixture, signed_a, binding);
+    CHECK(execute_policy(&test, &fixture, signed_a, binding,
+              signed_b->bytes, signed_b->size, 2u,
+              RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL, 2u,
+              &receipt) == RIBON_RIBOS_POLICY_STATUS_OK);
+    CHECK(receipt.rollback_authority == RIBON_PROTECTED_STATE_AUTHORITY_TRIAL);
+    CHECK(receipt.trial_attempts_remaining == 1u);
+    CHECK(ribon_ribos_policy_confirm(binding, 2u, &state_receipt) ==
+          RIBON_RIBOS_POLICY_STATUS_OK);
+    CHECK(state_receipt.confirmed_floor == 2u);
+    expect_authorization_failure(signed_a, binding,
+        signed_a->bytes, signed_a->size, 1u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_ROLLBACK);
+
+    CHECK(ribon_host_ribos_protected_state_provision(binding, 1u));
+    CHECK(initialize_transaction(&test));
+    initialize_fixture(&fixture, signed_a, binding);
     fixture.reject_action = 1u;
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              binding,
-              artifact->bytes,
-              artifact->size,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_ACTION_REJECTED);
-    CHECK(receipt.action_consumed == 0u);
-    CHECK(fixture.fallback_calls == 1u);
-    CHECK(ribon_host_lifecycle_fixture_write_count() == 0u);
-
+    CHECK(execute_policy(&test, &fixture, signed_a, binding,
+              signed_b->bytes, signed_b->size, 2u,
+              RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL, 2u,
+              &receipt) == RIBON_RIBOS_POLICY_STATUS_ACTION_REJECTED);
+    CHECK(receipt.action_consumed == 0u && fixture.fallback_calls == 1u);
+    CHECK(ribon_ribos_policy_fail_trial(binding, &state_receipt) ==
+          RIBON_RIBOS_POLICY_STATUS_OK);
+    CHECK(state_receipt.confirmed_floor == 1u);
     CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, binding);
-    ribon_host_lifecycle_fixture_set_failures(0u, 1u, 0u, 0u);
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              binding,
-              artifact->bytes,
-              artifact->size,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_COMMIT_FAILED);
-    CHECK(receipt.action_consumed == 1u);
-    CHECK(fixture.fallback_calls == 1u);
-    CHECK(test.transaction.stage == RIBON_BOOT_STAGE_FAILED);
-
-    CHECK(initialize_transaction(&test));
-    initialize_fixture(&fixture, artifact, binding);
-    CHECK(execute_policy(
-              &test,
-              &fixture,
-              artifact,
-              binding,
-              NULL,
-              0u,
-              &receipt) ==
-          RIBON_RIBOS_POLICY_STATUS_BAD_ARGUMENT);
-    CHECK(fixture.fallback_calls == 1u);
-    CHECK(fixture.helper_calls == 0u);
-    CHECK(fixture.last_failure.stage ==
-          RIBON_RIBOS_POLICY_STAGE_VALIDATE);
-    CHECK(test.transaction.stage == RIBON_BOOT_STAGE_PREPARE_PROTOCOL);
+    initialize_fixture(&fixture, signed_a, binding);
+    CHECK(execute_policy(&test, &fixture, signed_a, binding,
+              signed_a->bytes, signed_a->size, 1u,
+              RIBON_RIBOS_POLICY_ACTIVATION_EXISTING, 0u,
+              &receipt) == RIBON_RIBOS_POLICY_STATUS_OK);
 }
 
 int
 main(int argc, char **argv)
 {
-    struct TestArtifact artifact;
+    struct TestArtifact unsigned_artifact;
+    struct TestArtifact signed_a;
+    struct TestArtifact signed_b;
+    struct TestArtifact wrong_key;
+    struct TestArtifact verifier_invalid;
 
-    if (argc != 2 || !load_artifact(argv[1], &artifact)) {
-        fprintf(stderr, "usage: %s aggregate-ownership.rba\n", argv[0]);
+    if (argc != 6 ||
+        !load_artifact(argv[1], &unsigned_artifact) ||
+        !load_artifact(argv[2], &signed_a) ||
+        !load_artifact(argv[3], &signed_b) ||
+        !load_artifact(argv[4], &wrong_key) ||
+        !load_artifact(argv[5], &verifier_invalid)) {
+        fprintf(stderr, "usage: %s unsigned signed-a signed-b wrong-key verifier-invalid\n",
+                argv[0]);
         return 2;
     }
-    test_success(&artifact);
-    test_unsigned_and_corrupt_fallback(&artifact);
-    test_schema_budget_and_deadline_fallback(&artifact);
-    test_action_commit_and_factory_fallback(&artifact);
-    free(artifact.bytes);
+    test_signed_success(&signed_a);
+    test_hostile_authorization(
+        &signed_a, &signed_b, &unsigned_artifact, &wrong_key);
+    test_verifier_before_trial_mutation(&signed_a, &verifier_invalid);
+    test_ab_confirm_and_fallback(&signed_a, &signed_b);
+    free(unsigned_artifact.bytes);
+    free(signed_a.bytes);
+    free(signed_b.bytes);
+    free(wrong_key.bytes);
+    free(verifier_invalid.bytes);
     if (failures != 0) {
         fprintf(stderr, "ribos Ribon integration failures=%d\n", failures);
         return 1;
     }
-    puts("RIBOS-RIBON-INTEGRATION-OK adapter=generic binding=generated "
-         "commit=single fallback=factory-only evidence=host-object");
+    puts("RIBOS-RIBON-INTEGRATION-OK authorization=signed-ed25519 "
+         "rollback=protected-ab verifier=independent commit=single "
+         "fallback=factory-once evidence=host-runtime");
     return 0;
 }

@@ -102,6 +102,14 @@ RIBOS_VM_CALLS_LOOPS_TEST := $(TEST_BUILD_DIR)/ribos_vm_calls_loops_tests
 RIBOS_VM_HANDLES_TEST := $(TEST_BUILD_DIR)/ribos_vm_handles_tests
 RIBOS_VM_TERMINAL_TEST := $(TEST_BUILD_DIR)/ribos_vm_terminal_tests
 RIBOS_RIBON_INTEGRATION_TEST := $(TEST_BUILD_DIR)/ribos_ribon_integration_tests
+RIBOS_HOST_UNSIGNED := $(BUILD_ROOT)/ribos/fixtures/host-policy-unsigned.rba
+RIBOS_HOST_SIGNED_A := $(BUILD_ROOT)/ribos/fixtures/host-policy-a.rba
+RIBOS_HOST_SIGNED_B := $(BUILD_ROOT)/ribos/fixtures/host-policy-b.rba
+RIBOS_HOST_WRONG_KEY := $(BUILD_ROOT)/ribos/fixtures/host-policy-wrong-key.rba
+RIBOS_HOST_VERIFIER_INVALID_UNSIGNED := \
+	$(BUILD_ROOT)/ribos/fixtures/host-policy-verifier-invalid-unsigned.rba
+RIBOS_HOST_VERIFIER_INVALID := \
+	$(BUILD_ROOT)/ribos/fixtures/host-policy-verifier-invalid.rba
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_RUNNER := $(BUILD_ROOT)/tools/ribos-run
 SECURITY_BUILD_DIR := $(BUILD_ROOT)/security
@@ -122,6 +130,9 @@ SECURITY_PROVIDER_SRCS := \
 	src/plugins/security/ed25519/provider.c \
 	third_party/monocypher/4.0.3/monocypher.c \
 	third_party/monocypher/4.0.3/monocypher-ed25519.c
+HOST_SECURITY_SRCS := $(SECURITY_KEY_POLICY_SRCS) \
+	$(SECURITY_PROTECTED_STATE_SRCS) $(SECURITY_PROVIDER_SRCS)
+HOST_SECURITY_OBJS := $(HOST_SECURITY_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
 RIBOS_OBJECT_DIR := $(RIBOS_BUILD_DIR)/obj
@@ -758,10 +769,13 @@ $(eval $(call RIBOS_TARGET_OBJECT,runtime_interpreter,language/ribos/vm/src/runt
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_terminal,language/ribos/vm/src/runtime/terminal.c))
 
 $(RIBOS_POLICY_OBJ): src/plugins/policy/ribos/adapter.c \
-		include/Ribon/policy/ribos.h $(RIBOS_HEADERS) Makefile
+		include/Ribon/policy/ribos.h include/Ribon/security/key_policy.h \
+		include/Ribon/security/protected_state.h $(RIBOS_HEADERS) Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) \
 		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(HOST_SECURITY_OBJS): CPPFLAGS += $(SECURITY_INCLUDE_FLAGS)
 
 $(BUILD_DIR)/obj/src/environments/host/ribos_policy.o: \
 		src/environments/host/ribos_policy.c \
@@ -1204,31 +1218,84 @@ $(SDK_LIB): $(SDK_LIB_OBJS) Makefile
 $(HOST_REFERENCE): \
 	$(HOST_MAIN_OBJ) $(ARCH_OBJS) $(HOST_PRODUCT_OBJS) \
 	$(GENERATED_REGISTRY_O) $(RIBOS_POLICY_LIB) \
-	$(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB)
+	$(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB) $(HOST_SECURITY_OBJS)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(RIBOS_RIBON_INTEGRATION_TEST): \
 		tests/policy/ribos_integration_tests.c \
 		$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
 		$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) \
-		$(RIBOS_TARGET_CORE_LIB) Makefile
+		$(RIBOS_TARGET_CORE_LIB) $(HOST_SECURITY_OBJS) Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) \
 		$(RIBOS_TARGET_INCLUDE_FLAGS) \
 		tests/policy/ribos_integration_tests.c \
 		$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
 		$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) \
-		$(RIBOS_TARGET_CORE_LIB) -o $@
+		$(RIBOS_TARGET_CORE_LIB) $(HOST_SECURITY_OBJS) -o $@
+
+$(RIBOS_HOST_UNSIGNED): $(RIBOS_PARSER_PILOT) \
+		language/ribos/vm/tests/aggregate_ownership.rbs
+	@mkdir -p $(@D)
+	$(RIBOS_PARSER_PILOT) --emit-artifact $@ \
+		language/ribos/vm/tests/aggregate_ownership.rbs
+
+$(RIBOS_HOST_SIGNED_A): $(RIBOS_HOST_UNSIGNED) $(HOST_MANIFEST) \
+		tests/fixtures/security/rfc8032-test1-seed.hex tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py --input $< --output $@ \
+		--product-manifest $(HOST_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-host-reference-key \
+		--rollback-domain ribon.policy.host-reference.v1 \
+		--sequence 1 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+
+$(RIBOS_HOST_SIGNED_B): $(RIBOS_HOST_UNSIGNED) $(HOST_MANIFEST) \
+		tests/fixtures/security/rfc8032-test1-seed.hex tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py --input $< --output $@ \
+		--product-manifest $(HOST_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-host-reference-key \
+		--rollback-domain ribon.policy.host-reference.v1 \
+		--sequence 2 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+
+$(RIBOS_HOST_WRONG_KEY): $(RIBOS_HOST_UNSIGNED) $(HOST_MANIFEST) \
+		tests/fixtures/security/rfc8032-test1-seed.hex tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py --input $< --output $@ \
+		--product-manifest $(HOST_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-host-unknown-key \
+		--rollback-domain ribon.policy.host-reference.v1 \
+		--sequence 1 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+
+$(RIBOS_HOST_VERIFIER_INVALID_UNSIGNED): $(RIBOS_HOST_UNSIGNED) \
+		tools/make_ribos_verifier_invalid.py
+	$(PYTHON) tools/make_ribos_verifier_invalid.py --input $< --output $@
+
+$(RIBOS_HOST_VERIFIER_INVALID): $(RIBOS_HOST_VERIFIER_INVALID_UNSIGNED) \
+		$(HOST_MANIFEST) tests/fixtures/security/rfc8032-test1-seed.hex \
+		tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py --input $< --output $@ \
+		--product-manifest $(HOST_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-host-reference-key \
+		--rollback-domain ribon.policy.host-reference.v1 \
+		--sequence 2 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
 
 check-ribos-ribon-integration: $(RIBOS_RIBON_INTEGRATION_TEST) \
-		$(RIBOS_PARSER_PILOT)
-	@tmp=$$(mktemp -d); \
-		trap 'rm -rf "$$tmp"' EXIT; \
-		$(RIBOS_PARSER_PILOT) --emit-artifact \
-			"$$tmp/aggregate-ownership.rba" \
-			language/ribos/vm/tests/aggregate_ownership.rbs; \
-		$(RIBOS_RIBON_INTEGRATION_TEST) \
-			"$$tmp/aggregate-ownership.rba"
+		$(RIBOS_HOST_UNSIGNED) $(RIBOS_HOST_SIGNED_A) \
+		$(RIBOS_HOST_SIGNED_B) $(RIBOS_HOST_WRONG_KEY) \
+		$(RIBOS_HOST_VERIFIER_INVALID)
+	$(RIBOS_RIBON_INTEGRATION_TEST) $(RIBOS_HOST_UNSIGNED) \
+		$(RIBOS_HOST_SIGNED_A) $(RIBOS_HOST_SIGNED_B) \
+		$(RIBOS_HOST_WRONG_KEY) $(RIBOS_HOST_VERIFIER_INVALID)
 
 check-ribos-product-graphs:
 	$(PYTHON) tools/lint/ribos_product_graph_lint.py \
@@ -1640,7 +1707,8 @@ $(TEST_BUILD_DIR)/arch_ops_%_tests: \
 $(CORE_SERVICE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/core/service_boundary_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
-	$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB)
+	$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB) \
+	$(HOST_SECURITY_OBJS)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(PORT_SERVICE_TEST): \
@@ -1653,7 +1721,8 @@ $(PORT_SERVICE_TEST): \
 $(BOOT_LIFECYCLE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/boot/lifecycle_tests.o \
 	$(ARCH_OBJS) $(HOST_PRODUCT_OBJS) $(GENERATED_REGISTRY_O) \
-	$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB)
+	$(RIBOS_POLICY_LIB) $(BOOT_LIB) $(CORE_LIB) $(RIBOS_TARGET_CORE_LIB) \
+	$(HOST_SECURITY_OBJS)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(ENVIRONMENT_PERSISTENT_INPUTS_TEST): \

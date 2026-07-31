@@ -208,7 +208,7 @@
       "required": [
         "policy_id",
         "schema_symbol",
-        "authorize_symbol",
+        "authorization",
         "factory_recovery_symbol",
         "validate_boot_action_symbol",
         "timer_service_id",
@@ -224,7 +224,26 @@
       "properties": {
         "policy_id": {"type": "string", "minLength": 1},
         "schema_symbol": {"type": "string", "pattern": "^ribos_"},
-        "authorize_symbol": {"type": "string", "pattern": "^ribon_"},
+        "authorization": {
+          "type": "object",
+          "required": ["class", "callback_symbol", "rollback_domain"],
+          "properties": {
+            "class": {"enum": ["fixture-callback", "signed-policy"]},
+            "callback_symbol": {
+              "oneOf": [
+                {"type": "string", "pattern": "^ribon_"},
+                {"type": "null"}
+              ]
+            },
+            "rollback_domain": {
+              "oneOf": [
+                {"type": "string", "minLength": 1},
+                {"type": "null"}
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
         "factory_recovery_symbol": {"type": "string", "pattern": "^ribon_"},
         "validate_boot_action_symbol": {"type": "string", "pattern": "^ribon_"},
         "timer_service_id": {"type": "string", "minLength": 1},

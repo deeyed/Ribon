@@ -2,6 +2,7 @@
 #define RIBON_HOST_RIBOS_POLICY_H
 
 #include <Ribon/policy/ribos.h>
+#include <Ribon/security/protected_state.h>
 
 #include <ribos/vm/runtime.h>
 
@@ -16,17 +17,23 @@ struct RibonHostRibosFixture {
     uint32_t helper_calls;
     uint32_t fallback_calls;
     uint32_t drop_calls;
-    uint32_t reject_unsigned;
     uint32_t reject_action;
     uint32_t slot_object;
     uint32_t image_object;
     struct RibonRibosFailureReceipt last_failure;
 };
 
-uint32_t ribon_host_ribos_authorize(
-    void *context,
-    const struct RibosArtifactAuthorizationRequest *request,
-    struct RibosArtifactAuthorizationReceipt *receipt);
+/** @brief Host reference product의 volatile protected-state provider다. */
+extern const struct RibonProtectedStateProvider
+    ribon_host_protected_state_provider_descriptor;
+
+/** @brief Host reference rollback journal을 exact confirmed floor로 재구성한다. */
+int ribon_host_ribos_protected_state_provision(
+    const struct RibonRibosProductBinding *binding,
+    uint64_t confirmed_floor);
+
+/** @brief Host negative test를 위해 durable journal byte를 손상시킨다. */
+void ribon_host_ribos_protected_state_corrupt(void);
 
 void ribon_host_ribos_factory_recovery(
     void *context,

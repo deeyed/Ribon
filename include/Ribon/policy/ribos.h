@@ -16,6 +16,9 @@ struct RibosVmBootAction;
 struct RibosVmHelperCall;
 struct RibosVmHelperContract;
 struct RibosVmLimits;
+struct RibonKeyPolicyStore;
+struct RibonProtectedStateProductBinding;
+struct RibonSignatureProvider;
 
 /** @brief Ribon과 architecture-neutral Ribos VM 사이의 adapter ABI다. */
 #define RIBON_RIBOS_POLICY_ABI_VERSION 1u
@@ -52,6 +55,36 @@ enum RibonRibosPolicyStatus {
     RIBON_RIBOS_POLICY_STATUS_ACTION_REJECTED = -9,
     RIBON_RIBOS_POLICY_STATUS_COMMIT_FAILED = -10,
     RIBON_RIBOS_POLICY_STATUS_QUIESCE_FAILED = -11,
+    RIBON_RIBOS_POLICY_STATUS_ROLLBACK_STATE = -12,
+};
+
+/** @brief Product graph가 고정하는 policy authorization 구현 class다. */
+enum RibonRibosAuthorizationClass {
+    RIBON_RIBOS_AUTHORIZATION_INVALID = 0,
+    RIBON_RIBOS_AUTHORIZATION_FIXTURE_CALLBACK = 1,
+    RIBON_RIBOS_AUTHORIZATION_SIGNED_POLICY = 2,
+};
+
+/** @brief 한 signed policy request가 protected state에 요구하는 전이다. */
+enum RibonRibosPolicyActivation {
+    RIBON_RIBOS_POLICY_ACTIVATION_INVALID = 0,
+    RIBON_RIBOS_POLICY_ACTIVATION_EXISTING = 1,
+    RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL = 2,
+};
+
+/** @brief Signed policy authorization의 첫 fail-closed 원인 class다. */
+enum RibonRibosAuthorizationFailure {
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_NONE = 0,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_MALFORMED = 1,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_IDENTITY = 2,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_MODE_USAGE = 3,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_KEY_POLICY = 4,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_SIGNATURE = 5,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_UNAVAILABLE = 6,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_INVALID = 7,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_ROLLBACK = 8,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_VERIFIER = 9,
+    RIBON_RIBOS_AUTHORIZATION_FAILURE_FIXTURE = 10,
 };
 
 /**
@@ -71,9 +104,16 @@ struct RibonRibosFailureReceipt {
     uint32_t terminal_helper_id;
     uint32_t action_consumed;
     uint32_t recovery_notified;
+    enum RibonRibosAuthorizationFailure authorization_failure;
+    uint32_t rollback_authority;
     enum RibonBootLifecycleStage transaction_stage;
     uint64_t arena_bytes;
     uint64_t context_generation;
+    uint64_t manifest_sequence;
+    uint64_t rollback_floor;
+    uint64_t rollback_generation;
+    uint32_t trial_attempts_remaining;
+    uint32_t reserved0;
 };
 
 /**
@@ -103,6 +143,26 @@ typedef int (*RibonRibosValidateBootActionFn)(
     void *product_context,
     const struct RibosVmBootAction *action,
     const struct RibonBootTransaction *transaction);
+
+/**
+ * @brief Generated product가 signed policy를 exact trust/state authority에 묶는다.
+ *
+ * Digest와 provider pointer는 product image lifetime 동안 immutable하다. 이 binding은
+ * private key, raw storage address와 architecture timer를 포함하지 않는다.
+ */
+struct RibonRibosSignedPolicyBinding {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t trust_mode;
+    uint32_t key_usage;
+    uint8_t product_digest[32];
+    uint8_t rollback_domain_digest[32];
+    uint8_t policy_identity_digest[32];
+    const struct RibonSignatureProvider *signature_provider;
+    const struct RibonKeyPolicyStore *key_policy;
+    const struct RibonProtectedStateProductBinding *protected_state;
+    uint64_t reserved[4];
+};
 
 /** @brief Product graph가 한 helper를 service와 callback에 연결한 route다. */
 struct RibonRibosHelperRoute {
@@ -138,7 +198,9 @@ struct RibonRibosProductBinding {
     const char *timer_service_id;
     const char *watchdog_service_id;
     const struct RibosVmLimits *limits;
-    RibonRibosAuthorizeFn authorize;
+    enum RibonRibosAuthorizationClass authorization_class;
+    const struct RibonRibosSignedPolicyBinding *signed_policy;
+    RibonRibosAuthorizeFn fixture_authorize;
     RibonRibosFactoryRecoveryFn factory_recovery;
     RibonRibosValidateBootActionFn validate_boot_action;
 };
@@ -153,6 +215,9 @@ struct RibonRibosPolicyRequest {
     const uint8_t *context_bytes;
     size_t context_size;
     uint64_t context_generation;
+    enum RibonRibosPolicyActivation activation;
+    uint32_t trial_attempts;
+    uint64_t manifest_sequence;
     void *product_context;
     struct RibonBootTransaction *transaction;
 };
@@ -168,9 +233,29 @@ struct RibonRibosPolicyReceipt {
     uint32_t terminal_helper_id;
     uint32_t action_consumed;
     uint32_t recovery_notified;
+    enum RibonRibosAuthorizationFailure authorization_failure;
+    uint32_t rollback_authority;
     enum RibonBootLifecycleStage transaction_stage;
     uint64_t arena_bytes;
     uint64_t context_generation;
+    uint64_t manifest_sequence;
+    uint64_t rollback_floor;
+    uint64_t rollback_generation;
+    uint32_t trial_attempts_remaining;
+    uint32_t reserved0;
+};
+
+/** @brief Native health/failure authority가 수행한 policy-state 전이 receipt다. */
+struct RibonRibosPolicyStateReceipt {
+    uint32_t size;
+    uint32_t abi_version;
+    int32_t status;
+    uint32_t state_kind;
+    uint64_t confirmed_floor;
+    uint64_t pending_sequence;
+    uint64_t generation;
+    uint32_t trial_attempts_remaining;
+    uint32_t reserved0;
 };
 
 /** @brief Policy plugin이 노출하는 typed operation table이다. */
@@ -186,6 +271,27 @@ struct RibonRibosPolicyOperations {
 int ribon_ribos_policy_execute(
     const struct RibonRibosPolicyRequest *request,
     struct RibonRibosPolicyReceipt *receipt);
+
+/**
+ * @brief Boot Protocol health 검증 뒤 exact pending policy를 confirmed로 승격한다.
+ *
+ * 호출자는 protocol/product/slot/nonce health payload를 먼저 검증해야 한다. 함수는
+ * signed binding의 protected journal만 변경하며 VM이나 policy callback을 실행하지 않는다.
+ */
+int ribon_ribos_policy_confirm(
+    const struct RibonRibosProductBinding *binding,
+    uint64_t pending_sequence,
+    struct RibonRibosPolicyStateReceipt *receipt);
+
+/**
+ * @brief Pending policy를 폐기하고 기존 confirmed floor를 유지한다.
+ *
+ * Factory recovery 또는 update authority만 호출한다. 함수는 floor를 낮추지 않고
+ * 외부 artifact를 실행하지 않는다.
+ */
+int ribon_ribos_policy_fail_trial(
+    const struct RibonRibosProductBinding *binding,
+    struct RibonRibosPolicyStateReceipt *receipt);
 
 /** @brief Generated helper contract가 사용하는 단일 semantic dispatcher다. */
 uint32_t ribon_ribos_policy_helper_dispatch(

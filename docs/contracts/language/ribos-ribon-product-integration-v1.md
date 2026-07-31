@@ -69,7 +69,7 @@ product manifest
 - instruction, helper, stack, arena, I/O, operation, poll, duration, call-depth,
   handle와 trace limit
 - monotonic timer와 optional required watchdog service
-- product authorizer, factory recovery와 BootAction validator
+- authorization class와 signed trust/state binding, factory recovery와 BootAction validator
 
 Route와 helper binding은 stable ID가 strictly increasing해야 하며 두 table은 같은
 ID와 수량을 가져야 한다. Adapter는 generated digest를 다시 계산하고 artifact가
@@ -95,16 +95,22 @@ generated source와 linked object graph의 부재로 증명한다.
 
 ## Authorization과 arena
 
-Product authorizer는 product-bound 232-byte trust message, signature, key identity, rollback
-counter와 product trust policy를 소유한다. Generated immutable key store와 selected signature
-provider는 native authorizer 안에서만 결합한다. VM authorizer ABI는 pointer-free decision과
-receipt만 소비하며 generic adapter는 public key, store pointer, issuer chain이나 secure storage를
-해석하지 않는다.
+Generated `signed-policy` binding은 product-bound 232-byte trust message identity, production
+signature provider, immutable key store와 protected-state domain을 한 product closure로 묶는다.
+Generic Ribon adapter가 이 native authority를 결합하며 Ribos VM에는 pointer-free authorization
+receipt만 전달한다. Product callback은 더 이상 signature, key policy 또는 rollback 승인을 대체할
+수 없다. `fixture-callback` class는 production security selection과 함께 구성할 수 없고 test product
+에서만 명시적으로 선택한다.
 
 Authorization은 structural open, product/schema/mode/usage/domain identity, bounded key policy,
-Ed25519, protected rollback state, Stage-1/2 verifier 순서로 진행한다. Later stage 성공으로 앞선
-실패를 덮어쓰지 않으며 첫 stable failure class를 보존한다. Product callback은 artifact digest와
-schema digest만 보고 signature를 승인할 수 없다.
+Ed25519, protected rollback state, Stage-1/2 verifier 순서로 진행한다. 새 trial은 journal을 쓰기 전에
+candidate의 Stage-1/2 preflight를 통과해야 한다. Pending authority는 VM 실행 전에 durable attempt를
+하나 감소시킨다. Later stage 성공으로 앞선 실패를 덮어쓰지 않으며 첫 stable failure class를
+보존한다.
+
+`ribon_ribos_policy_confirm()`은 Boot Protocol과 product가 health payload를 검증한 뒤 exact pending
+sequence만 confirmed로 승격한다. `ribon_ribos_policy_fail_trial()`은 pending을 제거하되 기존
+confirmed floor를 유지한다. 두 API 모두 VM, external artifact와 product callback을 실행하지 않는다.
 
 Core가 제공한 `RibonArena`는 다음 순서로만 증가한다.
 
@@ -200,13 +206,14 @@ make check-object-graphs
 make check-ribos-vm
 ```
 
-Positive fixture는 real compiler가 만든 artifact를 generated binding으로 실행하여
+Positive fixture는 real compiler가 만든 Ed25519 signed artifact를 generated binding으로 실행하여
 semantic helper, single action consume, metadata write/flush, quiesce와 watchdog arm을
-검사한다. Negative fixture는 unsigned rejection, corrupt artifact, schema mismatch,
-instruction/deadline fault, action rejection, post-consume commit failure와 missing
-external artifact recovery를 검사한다.
+검사한다. Negative fixture는 unsigned, wrong key/product/schema/mode/sequence, corrupt journal,
+correctly signed verifier-invalid candidate, action rejection과 factory-once recovery를 검사한다.
+A/B fixture는 trial attempt 선차감, exact confirmation, 이전 sequence 거부와 failed trial 뒤
+기존 confirmed policy 복귀를 검사한다.
 
 별도 `make check-ribos-r18`은 같은 artifact, generated key-policy store와 binding 의미를 AMD64,
-AArch64와 RISC-V 64 QEMU guest에서 실행한다. 이 추가 증거도 production signature,
-private-key custody, rollback secure storage, recovery network/flash, QEMU OS transfer 또는 physical
-hardware 실행을 증명하지 않는다.
+AArch64와 RISC-V 64 QEMU guest에서 실행한다. 이 추가 증거도 production key custody, hardware
+anti-replay storage, recovery network/flash, QEMU OS transfer 또는 physical hardware 실행을
+증명하지 않는다.

@@ -20,6 +20,8 @@ qstar.staticlib "libribon_policy_ribos" {
   deps = {
     "//src/common:libribon_boot",
     "//src/core:libribon_core",
+    "//src/security:libribon_security_key_policy",
+    "//src/security:libribon_security_protected_state",
   },
   configs = {
     "//qstar/policies:ribon_ribos_target_c",

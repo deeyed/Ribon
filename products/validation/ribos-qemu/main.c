@@ -411,6 +411,8 @@ execute_policy(
             .context_bytes = context,
             .context_size = artifact->context_size,
             .context_generation = 18u,
+            .activation = RIBON_RIBOS_POLICY_ACTIVATION_EXISTING,
+            .manifest_sequence = 18u,
             .product_context = fixture,
             .transaction = &transaction->transaction,
         },

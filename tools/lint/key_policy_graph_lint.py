@@ -39,13 +39,10 @@ def load_generator():
 
 
 def require_native_boundary() -> None:
-    """Reject trust-store or public-key authority from the Ribos VM/adapter surface."""
+    """Reject trust-store or public-key authority from the Ribos language/VM."""
 
-    roots = [
-        ROOT / "language" / "ribos",
-        ROOT / "src" / "plugins" / "policy" / "ribos",
-    ]
-    files = [ROOT / "include" / "Ribon" / "policy" / "ribos.h"]
+    roots = [ROOT / "language" / "ribos"]
+    files: list[Path] = []
     for root in roots:
         files.extend(
             path for path in root.rglob("*")

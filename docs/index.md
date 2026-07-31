@@ -137,6 +137,7 @@ adr/0040-product-bound-policy-trust
 adr/0041-freestanding-ed25519-provider
 adr/0042-product-bound-key-policy-engine
 adr/0043-protected-rollback-state-journal
+adr/0044-signed-ribos-authorization-pipeline
 ```
 
 ```{toctree}
@@ -209,4 +210,5 @@ log/2026-07-31-r03-production-trust-contracts
 log/2026-07-31-r04-freestanding-ed25519
 log/2026-08-01-r05-product-bound-key-policy
 log/2026-08-01-r06-protected-rollback-state
+log/2026-08-01-r07-signed-ribos-authorization
 ```
