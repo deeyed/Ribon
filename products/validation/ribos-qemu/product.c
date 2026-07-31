@@ -4,6 +4,7 @@
 #include <Ribon/plugin/registry.h>
 #include <Ribon/security/ed25519.h>
 #include <Ribon/security/key_policy.h>
+#include <Ribon/security/protected_state.h>
 #include <Ribon/service/directory.h>
 
 #include <ribos/artifact/format.h>
@@ -30,9 +31,117 @@ struct ValidationLifecycle {
     uint32_t flushes;
     uint32_t quiesces;
     uint32_t watchdog_arms;
+    uint8_t protected_durable[2][2][RIBON_PROTECTED_STATE_RECORD_BYTES];
+    uint8_t protected_pending[2][2][RIBON_PROTECTED_STATE_RECORD_BYTES];
+    uint8_t protected_pending_valid[2][2];
 };
 
 static struct ValidationLifecycle lifecycle;
+
+/** @brief Diagnostic reference provider가 nonzero domain만 받도록 검사한다. */
+static int
+validation_protected_domain_is_valid(const uint8_t *domain)
+{
+    uint32_t index;
+    uint8_t value = 0u;
+
+    if (domain == NULL) {
+        return 0;
+    }
+    for (index = 0u; index < RIBON_PROTECTED_STATE_DIGEST_BYTES; ++index) {
+        value |= domain[index];
+    }
+    return value != 0u;
+}
+
+/** @brief Diagnostic durable array에서 exact logical object를 읽는다. */
+static int
+validation_protected_read(
+    const struct RibonProtectedStateProvider *provider,
+    const uint8_t domain[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    enum RibonProtectedStateObject object,
+    uint32_t slot,
+    uint8_t *bytes,
+    size_t size)
+{
+    const uint32_t object_index = (uint32_t)object - 1u;
+
+    if (provider == NULL || provider->context != &lifecycle ||
+        !validation_protected_domain_is_valid(domain) || bytes == NULL ||
+        object_index >= 2u || slot >= 2u ||
+        size != RIBON_PROTECTED_STATE_RECORD_BYTES) {
+        return RIBON_PROTECTED_STATE_PROVIDER_IO_ERROR;
+    }
+    memcpy(bytes, lifecycle.protected_durable[object_index][slot], size);
+    return RIBON_PROTECTED_STATE_PROVIDER_OK;
+}
+
+/** @brief Diagnostic pending array에 exact logical object를 쓴다. */
+static int
+validation_protected_write(
+    const struct RibonProtectedStateProvider *provider,
+    const uint8_t domain[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    enum RibonProtectedStateObject object,
+    uint32_t slot,
+    const uint8_t *bytes,
+    size_t size)
+{
+    const uint32_t object_index = (uint32_t)object - 1u;
+
+    if (provider == NULL || provider->context != &lifecycle ||
+        !validation_protected_domain_is_valid(domain) || bytes == NULL ||
+        object_index >= 2u || slot >= 2u ||
+        size != RIBON_PROTECTED_STATE_RECORD_BYTES) {
+        return RIBON_PROTECTED_STATE_PROVIDER_IO_ERROR;
+    }
+    memcpy(lifecycle.protected_pending[object_index][slot], bytes, size);
+    lifecycle.protected_pending_valid[object_index][slot] = 1u;
+    return RIBON_PROTECTED_STATE_PROVIDER_OK;
+}
+
+/** @brief Diagnostic pending array를 in-memory durable array에 반영한다. */
+static int
+validation_protected_flush(
+    const struct RibonProtectedStateProvider *provider,
+    const uint8_t domain[RIBON_PROTECTED_STATE_DIGEST_BYTES])
+{
+    uint32_t object;
+    uint32_t slot;
+
+    if (provider == NULL || provider->context != &lifecycle ||
+        !validation_protected_domain_is_valid(domain)) {
+        return RIBON_PROTECTED_STATE_PROVIDER_IO_ERROR;
+    }
+    for (object = 0u; object < 2u; ++object) {
+        for (slot = 0u; slot < 2u; ++slot) {
+            if (lifecycle.protected_pending_valid[object][slot] == 0u) {
+                continue;
+            }
+            memcpy(lifecycle.protected_durable[object][slot],
+                   lifecycle.protected_pending[object][slot],
+                   RIBON_PROTECTED_STATE_RECORD_BYTES);
+            lifecycle.protected_pending_valid[object][slot] = 0u;
+        }
+    }
+    return RIBON_PROTECTED_STATE_PROVIDER_OK;
+}
+
+const struct RibonProtectedStateProvider
+ribon_validation_protected_state_provider_descriptor = {
+    .magic = RIBON_PROTECTED_STATE_PROVIDER_MAGIC,
+    .size = sizeof(ribon_validation_protected_state_provider_descriptor),
+    .abi_version = RIBON_PROTECTED_STATE_ABI_VERSION,
+    .provider_class = RIBON_PROTECTED_STATE_PROVIDER_CLASS_REFERENCE,
+    .record_slots = RIBON_PROTECTED_STATE_RECORD_SLOTS,
+    .selector_slots = RIBON_PROTECTED_STATE_RECORD_SLOTS,
+    .record_bytes = RIBON_PROTECTED_STATE_RECORD_BYTES,
+    .selector_bytes = RIBON_PROTECTED_STATE_SELECTOR_BYTES,
+    .id = "security.protected-state.reference.ribos-qemu-validation",
+    .context = &lifecycle,
+    .read = validation_protected_read,
+    .write = validation_protected_write,
+    .flush = validation_protected_flush,
+};
 
 static const struct RibonMemoryRegion validation_memory_map[] = {
     {

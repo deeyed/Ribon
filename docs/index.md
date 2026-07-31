@@ -54,6 +54,7 @@ contracts/composition/product-plugin-composition
 contracts/security/signed-object-trust-v1
 contracts/security/signature-provider-v1
 contracts/security/key-policy-rollback-v1
+contracts/security/protected-state-journal-v1
 contracts/frontends/environment-port-image-boundary
 contracts/frontends/raw-fdt-boot-module-bundle
 contracts/storage/deterministic-boot-media
@@ -135,6 +136,7 @@ adr/0039-raw-fdt-typed-module-bundle
 adr/0040-product-bound-policy-trust
 adr/0041-freestanding-ed25519-provider
 adr/0042-product-bound-key-policy-engine
+adr/0043-protected-rollback-state-journal
 ```
 
 ```{toctree}
@@ -206,4 +208,5 @@ log/2026-07-31-rfdt-mod0-typed-boot-modules
 log/2026-07-31-r03-production-trust-contracts
 log/2026-07-31-r04-freestanding-ed25519
 log/2026-08-01-r05-product-bound-key-policy
+log/2026-08-01-r06-protected-rollback-state
 ```

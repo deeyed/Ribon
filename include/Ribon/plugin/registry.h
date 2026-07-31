@@ -9,6 +9,7 @@
 
 struct RibonSignatureProvider;
 struct RibonKeyPolicyStore;
+struct RibonProtectedStateProductBinding;
 
 /** @brief Generated immutable plugin pointer array다. */
 struct RibonPluginRegistry {
@@ -56,5 +57,9 @@ const struct RibonSignatureProvider *ribon_generated_signature_provider(void);
 
 /** @brief Product graph가 생성한 immutable key-policy store 또는 NULL을 반환한다. */
 const struct RibonKeyPolicyStore *ribon_generated_key_policy_store(void);
+
+/** @brief Product graph가 생성한 protected-state binding 또는 NULL을 반환한다. */
+const struct RibonProtectedStateProductBinding *
+ribon_generated_protected_state_binding(void);
 
 #endif

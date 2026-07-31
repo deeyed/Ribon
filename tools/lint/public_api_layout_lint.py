@@ -40,6 +40,7 @@ REQUIRED = {
     "sdk/host.h",
     "security/ed25519.h",
     "security/key_policy.h",
+    "security/protected_state.h",
     "security/signature.h",
 }
 FORBIDDEN_FLAT = {

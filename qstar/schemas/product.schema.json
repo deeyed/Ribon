@@ -83,6 +83,23 @@
         "symbol": {"type": "string", "pattern": "^ribon_"}
       }
     },
+    "protected_state_provider": {
+      "type": "object",
+      "required": ["class", "id", "rollback_domains", "symbol"],
+      "additionalProperties": false,
+      "properties": {
+        "class": {"enum": ["hardware", "reference", "fixture"]},
+        "id": {"type": "string", "pattern": "^security\\.protected-state\\."},
+        "rollback_domains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "symbol": {"type": "string", "pattern": "^ribon_"}
+      }
+    },
     "key_policy": {
       "type": "object",
       "required": ["generation", "id", "keys"],

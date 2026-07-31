@@ -2,17 +2,20 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-26
+last_verified: 2026-08-01
 code_paths:
   - src/plugins/update/
   - src/plugins/policy/
   - src/plugins/storage/
   - src/protocols/
   - products/
+  - include/Ribon/security/protected_state.h
+  - src/security/protected_state.c
 tests:
   - ribon-update-state-machine
   - ribon-update-power-loss-test
   - ribon-update-rollback-test
+  - make check-security-protected-state
 hardware:
   - none
 supersedes:

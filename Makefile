@@ -109,8 +109,14 @@ SECURITY_TEST := $(TEST_BUILD_DIR)/ed25519_provider_tests
 SECURITY_SANITIZER_TEST := $(TEST_BUILD_DIR)/ed25519_provider_sanitizer_tests
 KEY_POLICY_TEST := $(TEST_BUILD_DIR)/key_policy_tests
 KEY_POLICY_SANITIZER_TEST := $(TEST_BUILD_DIR)/key_policy_sanitizer_tests
+PROTECTED_STATE_TEST := $(TEST_BUILD_DIR)/protected_state_tests
+PROTECTED_STATE_SANITIZER_TEST := \
+	$(TEST_BUILD_DIR)/protected_state_sanitizer_tests
 SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
 SECURITY_KEY_POLICY_SRCS := src/security/key_policy.c
+SECURITY_PROTECTED_STATE_SRCS := \
+	src/security/sha256.c \
+	src/security/protected_state.c
 SECURITY_PROVIDER_SRCS := \
 	src/security/signature.c \
 	src/plugins/security/ed25519/provider.c \
@@ -555,6 +561,7 @@ RIBOS_R18_COMMON_SRCS := \
 	src/protocols/synthetic/protocol.c \
 	src/plugins/policy/ribos/adapter.c \
 	$(SECURITY_KEY_POLICY_SRCS) \
+	$(SECURITY_PROTECTED_STATE_SRCS) \
 	$(SECURITY_PROVIDER_SRCS) \
 	products/validation/ribos-qemu/product.c \
 	products/validation/ribos-qemu/main.c
@@ -1480,6 +1487,29 @@ check-security-key-policy: $(KEY_POLICY_TEST)
 check-security-key-policy-sanitizer: $(KEY_POLICY_SANITIZER_TEST)
 	$(KEY_POLICY_SANITIZER_TEST)
 
+$(PROTECTED_STATE_TEST): tests/security/protected_state_tests.c \
+		$(SECURITY_PROTECTED_STATE_SRCS) \
+		src/security/sha256.h include/Ribon/security/protected_state.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) \
+		tests/security/protected_state_tests.c \
+		$(SECURITY_PROTECTED_STATE_SRCS) -o $@
+
+$(PROTECTED_STATE_SANITIZER_TEST): tests/security/protected_state_tests.c \
+		$(SECURITY_PROTECTED_STATE_SRCS) \
+		src/security/sha256.h include/Ribon/security/protected_state.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		tests/security/protected_state_tests.c \
+		$(SECURITY_PROTECTED_STATE_SRCS) -o $@
+
+check-security-protected-state: $(PROTECTED_STATE_TEST)
+	$(PROTECTED_STATE_TEST)
+
+check-security-protected-state-sanitizer: $(PROTECTED_STATE_SANITIZER_TEST)
+	$(PROTECTED_STATE_SANITIZER_TEST)
+
 check-security-ed25519-cross-compile:
 	@set -e; \
 	for target in x86_64 aarch64 riscv64; do \
@@ -1523,6 +1553,16 @@ check-security-key-policy-graphs: check-ribos-cross-arch-objects
 		--image $(RIBOS_R18_AMD64_APP) \
 		--image $(RIBOS_R18_AARCH64_ELF) \
 		--image $(RIBOS_R18_RISCV64_ELF)
+
+check-security-protected-state-graphs: check-ribos-cross-arch-objects
+	$(PYTHON) tools/lint/protected_state_graph_lint.py \
+		--manifest $(RIBOS_R18_MANIFEST) \
+		--graph $(RIBOS_R18_AMD64_GRAPH) \
+		--graph $(RIBOS_R18_AARCH64_GRAPH) \
+		--graph $(RIBOS_R18_RISCV64_GRAPH) \
+		--map $(RIBOS_R18_AMD64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_AARCH64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_RISCV64_DIR)/ribon-ribos.map
 
 check-ribos-cross-arch-qemu: \
 		$(RIBOS_R18_AMD64_ESP)/EFI/BOOT/BOOTX64.EFI \
@@ -2469,6 +2509,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-security-ed25519-cross-compile check-security-provider-graphs \
 	check-security-key-policy check-security-key-policy-sanitizer \
 	check-security-key-policy-graphs \
+	check-security-protected-state check-security-protected-state-sanitizer \
+	check-security-protected-state-graphs \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

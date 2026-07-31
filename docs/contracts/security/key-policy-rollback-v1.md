@@ -10,11 +10,15 @@ code_paths:
   - language/ribos/vm/include/ribos/vm/prepared.h
   - qstar/schemas/product.schema.json
   - tools/generate_plugin_registry.py
+  - include/Ribon/security/protected_state.h
+  - src/security/protected_state.c
 tests:
   - make check-security-key-policy
   - make check-security-key-policy-sanitizer
   - make check-security-key-policy-graphs
   - make check-ribos-r18
+  - make check-security-protected-state
+  - make check-security-protected-state-graphs
   - ribon-trust-message-vector-v1
 hardware:
   - none
@@ -189,8 +193,9 @@ prepare new generation
   -> flush
 ```
 
-Partial, staging 또는 readback-invalid record는 authorization state가 아니다. Reference journal의
-codec와 fault injection은 별도 구현 계약이 소유한다.
+Partial, staging 또는 readback-invalid record는 authorization state가 아니다. 두 record와 두
+selector의 exact codec, commit ordering과 fault-injection 범위는
+{doc}`protected-state-journal-v1` 계약이 소유한다.
 
 ## Policy가 할 수 없는 일
 

@@ -131,6 +131,7 @@ BOOT_MODULE_BUNDLE_KEYS = {
     "provider",
 }
 SIGNATURE_PROVIDER_KEYS = {"algorithm", "class", "id", "symbol"}
+PROTECTED_STATE_PROVIDER_KEYS = {"class", "id", "rollback_domains", "symbol"}
 KEY_POLICY_KEYS = {"generation", "id", "keys"}
 KEY_POLICY_RECORD_KEYS = {
     "id",
@@ -161,6 +162,11 @@ KEY_POLICY_LIFECYCLES = {
     "active": "RIBON_KEY_POLICY_LIFECYCLE_ACTIVE",
     "retiring": "RIBON_KEY_POLICY_LIFECYCLE_RETIRING",
     "revoked": "RIBON_KEY_POLICY_LIFECYCLE_REVOKED",
+}
+PROTECTED_STATE_PROVIDER_CLASSES = {
+    "hardware": "RIBON_PROTECTED_STATE_PROVIDER_CLASS_HARDWARE",
+    "reference": "RIBON_PROTECTED_STATE_PROVIDER_CLASS_REFERENCE",
+    "fixture": "RIBON_PROTECTED_STATE_PROVIDER_CLASS_FIXTURE",
 }
 RIBOS_CAPABILITIES = {
     "INSPECT": 1 << 0,
@@ -359,6 +365,42 @@ def _signature_provider(
     ):
         raise ValueError("signature_provider must select one typed Ed25519 provider")
     return {key: str(value[key]) for key in sorted(SIGNATURE_PROVIDER_KEYS)}
+
+
+def _protected_state_provider(
+    manifest: dict[str, object],
+) -> dict[str, object] | None:
+    """Validate one provider and derive its source-independent domain table."""
+
+    value = manifest.get("protected_state_provider")
+    if value is None:
+        return None
+    if (
+        not isinstance(value, dict)
+        or set(value) != PROTECTED_STATE_PROVIDER_KEYS
+        or value.get("class") not in {"hardware", "reference", "fixture"}
+        or not isinstance(value.get("id"), str)
+        or not str(value["id"]).startswith("security.protected-state.")
+        or not isinstance(value.get("symbol"), str)
+        or not str(value["symbol"]).startswith("ribon_")
+    ):
+        raise ValueError("protected_state_provider must select one typed provider")
+    domains = _key_policy_string_list(
+        value.get("rollback_domains"),
+        "protected-state rollback domains",
+        maximum=8,
+    )
+    if any(len(domain.encode("utf-8")) > 128 or "\0" in domain for domain in domains):
+        raise ValueError("protected-state domain IDs must be 1..128 non-NUL UTF-8 bytes")
+    manifest["_protected_state_domain_digests"] = sorted(
+        hashlib.sha256(domain.encode("utf-8")).digest() for domain in domains
+    )
+    return {
+        "class": str(value["class"]),
+        "id": str(value["id"]),
+        "rollback_domains": domains,
+        "symbol": str(value["symbol"]),
+    }
 
 
 def _key_policy_ascii_id(value: object, field: str) -> str:
@@ -1046,10 +1088,31 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         manifest,
         manifest["_source_manifest_digest"],
     )
-    if (manifest["signature_provider"] is None) != (manifest["key_policy"] is None):
+    manifest["protected_state_provider"] = _protected_state_provider(manifest)
+    security_selections = (
+        manifest["signature_provider"],
+        manifest["key_policy"],
+        manifest["protected_state_provider"],
+    )
+    if any(value is None for value in security_selections) and any(
+        value is not None for value in security_selections
+    ):
         raise ValueError(
-            "signature_provider and immutable key_policy must be selected together"
+            "signature, key-policy, and protected-state selections must be complete"
         )
+    if manifest["key_policy"] is not None:
+        protected = manifest["protected_state_provider"]
+        signature = manifest["signature_provider"]
+        assert isinstance(protected, dict) and isinstance(signature, dict)
+        policy_domains = sorted({
+            domain
+            for record in manifest["key_policy"]["keys"]
+            for domain in record["rollback_domains"]
+        })
+        if protected["rollback_domains"] != policy_domains:
+            raise ValueError("protected-state domains must exactly cover key-policy domains")
+        if (signature["class"] == "fixture") != (protected["class"] == "fixture"):
+            raise ValueError("fixture signature and protected-state providers cannot mix")
     return manifest
 
 
@@ -1238,6 +1301,54 @@ static const struct RibonKeyPolicyStore generated_key_policy_store = {{
 
 const struct RibonKeyPolicyStore *ribon_generated_key_policy_store(void) {{
     return &generated_key_policy_store;
+}}
+"""
+
+
+def _render_protected_state(manifest: dict[str, object]) -> str:
+    """Render one provider/domain binding or an explicit null getter."""
+
+    provider = manifest.get("protected_state_provider")
+    if provider is None:
+        return """
+const struct RibonProtectedStateProductBinding *
+ribon_generated_protected_state_binding(void) {
+    return 0;
+}
+"""
+    assert isinstance(provider, dict)
+    digests = manifest["_protected_state_domain_digests"]
+    assert isinstance(digests, list)
+    rows = ",\n".join(
+        "    { " + _c_bytes(digest) + " }"
+        for digest in digests
+        if isinstance(digest, bytes)
+    )
+    symbol = str(provider["symbol"])
+    provider_class = PROTECTED_STATE_PROVIDER_CLASSES[str(provider["class"])]
+    return f"""
+extern const struct RibonProtectedStateProvider {symbol};
+
+static const uint8_t generated_protected_state_domains[]
+    [RIBON_PROTECTED_STATE_DIGEST_BYTES] = {{
+{rows}
+}};
+
+static const struct RibonProtectedStateProductBinding
+generated_protected_state_binding = {{
+    .size = sizeof(generated_protected_state_binding),
+    .abi_version = RIBON_PROTECTED_STATE_ABI_VERSION,
+    .provider_class = {provider_class},
+    .provider = &{symbol},
+    .domain_digests = generated_protected_state_domains,
+    .domain_count = (uint32_t)(
+        sizeof(generated_protected_state_domains) /
+        sizeof(generated_protected_state_domains[0])),
+}};
+
+const struct RibonProtectedStateProductBinding *
+ribon_generated_protected_state_binding(void) {{
+    return &generated_protected_state_binding;
 }}
 """
 
@@ -1496,6 +1607,7 @@ def render(manifest: dict[str, object]) -> str:
     allowed = _capability_expression(manifest["allowed_capabilities"])  # type: ignore[arg-type]
     ribos_policy = _render_ribos_policy(manifest)
     key_policy = _render_key_policy(manifest)
+    protected_state = _render_protected_state(manifest)
     signature_extern = (
         "extern const struct RibonSignatureProvider " +
         str(signature_provider["symbol"]) + ";"
@@ -1513,6 +1625,7 @@ def render(manifest: dict[str, object]) -> str:
     return f"""/* Generated by tools/generate_plugin_registry.py; do not edit. */
 #include <Ribon/plugin/registry.h>
 #include <Ribon/security/key_policy.h>
+#include <Ribon/security/protected_state.h>
 #include <Ribon/security/signature.h>
 {ribos_includes}
 
@@ -1525,6 +1638,7 @@ static const uint8_t generated_product_source_digest[32] = {{
 }};
 
 {key_policy}
+{protected_state}
 
 static const struct RibonPluginDescriptor *const generated_plugins[] = {{
 {pointers}
@@ -1640,6 +1754,11 @@ def main() -> int:
             "key_policy_digest_sha256": (
                 manifest["_key_policy_digest"].hex()
                 if manifest.get("key_policy") is not None else None
+            ),
+            "protected_state_provider": manifest.get("protected_state_provider"),
+            "protected_state_domain_digests_sha256": (
+                [digest.hex() for digest in manifest["_protected_state_domain_digests"]]
+                if manifest.get("protected_state_provider") is not None else None
             ),
             "ribos_policy": manifest.get("ribos_policy"),
             "source_manifest": str(args.manifest),

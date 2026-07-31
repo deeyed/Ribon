@@ -110,6 +110,14 @@ def derive_manifest(source: dict[str, object]) -> dict[str, object]:
             }
         ],
     }
+    manifest["protected_state_provider"] = {
+        "class": "reference",
+        "id": "security.protected-state.reference.ribos-qemu-validation",
+        "rollback_domains": [
+            "ribon.policy.ribos-qemu-validation.v1"
+        ],
+        "symbol": "ribon_validation_protected_state_provider_descriptor",
+    }
     policy = manifest["ribos_policy"]
     assert isinstance(policy, dict)
     policy["policy_id"] = "policy.ribos.qemu-validation.v1"

@@ -205,6 +205,9 @@ def main() -> int:
     mutation = copy.deepcopy(base)
     del mutation["signature_provider"]
     reject(composer, mutation)
+    mutation = copy.deepcopy(base)
+    del mutation["protected_state_provider"]
+    reject(composer, mutation)
 
     print(
         "RIBON-KEY-POLICY-MANIFEST-OK deterministic=yes records=1..32 "

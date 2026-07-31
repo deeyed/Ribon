@@ -208,6 +208,47 @@ qstar.test_suite "security_key_policy_tests" {
   description = qstar.status("Product-bound key authorization and graph isolation"),
 }
 
+qstar.test "security_protected_state_unit" {
+  sources = {
+    "tests/security/protected_state_tests.c",
+  },
+  deps = {
+    "//src/security:libribon_security_protected_state",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.run_target "security_protected_state_graphs" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-security-protected-state",
+    "check-security-protected-state",
+    "check-security-protected-state-graphs",
+  },
+  timeout = 240,
+  expect = {
+    contains = "RIBON-PROTECTED-STATE-GRAPHS-OK",
+  },
+  description = qstar.status("Verifying protected rollback-state closure"),
+}
+
+qstar.test_suite "security_protected_state_tests" {
+  tests = {
+    "//tests:security_protected_state_unit",
+    "//tests:security_protected_state_graphs",
+  },
+  tags = {
+    "host",
+    "security",
+    "protected-state",
+    "fault-injection",
+  },
+  description = qstar.status("Redundant journal and rollback state machine"),
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
@@ -223,5 +264,7 @@ qstar.group "ribon_tests" {
     "//tests:security_ed25519_provider_graphs",
     "//tests:security_key_policy_unit",
     "//tests:security_key_policy_graphs",
+    "//tests:security_protected_state_unit",
+    "//tests:security_protected_state_graphs",
   },
 }
