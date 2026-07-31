@@ -14,6 +14,7 @@ RISCV64_CC ?= /opt/homebrew/opt/llvm@20/bin/clang
 LD_LLD ?= /opt/homebrew/bin/ld.lld
 LLD_LINK ?= /opt/homebrew/bin/lld-link
 OBJCOPY ?= /opt/homebrew/opt/llvm@20/bin/llvm-objcopy
+LLVM_AR ?= /opt/homebrew/opt/llvm@20/bin/llvm-ar
 QEMU_AARCH64 ?= /opt/homebrew/bin/qemu-system-aarch64
 QEMU_X86_64 ?= /opt/homebrew/bin/qemu-system-x86_64
 QEMU_RISCV64 ?= /opt/homebrew/bin/qemu-system-riscv64
@@ -27,7 +28,8 @@ CPPFLAGS += -I$(ROOT)/include
 FREESTANDING_FLAGS := -std=c11 -O2 -ffreestanding -fno-builtin \
 	-fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-Wall -Wextra -Werror -I$(ROOT)/include/freestanding -I$(ROOT)/include
-AARCH64_FLAGS := --target=aarch64-none-elf $(FREESTANDING_FLAGS) -mgeneral-regs-only
+AARCH64_FLAGS := --target=aarch64-none-elf $(FREESTANDING_FLAGS) \
+	-mgeneral-regs-only -mstrict-align
 RISCV64_FLAGS := --target=riscv64-none-elf $(FREESTANDING_FLAGS) \
 	-march=rv64gc -mabi=lp64d -mcmodel=medany
 UEFI_FLAGS := --target=x86_64-pc-win32-coff $(FREESTANDING_FLAGS) \
@@ -137,6 +139,21 @@ RIBOS_TARGET_CORE_OBJS := \
 	$(RIBOS_OBJECT_DIR)/target/runtime_helpers.o \
 	$(RIBOS_OBJECT_DIR)/target/runtime_interpreter.o \
 	$(RIBOS_OBJECT_DIR)/target/runtime_terminal.o
+RIBOS_TARGET_CORE_SRCS := \
+	language/ribos/base/src/allocator.c \
+	language/ribos/base/src/checked.c \
+	language/ribos/base/src/writer.c \
+	language/ribos/schema/src/schema.c \
+	language/ribos/artifact/src/wire.c \
+	language/ribos/artifact/src/sha256.c \
+	language/ribos/artifact/src/codec.c \
+	language/ribos/vm/src/verifier.c \
+	language/ribos/vm/src/prepared.c \
+	language/ribos/vm/src/runtime/storage.c \
+	language/ribos/vm/src/runtime/handles.c \
+	language/ribos/vm/src/runtime/helpers.c \
+	language/ribos/vm/src/runtime/interpreter.c \
+	language/ribos/vm/src/runtime/terminal.c
 RIBOS_HOST_SUPPORT_OBJS := \
 	$(RIBOS_OBJECT_DIR)/host-support/allocator.o \
 	$(RIBOS_OBJECT_DIR)/host-support/format.o \
@@ -421,6 +438,97 @@ UEFI_OBJS := $(UEFI_SRCS:%.c=$(UEFI_DIR)/obj/%.o)
 UEFI_OBJS += \
 	$(UEFI_DIR)/obj/generated/plugin_registry.o
 
+RIBOS_R18_DIR := $(TARGET_BUILD_ROOT)/ribos-r18
+RIBOS_R18_MANIFEST := $(RIBOS_R18_DIR)/generated/product.json
+RIBOS_R18_UNSIGNED_A := $(RIBOS_R18_DIR)/generated/policy-a.rba
+RIBOS_R18_UNSIGNED_B := $(RIBOS_R18_DIR)/generated/policy-b.rba
+RIBOS_R18_ARTIFACT := $(RIBOS_R18_DIR)/generated/policy-signed.rba
+RIBOS_R18_ARTIFACT_B := $(RIBOS_R18_DIR)/generated/policy-signed-b.rba
+RIBOS_R18_GOLDEN_SHA256 := \
+	language/ribos/vm/tests/golden/aggregate_ownership-r18.sha256
+RIBOS_R18_EMBED_C := $(RIBOS_R18_DIR)/generated/embedded_policy.c
+RIBOS_R18_COMMON_SRCS := \
+	src/core/arena.c \
+	src/core/context.c \
+	src/core/plugin.c \
+	src/core/registry.c \
+	src/core/service_directory.c \
+	src/core/memory.c \
+	src/common/environment.c \
+	src/common/protocol.c \
+	src/common/boot.c \
+	src/common/image.c \
+	src/common/port.c \
+	src/common/freestanding/string.c \
+	src/arch/common.c \
+	src/modes/normal.c \
+	src/image-formats/elf64.c \
+	src/protocols/synthetic/protocol.c \
+	src/plugins/policy/ribos/adapter.c \
+	products/validation/ribos-qemu/product.c \
+	products/validation/ribos-qemu/main.c
+
+RIBOS_R18_AARCH64_DIR := $(RIBOS_R18_DIR)/aarch64
+RIBOS_R18_AARCH64_REGISTRY_C := \
+	$(RIBOS_R18_AARCH64_DIR)/generated/plugin_registry.c
+RIBOS_R18_AARCH64_GRAPH := \
+	$(RIBOS_R18_AARCH64_DIR)/results/object-graph.json
+RIBOS_R18_AARCH64_SRCS := $(RIBOS_R18_COMMON_SRCS) \
+	src/common/drivers/serial/pl011.c \
+	src/arch/aarch64/arch.c \
+	ports/qemu/virt-aarch64/port.c
+RIBOS_R18_AARCH64_OBJS := \
+	$(RIBOS_R18_AARCH64_SRCS:%.c=$(RIBOS_R18_AARCH64_DIR)/obj/%.o) \
+	$(RIBOS_R18_AARCH64_DIR)/obj/generated/plugin_registry.o \
+	$(RIBOS_R18_AARCH64_DIR)/obj/generated/embedded_policy.o \
+	$(RIBOS_R18_AARCH64_DIR)/obj/targets/qemu-aarch64-virt-raw-fdt/entry.o
+RIBOS_R18_AARCH64_VM_OBJS := \
+	$(RIBOS_TARGET_CORE_SRCS:%.c=$(RIBOS_R18_AARCH64_DIR)/obj/%.o)
+RIBOS_R18_AARCH64_VM_LIB := \
+	$(RIBOS_R18_AARCH64_DIR)/libribos-target-core.a
+RIBOS_R18_AARCH64_ELF := $(RIBOS_R18_AARCH64_DIR)/ribon-ribos.elf
+RIBOS_R18_AARCH64_IMAGE := $(RIBOS_R18_AARCH64_DIR)/ribon-ribos.bin
+
+RIBOS_R18_RISCV64_DIR := $(RIBOS_R18_DIR)/riscv64
+RIBOS_R18_RISCV64_REGISTRY_C := \
+	$(RIBOS_R18_RISCV64_DIR)/generated/plugin_registry.c
+RIBOS_R18_RISCV64_GRAPH := \
+	$(RIBOS_R18_RISCV64_DIR)/results/object-graph.json
+RIBOS_R18_RISCV64_SRCS := $(RIBOS_R18_COMMON_SRCS) \
+	src/arch/riscv64/arch.c \
+	ports/qemu/virt-riscv64/port.c
+RIBOS_R18_RISCV64_OBJS := \
+	$(RIBOS_R18_RISCV64_SRCS:%.c=$(RIBOS_R18_RISCV64_DIR)/obj/%.o) \
+	$(RIBOS_R18_RISCV64_DIR)/obj/generated/plugin_registry.o \
+	$(RIBOS_R18_RISCV64_DIR)/obj/generated/embedded_policy.o \
+	$(RIBOS_R18_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o
+RIBOS_R18_RISCV64_VM_OBJS := \
+	$(RIBOS_TARGET_CORE_SRCS:%.c=$(RIBOS_R18_RISCV64_DIR)/obj/%.o)
+RIBOS_R18_RISCV64_VM_LIB := \
+	$(RIBOS_R18_RISCV64_DIR)/libribos-target-core.a
+RIBOS_R18_RISCV64_ELF := $(RIBOS_R18_RISCV64_DIR)/ribon-ribos.elf
+RIBOS_R18_RISCV64_IMAGE := $(RIBOS_R18_RISCV64_DIR)/ribon-ribos.bin
+
+RIBOS_R18_AMD64_DIR := $(RIBOS_R18_DIR)/amd64
+RIBOS_R18_AMD64_REGISTRY_C := \
+	$(RIBOS_R18_AMD64_DIR)/generated/plugin_registry.c
+RIBOS_R18_AMD64_GRAPH := \
+	$(RIBOS_R18_AMD64_DIR)/results/object-graph.json
+RIBOS_R18_AMD64_SRCS := $(RIBOS_R18_COMMON_SRCS) \
+	src/arch/x86_64/arch.c \
+	src/arch/x86_64/io.c \
+	ports/qemu/pc-x86_64/port.c \
+	targets/ribos-validation/x86_64-uefi-entry.c
+RIBOS_R18_AMD64_OBJS := \
+	$(RIBOS_R18_AMD64_SRCS:%.c=$(RIBOS_R18_AMD64_DIR)/obj/%.o) \
+	$(RIBOS_R18_AMD64_DIR)/obj/generated/plugin_registry.o \
+	$(RIBOS_R18_AMD64_DIR)/obj/generated/embedded_policy.o
+RIBOS_R18_AMD64_VM_OBJS := \
+	$(RIBOS_TARGET_CORE_SRCS:%.c=$(RIBOS_R18_AMD64_DIR)/obj/%.o)
+RIBOS_R18_AMD64_VM_LIB := $(RIBOS_R18_AMD64_DIR)/libribos-target-core.a
+RIBOS_R18_AMD64_APP := $(RIBOS_R18_AMD64_DIR)/BOOTX64.EFI
+RIBOS_R18_AMD64_ESP := $(RIBOS_R18_AMD64_DIR)/esp
+
 BIOS_DIR := $(TARGET_BUILD_ROOT)/x86-bios-client
 BIOS_MANIFEST := products/bootmgr/manifests/x86-bios-parus.json
 BIOS_REGISTRY_C := $(BIOS_DIR)/generated/plugin_registry.c
@@ -483,7 +591,9 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-hostile check-ribos-vm \
 	check-ribos-ribon-integration check-ribos-product-graphs \
 	check-ribos-normal-no-network check-ribos-factory-recovery \
-	check-ribos-host-boundary ribos-libraries \
+	check-ribos-host-boundary check-ribos-golden-artifact \
+	check-ribos-cross-arch-objects check-ribos-cross-arch-qemu \
+	check-ribos-r18 ribos-libraries \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke x86_64-uefi-app \
@@ -1006,6 +1116,199 @@ check-ribos-normal-no-network:
 check-ribos-factory-recovery: check-ribos-ribon-integration
 	@echo "RIBOS-FACTORY-RECOVERY-OK external-artifact=optional \
 authorization=fail-closed notification=once evidence=host-object"
+
+$(RIBOS_R18_MANIFEST): $(HOST_MANIFEST) tools/make_ribos_qemu_manifest.py
+	$(PYTHON) tools/make_ribos_qemu_manifest.py \
+		--input $(HOST_MANIFEST) --output $@
+
+$(RIBOS_R18_UNSIGNED_A): $(RIBOS_PARSER_PILOT) \
+		language/ribos/vm/tests/aggregate_ownership.rbs
+	@mkdir -p $(@D)
+	$(RIBOS_PARSER_PILOT) --emit-artifact $@ \
+		language/ribos/vm/tests/aggregate_ownership.rbs
+
+$(RIBOS_R18_UNSIGNED_B): $(RIBOS_PARSER_PILOT) \
+		language/ribos/vm/tests/aggregate_ownership.rbs
+	@mkdir -p $(@D)
+	$(RIBOS_PARSER_PILOT) --emit-artifact $@ \
+		language/ribos/vm/tests/aggregate_ownership.rbs
+
+$(RIBOS_R18_ARTIFACT): $(RIBOS_R18_UNSIGNED_A) \
+		$(RIBOS_R18_GOLDEN_SHA256) tools/make_ribos_signed_fixture.py
+	$(PYTHON) tools/make_ribos_signed_fixture.py \
+		--input $< --output $@ \
+		--expected-sha256 $(RIBOS_R18_GOLDEN_SHA256)
+
+$(RIBOS_R18_ARTIFACT_B): $(RIBOS_R18_UNSIGNED_B) \
+		$(RIBOS_R18_GOLDEN_SHA256) tools/make_ribos_signed_fixture.py
+	$(PYTHON) tools/make_ribos_signed_fixture.py \
+		--input $< --output $@ \
+		--expected-sha256 $(RIBOS_R18_GOLDEN_SHA256)
+
+$(RIBOS_R18_EMBED_C): $(RIBOS_R18_ARTIFACT) tools/embed_binary.py
+	$(PYTHON) tools/embed_binary.py --input $< --output $@ \
+		--symbol ribon_ribos_validation_artifact
+
+check-ribos-golden-artifact: \
+		$(RIBOS_R18_ARTIFACT) $(RIBOS_R18_ARTIFACT_B)
+	cmp $(RIBOS_R18_ARTIFACT) $(RIBOS_R18_ARTIFACT_B)
+	@echo "RIBOS-R18-GOLDEN-ARTIFACT-OK rebuilds=2 wire=little-endian"
+
+$(RIBOS_R18_AARCH64_REGISTRY_C): \
+		$(RIBOS_R18_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest $< --architecture aarch64 --output $@ \
+		--report $(RIBOS_R18_AARCH64_GRAPH)
+
+$(RIBOS_R18_AARCH64_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_R18_AARCH64_DIR)/obj/generated/plugin_registry.o: \
+		$(RIBOS_R18_AARCH64_REGISTRY_C) Makefile
+	@mkdir -p $(@D)
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_R18_AARCH64_DIR)/obj/generated/embedded_policy.o: \
+		$(RIBOS_R18_EMBED_C) Makefile
+	@mkdir -p $(@D)
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(RIBOS_R18_AARCH64_DIR)/obj/targets/qemu-aarch64-virt-raw-fdt/entry.o: \
+		targets/qemu-aarch64-virt-raw-fdt/entry.S
+	@mkdir -p $(@D)
+	$(AARCH64_CC) --target=aarch64-none-elf -c $< -o $@
+
+$(RIBOS_R18_AARCH64_VM_LIB): $(RIBOS_R18_AARCH64_VM_OBJS) Makefile
+	$(RM) $@
+	$(LLVM_AR) rcs $@ $(RIBOS_R18_AARCH64_VM_OBJS)
+
+$(RIBOS_R18_AARCH64_ELF): $(RIBOS_R18_AARCH64_OBJS) \
+		$(RIBOS_R18_AARCH64_VM_LIB) \
+		targets/qemu-aarch64-virt-raw-fdt/linker.ld
+	$(LD_LLD) -m aarch64elf \
+		-T targets/qemu-aarch64-virt-raw-fdt/linker.ld \
+		-Map=$(RIBOS_R18_AARCH64_DIR)/ribon-ribos.map \
+		-o $@ $(RIBOS_R18_AARCH64_OBJS) $(RIBOS_R18_AARCH64_VM_LIB)
+
+$(RIBOS_R18_AARCH64_IMAGE): $(RIBOS_R18_AARCH64_ELF)
+	$(OBJCOPY) -O binary $< $@
+
+$(RIBOS_R18_RISCV64_REGISTRY_C): \
+		$(RIBOS_R18_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest $< --architecture riscv64 --output $@ \
+		--report $(RIBOS_R18_RISCV64_GRAPH)
+
+$(RIBOS_R18_RISCV64_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_R18_RISCV64_DIR)/obj/generated/plugin_registry.o: \
+		$(RIBOS_R18_RISCV64_REGISTRY_C) Makefile
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_R18_RISCV64_DIR)/obj/generated/embedded_policy.o: \
+		$(RIBOS_R18_EMBED_C) Makefile
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(RIBOS_R18_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o: \
+		targets/qemu-riscv64-virt-opensbi/entry.S
+	@mkdir -p $(@D)
+	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
+		-mabi=lp64d -mcmodel=medany -c $< -o $@
+
+$(RIBOS_R18_RISCV64_VM_LIB): $(RIBOS_R18_RISCV64_VM_OBJS) Makefile
+	$(RM) $@
+	$(LLVM_AR) rcs $@ $(RIBOS_R18_RISCV64_VM_OBJS)
+
+$(RIBOS_R18_RISCV64_ELF): $(RIBOS_R18_RISCV64_OBJS) \
+		$(RIBOS_R18_RISCV64_VM_LIB) \
+		targets/qemu-riscv64-virt-opensbi/linker.ld
+	$(LD_LLD) -m elf64lriscv \
+		-T targets/qemu-riscv64-virt-opensbi/linker.ld \
+		-Map=$(RIBOS_R18_RISCV64_DIR)/ribon-ribos.map \
+		-o $@ $(RIBOS_R18_RISCV64_OBJS) $(RIBOS_R18_RISCV64_VM_LIB)
+
+$(RIBOS_R18_RISCV64_IMAGE): $(RIBOS_R18_RISCV64_ELF)
+	$(OBJCOPY) -O binary $< $@
+
+$(RIBOS_R18_AMD64_REGISTRY_C): \
+		$(RIBOS_R18_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest $< --architecture x86_64 --output $@ \
+		--report $(RIBOS_R18_AMD64_GRAPH)
+
+$(RIBOS_R18_AMD64_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_R18_AMD64_DIR)/obj/generated/plugin_registry.o: \
+		$(RIBOS_R18_AMD64_REGISTRY_C) Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(RIBOS_R18_AMD64_DIR)/obj/generated/embedded_policy.o: \
+		$(RIBOS_R18_EMBED_C) Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(RIBOS_R18_AMD64_VM_LIB): $(RIBOS_R18_AMD64_VM_OBJS) Makefile
+	$(RM) $@
+	$(LLVM_AR) rcs $@ $(RIBOS_R18_AMD64_VM_OBJS)
+
+$(RIBOS_R18_AMD64_APP): $(RIBOS_R18_AMD64_OBJS) \
+		$(RIBOS_R18_AMD64_VM_LIB)
+	$(LLD_LINK) /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/machine:x64 /map:$(RIBOS_R18_AMD64_DIR)/ribon-ribos.map \
+		/out:$@ $(RIBOS_R18_AMD64_OBJS) $(RIBOS_R18_AMD64_VM_LIB)
+
+$(RIBOS_R18_AMD64_ESP)/EFI/BOOT/BOOTX64.EFI: $(RIBOS_R18_AMD64_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+check-ribos-cross-arch-objects: \
+		$(RIBOS_R18_AMD64_APP) \
+		$(RIBOS_R18_AARCH64_IMAGE) \
+		$(RIBOS_R18_RISCV64_IMAGE)
+	$(PYTHON) tools/lint/ribos_cross_arch_object_lint.py \
+		--map $(RIBOS_R18_AMD64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_AARCH64_DIR)/ribon-ribos.map \
+		--map $(RIBOS_R18_RISCV64_DIR)/ribon-ribos.map \
+		--image $(RIBOS_R18_AMD64_APP) \
+		--image $(RIBOS_R18_AARCH64_ELF) \
+		--image $(RIBOS_R18_RISCV64_ELF)
+
+check-ribos-cross-arch-qemu: \
+		$(RIBOS_R18_AMD64_ESP)/EFI/BOOT/BOOTX64.EFI \
+		$(RIBOS_R18_AARCH64_IMAGE) \
+		$(RIBOS_R18_RISCV64_IMAGE) \
+		$(RIBOS_R18_ARTIFACT)
+	$(PYTHON) tools/ribos_cross_arch_qemu.py \
+		--qemu-x86-64 $(QEMU_X86_64) \
+		--qemu-aarch64 $(QEMU_AARCH64) \
+		--qemu-riscv64 $(QEMU_RISCV64) \
+		--x86-64-esp $(RIBOS_R18_AMD64_ESP) \
+		--x86-64-firmware $(X86_64_UEFI_FIRMWARE) \
+		--aarch64-image $(RIBOS_R18_AARCH64_IMAGE) \
+		--riscv64-image $(RIBOS_R18_RISCV64_IMAGE) \
+		--riscv64-firmware $(RISCV64_OPENSBI_FIRMWARE) \
+		--artifact $(RIBOS_R18_ARTIFACT) \
+		--source-revision $(shell git rev-parse HEAD) \
+		--output-dir $(RESULTS_DIR)/ribos-r18
+
+check-ribos-r18: check-ribos-golden-artifact \
+		check-ribos-cross-arch-objects check-ribos-cross-arch-qemu
+	@echo "RIBOS-R18-AGGREGATE-OK artifact=golden targets=3 \
+qemu=guest-executed hardware=not-run"
 
 $(KERNEL_FIXTURE): tools/make_elf64_fixture.py
 	@mkdir -p $(@D)
@@ -1675,7 +1978,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-vm \
 	check-ribos-ribon-integration check-ribos-product-graphs \
 	check-ribos-normal-no-network check-ribos-factory-recovery \
-	check-ribos-host-boundary \
+	check-ribos-host-boundary check-ribos-r18 \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

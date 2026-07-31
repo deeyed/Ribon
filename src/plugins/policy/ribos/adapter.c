@@ -215,7 +215,7 @@ ribon_ribos_service_route_is_valid(
             route->required_ribon_capabilities ||
         (route->required_ribon_capabilities &
          ~adapter->request->core->product->allowed_capabilities) != 0u ||
-        service->phase > adapter->binding->selected_phase ||
+        (uint32_t)service->phase > adapter->binding->selected_phase ||
         execution->maximum_input_bytes > service->input_budget ||
         execution->maximum_output_bytes > service->output_budget ||
         service->deadline_ms >

@@ -145,6 +145,7 @@ make check-ribos-conformance
 make check-ribos-hostile
 make check-ribos-vm
 make check-ribos-ribon-integration
+make check-ribos-r18
 ```
 
 - parser gate는 `.rbs` syntax acceptance/rejection만 증명한다.
@@ -169,6 +170,8 @@ make check-ribos-ribon-integration
 - Ribon integration gate는 generated schema/helper binding, Core arena, typed service,
   watchdog와 existing boot transaction을 generic adapter로 연결하되 VM object graph의
   Ribon 비의존성을 유지함을 증명한다.
+- R18 gate는 하나의 golden `.rba`를 AMD64 UEFI, AArch64 raw image와 RISC-V OpenSBI
+  QEMU guest에서 실행해 같은 commit receipt와 fail-closed marker graph를 요구한다.
 
 CLI는 host inspection을 위해 다음 mode를 제공한다.
 
@@ -192,8 +195,9 @@ Host compiler와 IR module은 caller-supplied allocator와 hard capacity를 가�
 structural reader와 two-stage verifier는 allocation하지 않는다. Stage-2 verifier는
 caller-owned workspace에서 exact instruction/helper resource bound까지 검사하지만
 Ed25519 trust와 rollback을 증명하지 않는다. `ribos-run`은 target-core production
-VM을 host에서 실행하지만 firmware VM integration, Ribon boot product 안의 policy
-dispatch, QEMU 또는 hardware 실행을 증명하지 않는다.
+VM을 host에서 실행하지만 firmware VM integration이나 QEMU 실행을 증명하지 않는다.
+QEMU guest policy dispatch는 별도 `check-ribos-r18`이 증명한다. 이 gate도 production
+Ed25519, OS transfer 또는 physical hardware 실행은 증명하지 않는다.
 Production boot product는 `.rbs`, Pegen과 host compiler를 링크하지 않는다.
 
 Generated C source는 Python Software Foundation License Version 2로 제공된 CPython

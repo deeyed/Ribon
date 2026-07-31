@@ -16,6 +16,7 @@ tests:
   - make check-ribos-host-boundary
   - make check-ribos-parser-pilot
   - make check-ribos-verifier
+  - make check-ribos-cross-arch-objects
   - make check
   - make docs
 hardware:
@@ -131,6 +132,11 @@ Boundary gate는 다음을 검사한다.
 4. target archive의 hosted undefined symbol
 5. counting allocator의 allocation/release size와 zero-live-object closure
 
-이 성공은 compiler와 target verifier/runtime storage가 분리된 architecture-neutral
-object graph임을 증명한다. VM opcode interpreter, helper dispatch, signature trust,
-boot integration, QEMU와 physical hardware 실행은 증명하지 않는다.
+이 두 host boundary gate의 성공은 compiler와 target verifier/runtime storage가
+분리된 architecture-neutral object graph임을 증명한다. 별도
+`check-ribos-cross-arch-objects`는 같은 target-core source가 AMD64, AArch64와
+RISC-V 64 image에 host/frontend import 없이 링크됨을 증명한다.
+
+실제 VM dispatch와 QEMU guest 실행은
+`ribos-cross-architecture-validation-v1` 계약의 별도 gate가 소유한다. 어떤 object
+gate도 signature trust, OS transfer 또는 physical hardware 실행을 증명하지 않는다.

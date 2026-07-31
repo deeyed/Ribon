@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-30
+last_verified: 2026-07-31
 code_paths:
   - include/Ribon/
   - sdk/
@@ -18,6 +18,7 @@ tests:
   - ribon-library-boundary-lint
   - ribon-plugin-graph-lint
   - ribon-product-composition-test
+  - make check-ribos-r18
   - ribon-docs
 hardware:
   - none
@@ -190,6 +191,11 @@ versioned schema, helper execution descriptor, exact typed-service route, mode/p
 resource limit을 한 graph에서 생성하고 adapter가 schema/helper digest와 service
 budget을 실행 전에 다시 검사한다.
 
+Architecture-neutral 주장은 host archive 하나로 닫지 않는다. Evidence product는 같은
+artifact byte를 target별로 cross-compiled한 VM archive에 연결하고, native entry와
+environment가 다른 guest에서 같은 terminal receipt를 요구한다. Diagnostic fixture,
+test key와 failure injection callback은 normal boot product에 링크하지 않는다.
+
 Policy 성공은 control transfer가 아니라 sealed `BootAction`이다. Adapter는 product
 의미를 재검사하고 action을 한 번 consume한 뒤 기존 `RibonBootTransaction`의 commit과
 quiesce를 사용한다. Transfer는 transaction caller에 남는다. PolicyError, VM fault와
@@ -285,7 +291,9 @@ protocol, port implementation은 해당 archive에 포함하지 않는다.
 
 `include/Ribon/policy/ribos.h`는 generic product adapter ABI를 공개하지만
 `libribon-policy-ribos.a`는 현재 source product graph의 선택 archive다. Installed SDK
-archive 집합으로 승격하는 packaging 결정과 cross-target evidence는 후속 작업이다.
+archive 집합으로 승격하는 packaging 결정은 후속 작업이다. Adapter와 target-core
+VM의 cross-target 실행은 별도 diagnostic product evidence이며 SDK packaging
+compatibility를 자동으로 열지 않는다.
 
 ## Plugin graph 불변식
 

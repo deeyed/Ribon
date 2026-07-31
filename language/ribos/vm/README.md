@@ -112,6 +112,7 @@ make check-ribos-hostile
 make check-ribos-vm
 make check-ribos-verifier
 make check-ribos-ribon-integration
+make check-ribos-r18
 build/tools/ribos-verify POLICY.rba
 build/tools/ribos-run \
     --context CONTEXT.rbctx \
@@ -146,7 +147,9 @@ typed helper execution, terminal action sealing과 fail-closed recovery를 설�
 `ribos-run`은 별도 reference VM이 아니라 이 target-core runtime을 hosted embedder에
 연결하며 deterministic context/helper replay, 24-opcode conformance와
 compiler/verifier/runtime resource 비교를 제공한다.
-Ribon product service linkage와 transaction integration은 별도
-`check-ribos-ribon-integration` host-object gate가 증명한다. 어느 host gate도 실제
-실행 권한 이전, production signature/rollback provider, QEMU 또는 hardware policy
-실행 증거가 아니다.
+Ribon product service linkage와 transaction integration은
+`check-ribos-ribon-integration` host-object gate가 증명한다.
+`check-ribos-r18`은 동일 artifact를 target별 freestanding VM archive와 generic
+adapter에 연결해 AMD64, AArch64와 RISC-V 64 QEMU guest에서 실행한다. 이 target
+gate도 실제 OS 실행 권한 이전, production signature/rollback provider 또는 physical
+hardware policy 실행 증거가 아니다.

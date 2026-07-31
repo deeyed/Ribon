@@ -75,8 +75,9 @@ network/flash 금지를 graph에서 증명할 수 없다.
   operation만 선택한다.
 - Host reference authorizer는 unsigned artifact를 허용하는 unit fixture다. Production
   signature, secure storage와 rollback 증거가 아니다.
-- 이 결정의 현재 증거는 host object graph와 transaction fixture다. Cross-target
-  firmware, QEMU transfer와 physical hardware 실행은 후속 증거다.
+- Host object graph와 transaction fixture에 더해 별도 diagnostic product에서 AMD64,
+  AArch64와 RISC-V 64 QEMU guest 실행 증거가 있다. 이 증거는 policy adapter의
+  transaction commit까지 다루며 OS transfer와 physical hardware는 다루지 않는다.
 - Policy adapter archive는 source product graph의 구성요소다. Installed SDK archive
   집합에 포함시키는 packaging 결정은 별도 계약으로 남긴다.
 

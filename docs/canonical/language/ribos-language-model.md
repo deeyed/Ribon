@@ -24,6 +24,7 @@ tests:
   - ribos-policy-ir-v1
   - make check-ribos-artifact
   - make check-ribos-verifier
+  - make check-ribos-r18
   - ribon-docs
 hardware:
   - none
@@ -130,6 +131,11 @@ Ribon service/plugin mechanism
 Source parser, AST와 source diagnostic은 host compiler의 권한이다. Boot product는
 signed policy artifact를 검증하고 실행하는 데 `.rbs` source나 CPython runtime을
 요구하지 않는다.
+
+VM artifact는 architecture-neutral little-endian wire다. Target acceptance는
+architecture별 artifact를 다시 만드는 방식이 아니라 동일 artifact hash를 각 native
+ABI의 freestanding target core로 실행하고, 같은 helper/terminal receipt를 요구하는
+방식으로 검증한다.
 
 Language implementation은 하나의 monolithic runtime이 아니다.
 

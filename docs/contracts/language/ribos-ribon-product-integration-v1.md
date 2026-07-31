@@ -17,6 +17,7 @@ tests:
   - make check-ribos-normal-no-network
   - make check-ribos-factory-recovery
   - make check-ribos-vm
+  - make check-ribos-r18
   - make check-object-graphs
   - make check
   - make docs
@@ -172,8 +173,9 @@ callback은 request, artifact, action 또는 VM receipt pointer를 보존하거�
 | provisioning | physical-presence/trust contract가 선택한 별도 graph만 허용 |
 | diagnostic | evidence 전용 helper와 별도 product identity |
 
-현재 v1 실행 증거는 normal host-reference graph만 다룬다. Recovery와 provisioning
-table은 authority 규칙이며 구현 또는 실행 증거가 아니다.
+v1 실행 증거 class는 normal host-reference graph와 이를 기반으로 생성한 별도
+`ribos-qemu-validation` diagnostic product다. Recovery와 provisioning table은
+authority 규칙이며 구현 또는 실행 증거가 아니다.
 
 ## 증거 경계
 
@@ -194,5 +196,7 @@ semantic helper, single action consume, metadata write/flush, quiesce와 watchdo
 instruction/deadline fault, action rejection, post-consume commit failure와 missing
 external artifact recovery를 검사한다.
 
-이 증거는 production signature, rollback secure storage, recovery network/flash,
-cross-target firmware, QEMU OS transfer 또는 physical hardware 실행을 증명하지 않는다.
+별도 `make check-ribos-r18`은 같은 artifact와 generated binding 의미를 AMD64,
+AArch64와 RISC-V 64 QEMU guest에서 실행한다. 이 추가 증거도 production signature,
+rollback secure storage, recovery network/flash, QEMU OS transfer 또는 physical
+hardware 실행을 증명하지 않는다.
