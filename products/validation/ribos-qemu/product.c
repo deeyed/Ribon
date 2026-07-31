@@ -560,6 +560,47 @@ ribon_validation_lifecycle_reset(void)
     }
 }
 
+/**
+ * @brief Protected durable state를 보존하고 다음 boot attempt의 ephemeral state를 지운다.
+ *
+ * Trial failure 뒤 confirmed policy fallback을 같은 journal generation에서 검증하기
+ * 위한 diagnostic-only power-cycle 경계다. Pending write는 실행 authority가 아니므로
+ * 모두 폐기한다.
+ */
+void
+ribon_validation_boot_cycle_reset(void)
+{
+    memset(lifecycle.metadata, 0, sizeof(lifecycle.metadata));
+    lifecycle.metadata_size = 0u;
+    lifecycle.timer_ticks = 1u;
+    lifecycle.timer_step = 0u;
+    lifecycle.watchdog_timeout_ms = 0u;
+    lifecycle.writes = 0u;
+    lifecycle.flushes = 0u;
+    lifecycle.quiesces = 0u;
+    lifecycle.watchdog_arms = 0u;
+    memset(lifecycle.protected_pending, 0,
+           sizeof(lifecycle.protected_pending));
+    memset(lifecycle.protected_pending_valid, 0,
+           sizeof(lifecycle.protected_pending_valid));
+}
+
+/**
+ * @brief Selected record를 포함한 durable record set을 손상시킨다.
+ *
+ * Reference provider의 fail-closed state path만 시험하며 raw journal byte를 Ribos나
+ * product binding에 노출하지 않는다.
+ */
+void
+ribon_validation_protected_state_corrupt(void)
+{
+    uint32_t slot;
+
+    for (slot = 0u; slot < RIBON_PROTECTED_STATE_RECORD_SLOTS; ++slot) {
+        lifecycle.protected_durable[0][slot][0] ^= (uint8_t)(0x41u + slot);
+    }
+}
+
 void
 ribon_validation_timer_step_set(uint64_t step)
 {

@@ -73,6 +73,7 @@ EVIDENCE_CLASSES = {
     "unit",
     "compile-only",
     "qemu-smoke",
+    "qemu-runtime",
     "package",
 }
 CAPABILITIES = {

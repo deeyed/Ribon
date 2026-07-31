@@ -22,6 +22,10 @@ FORBIDDEN_SYMBOL_FRAGMENTS = (
     "ribon_host_",
     "ribos_frontend_",
     "ribos_ir_",
+    "crypto_ed25519_sign",
+    "crypto_eddsa_sign",
+    "ribon_fixture",
+    "RIBON_RIBOS_AUTHORIZATION_FIXTURE_CALLBACK",
 )
 FORBIDDEN_SOURCE_FRAGMENTS = (
     "language/ribos/frontend/",
@@ -31,6 +35,9 @@ FORBIDDEN_SOURCE_FRAGMENTS = (
     "src/environments/raw-fdt/",
     "src/environments/uefi-app/",
     "src/protocols/os/",
+    "tests/fixtures/",
+    "tools/sign_ribos_policy.py",
+    "src/plugins/security/fixture/",
 )
 
 
@@ -58,7 +65,7 @@ def main() -> int:
         if leaks:
             raise RuntimeError(f"{map_path}: forbidden source graph {leaks}")
     for image in args.image:
-        symbols = tool_output("nm", "-u", str(image))
+        symbols = tool_output("nm", str(image))
         leaks = [
             fragment for fragment in FORBIDDEN_SYMBOL_FRAGMENTS
             if fragment in symbols
@@ -67,7 +74,8 @@ def main() -> int:
             raise RuntimeError(f"{image}: forbidden undefined symbols {leaks}")
     print(
         "RIBOS-R18-CROSS-ARCH-OBJECTS-OK targets=amd64,aarch64,riscv64 "
-        "host-imports=0 frontend-imports=0 network-imports=0"
+        "host-imports=0 frontend-imports=0 network-imports=0 "
+        "signer-imports=0 fixture-authority=0"
     )
     return 0
 

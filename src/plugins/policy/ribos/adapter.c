@@ -1071,6 +1071,11 @@ ribon_ribos_policy_execute(
         authorized_size,
         &authorized);
     if (vm_status != RIBOS_VM_STATUS_OK) {
+        if (adapter.authorization_failure ==
+            RIBON_RIBOS_AUTHORIZATION_FAILURE_NONE) {
+            adapter.authorization_failure =
+                RIBON_RIBOS_AUTHORIZATION_FAILURE_MALFORMED;
+        }
         status = ribon_ribos_fail(
             &adapter,
             RIBON_RIBOS_POLICY_STAGE_AUTHORIZE,

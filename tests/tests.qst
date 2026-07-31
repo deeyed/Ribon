@@ -249,6 +249,33 @@ qstar.test_suite "security_protected_state_tests" {
   description = qstar.status("Redundant journal and rollback state machine"),
 }
 
+qstar.run_target "ribos_production_policy" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-ribos-production-policy",
+    "check-ribos-production-policy",
+  },
+  timeout = 1200,
+  expect = {
+    contains = "RIBOS-PRODUCTION-POLICY-OK",
+  },
+  description = qstar.status("Closing signed Ribos policy release evidence"),
+}
+
+qstar.test_suite "ribos_production_policy_tests" {
+  tests = {
+    "//tests:ribos_production_policy",
+  },
+  tags = {
+    "security",
+    "ribos",
+    "qemu-runtime",
+    "reproducible",
+  },
+  description = qstar.status("Signed policy authorization across three targets"),
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
@@ -266,5 +293,6 @@ qstar.group "ribon_tests" {
     "//tests:security_key_policy_graphs",
     "//tests:security_protected_state_unit",
     "//tests:security_protected_state_graphs",
+    "//tests:ribos_production_policy",
   },
 }

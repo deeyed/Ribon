@@ -19,6 +19,8 @@ tests:
   - make check-ribos-factory-recovery
   - make check-ribos-vm
   - make check-ribos-r18
+  - make check-ribos-production-policy
+  - make check-ribos-release-reproducibility
   - make check-object-graphs
   - make check
   - make docs
@@ -217,3 +219,9 @@ A/B fixture는 trial attempt 선차감, exact confirmation, 이전 sequence 거�
 AArch64와 RISC-V 64 QEMU guest에서 실행한다. 이 추가 증거도 production key custody, hardware
 anti-replay storage, recovery network/flash, QEMU OS transfer 또는 physical hardware 실행을
 증명하지 않는다.
+
+`make check-ribos-production-policy`는 hermetic product build, executable source corpus, hostile artifact,
+Ed25519, key policy, protected state, product integration, target object와 QEMU evidence를 집계한다.
+`make check-ribos-release-reproducibility`는 두 clean build root의 canonical release output을 byte 단위로
+비교한다. 두 gate도 실제 update media, OS health authority 또는 physical power-loss 증거를 대신하지
+않는다.

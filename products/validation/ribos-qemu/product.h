@@ -25,6 +25,10 @@ struct RibonValidationRibosFixture {
 
 int ribon_validation_source_bind(const void *data, uint64_t size);
 void ribon_validation_lifecycle_reset(void);
+/** @brief Durable journal을 보존하고 diagnostic boot-cycle state를 초기화한다. */
+void ribon_validation_boot_cycle_reset(void);
+/** @brief Protected-state fail-closed 시험을 위해 durable record를 손상시킨다. */
+void ribon_validation_protected_state_corrupt(void);
 void ribon_validation_timer_step_set(uint64_t step);
 uint32_t ribon_validation_write_count(void);
 uint32_t ribon_validation_flush_count(void);

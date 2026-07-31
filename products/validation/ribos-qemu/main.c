@@ -6,6 +6,7 @@
 #include <Ribon/core/context.h>
 #include <Ribon/plugin/registry.h>
 #include <Ribon/port/port.h>
+#include <Ribon/security/protected_state.h>
 
 #include <ribos/artifact/format.h>
 #include <ribos/schema/schema.h>
@@ -23,6 +24,8 @@
 
 extern const unsigned char ribon_ribos_validation_artifact[];
 extern const uint64_t ribon_ribos_validation_artifact_size;
+extern const unsigned char ribon_ribos_validation_trial_artifact[];
+extern const uint64_t ribon_ribos_validation_trial_artifact_size;
 
 struct ValidationTransaction {
     struct RibonArena arena;
@@ -48,6 +51,10 @@ struct ValidationArtifact {
     uint32_t verified_type;
     uint32_t action_type;
     uint32_t action_size;
+    size_t key_id_offset;
+    size_t key_id_size;
+    size_t signature_offset;
+    size_t signature_size;
 };
 
 static _Alignas(16) uint8_t arena_bytes[VALIDATION_ARENA_CAPACITY];
@@ -245,53 +252,72 @@ entry_context(
 }
 
 static int
-inspect_artifact(struct ValidationArtifact *artifact)
+inspect_artifact(
+    struct ValidationArtifact *artifact,
+    const uint8_t *bytes,
+    uint64_t size)
 {
     RibosArtifactView view;
     uint32_t unused_size;
 
-    if (artifact == NULL ||
-        ribon_ribos_validation_artifact_size >
-            VALIDATION_ARTIFACT_CAPACITY) {
+    if (artifact == NULL || bytes == NULL || size == 0u ||
+        size > VALIDATION_ARTIFACT_CAPACITY || size > SIZE_MAX) {
         return 0;
     }
     *artifact = (struct ValidationArtifact){
-        .bytes = ribon_ribos_validation_artifact,
-        .size = (size_t)ribon_ribos_validation_artifact_size,
+        .bytes = bytes,
+        .size = (size_t)size,
     };
-    return ribos_artifact_open_v1(
-               artifact->bytes,
-               artifact->size,
-               &view) == RIBOS_ARTIFACT_OK &&
-           (view.envelope_flags & RIBOS_ARTIFACT_ENVELOPE_SIGNED) != 0u &&
-           entry_context(
-               &view,
-               &artifact->context_type,
-               &artifact->context_size) &&
-           find_named_type(
-               &view,
-               "Slot",
-               &artifact->slot_type,
-               &unused_size) &&
-           find_named_type(
-               &view,
-               "Image",
-               &artifact->image_type,
-               &unused_size) &&
-           find_named_type(
-               &view,
-               "VerifiedImage",
-               &artifact->verified_type,
-               &unused_size) &&
-           find_named_type(
-               &view,
-               "BootAction",
-               &artifact->action_type,
-               &artifact->action_size);
+    if (ribos_artifact_open_v1(
+            artifact->bytes,
+            artifact->size,
+            &view) != RIBOS_ARTIFACT_OK ||
+        (view.envelope_flags & RIBOS_ARTIFACT_ENVELOPE_SIGNED) == 0u ||
+        view.key_id < artifact->bytes || view.signature < artifact->bytes ||
+        view.key_id_length > artifact->size ||
+        view.signature_length > artifact->size ||
+        (size_t)(view.key_id - artifact->bytes) >
+            artifact->size - view.key_id_length ||
+        (size_t)(view.signature - artifact->bytes) >
+            artifact->size - view.signature_length ||
+        !entry_context(
+            &view,
+            &artifact->context_type,
+            &artifact->context_size) ||
+        !find_named_type(
+            &view,
+            "Slot",
+            &artifact->slot_type,
+            &unused_size) ||
+        !find_named_type(
+            &view,
+            "Image",
+            &artifact->image_type,
+            &unused_size) ||
+        !find_named_type(
+            &view,
+            "VerifiedImage",
+            &artifact->verified_type,
+            &unused_size) ||
+        !find_named_type(
+            &view,
+            "BootAction",
+            &artifact->action_type,
+            &artifact->action_size)) {
+        return 0;
+    }
+    artifact->key_id_offset = (size_t)(view.key_id - artifact->bytes);
+    artifact->key_id_size = view.key_id_length;
+    artifact->signature_offset =
+        (size_t)(view.signature - artifact->bytes);
+    artifact->signature_size = view.signature_length;
+    return 1;
 }
 
 static int
-initialize_transaction(struct ValidationTransaction *test)
+initialize_transaction(
+    struct ValidationTransaction *test,
+    int preserve_protected_state)
 {
     const struct RibonPluginRegistry *registry =
         ribon_generated_plugin_registry();
@@ -318,7 +344,11 @@ initialize_transaction(struct ValidationTransaction *test)
             sizeof(test->source)) != RIBON_SERVICE_STATUS_OK) {
         return 0;
     }
-    ribon_validation_lifecycle_reset();
+    if (preserve_protected_state != 0) {
+        ribon_validation_boot_cycle_reset();
+    } else {
+        ribon_validation_lifecycle_reset();
+    }
     ribon_arena_init(&test->arena, arena_bytes, sizeof(arena_bytes));
     if (ribon_context_initialize(
             &test->core,
@@ -393,6 +423,9 @@ execute_policy(
     const struct RibonRibosProductBinding *binding,
     const uint8_t *artifact_bytes,
     size_t artifact_size,
+    enum RibonRibosPolicyActivation activation,
+    uint32_t trial_attempts,
+    uint64_t manifest_sequence,
     struct RibonRibosPolicyReceipt *receipt)
 {
     uint8_t context[VALIDATION_CONTEXT_CAPACITY] = {0};
@@ -411,8 +444,9 @@ execute_policy(
             .context_bytes = context,
             .context_size = artifact->context_size,
             .context_generation = 18u,
-            .activation = RIBON_RIBOS_POLICY_ACTIVATION_EXISTING,
-            .manifest_sequence = 18u,
+            .activation = activation,
+            .trial_attempts = trial_attempts,
+            .manifest_sequence = manifest_sequence,
             .product_context = fixture,
             .transaction = &transaction->transaction,
         },
@@ -451,16 +485,63 @@ network_is_absent(void)
 }
 
 static void
-run_validation(const struct ValidationArtifact *artifact)
+expect_authorization_failure(
+    const struct ValidationArtifact *artifact,
+    const struct RibonRibosProductBinding *binding,
+    const uint8_t *artifact_bytes,
+    size_t artifact_size,
+    uint64_t manifest_sequence,
+    enum RibonRibosAuthorizationFailure expected_failure,
+    int corrupt_state,
+    const char *failure_stage,
+    const char *success_marker)
 {
     struct RibonValidationRibosFixture fixture;
     struct RibonRibosPolicyReceipt receipt;
+
+    if (!initialize_transaction(&validation_transaction, 0)) {
+        validation_fail(failure_stage);
+    }
+    if (corrupt_state != 0) {
+        ribon_validation_protected_state_corrupt();
+    }
+    initialize_fixture(&fixture, artifact, binding);
+    if (execute_policy(
+            &validation_transaction,
+            &fixture,
+            artifact,
+            binding,
+            artifact_bytes,
+            artifact_size,
+            RIBON_RIBOS_POLICY_ACTIVATION_EXISTING,
+            0u,
+            manifest_sequence,
+            &receipt) != RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION ||
+        receipt.authorization_failure != expected_failure ||
+        receipt.action_consumed != 0u || receipt.recovery_notified != 1u ||
+        fixture.helper_calls != 0u || fixture.fallback_calls != 1u ||
+        validation_transaction.transaction.stage !=
+            RIBON_BOOT_STAGE_PREPARE_PROTOCOL) {
+        validation_fail(failure_stage);
+    }
+    marker(success_marker);
+}
+
+static void
+run_validation(
+    const struct ValidationArtifact *artifact,
+    const struct ValidationArtifact *trial_artifact)
+{
+    struct RibonValidationRibosFixture fixture;
+    struct RibonRibosPolicyReceipt receipt;
+    struct RibonRibosPolicyStateReceipt state_receipt;
     const struct RibonRibosProductBinding *generated =
         ribon_generated_ribos_policy_binding();
     struct RibonRibosProductBinding binding;
+    struct RibonRibosSignedPolicyBinding signed_binding;
     RibosVmLimits limits;
 
-    if (!initialize_transaction(&validation_transaction)) {
+    if (!initialize_transaction(&validation_transaction, 0)) {
         validation_fail("transaction-success");
     }
     marker("RIBOS-R18-TRANSACTION-PREPARED");
@@ -474,6 +555,9 @@ run_validation(const struct ValidationArtifact *artifact)
             generated,
             artifact->bytes,
             artifact->size,
+            RIBON_RIBOS_POLICY_ACTIVATION_EXISTING,
+            0u,
+            18u,
             &receipt) != RIBON_RIBOS_POLICY_STATUS_OK ||
         receipt.stage != RIBON_RIBOS_POLICY_STAGE_COMPLETE ||
         receipt.action_consumed != 1u ||
@@ -494,71 +578,65 @@ run_validation(const struct ValidationArtifact *artifact)
         "receipt=v1-stage8-action21-helpers4-fallback0");
 
     memcpy(altered_artifact, artifact->bytes, artifact->size);
-    altered_artifact[artifact->size - 1u] ^= 0x01u;
-    if (!initialize_transaction(&validation_transaction)) {
-        validation_fail("transaction-signature");
-    }
-    initialize_fixture(&fixture, artifact, generated);
-    if (execute_policy(
-            &validation_transaction,
-            &fixture,
-            artifact,
-            generated,
-            altered_artifact,
-            artifact->size,
-            &receipt) != RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION ||
-        fixture.fallback_calls != 1u ||
-        validation_transaction.transaction.stage !=
-            RIBON_BOOT_STAGE_PREPARE_PROTOCOL) {
-        validation_fail("signature-fallback");
-    }
-    marker("RIBOS-R18-SIGNATURE-FALLBACK-OK");
+    altered_artifact[
+        artifact->signature_offset + artifact->signature_size - 1u] ^= 0x01u;
+    expect_authorization_failure(
+        artifact, generated, altered_artifact, artifact->size, 18u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_SIGNATURE, 0,
+        "signature-fallback", "RIBOS-R18-SIGNATURE-FALLBACK-OK");
 
     memcpy(altered_artifact, artifact->bytes, artifact->size);
     altered_artifact[RIBOS_ARTIFACT_ENVELOPE_BYTES] ^= 0x80u;
-    if (!initialize_transaction(&validation_transaction)) {
-        validation_fail("transaction-corrupt");
-    }
-    initialize_fixture(&fixture, artifact, generated);
-    if (execute_policy(
-            &validation_transaction,
-            &fixture,
-            artifact,
-            generated,
-            altered_artifact,
-            artifact->size,
-            &receipt) != RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION ||
-        fixture.fallback_calls != 1u) {
-        validation_fail("corrupt-fallback");
-    }
-    marker("RIBOS-R18-CORRUPT-FALLBACK-OK");
+    expect_authorization_failure(
+        artifact, generated, altered_artifact, artifact->size, 18u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_MALFORMED, 0,
+        "corrupt-fallback", "RIBOS-R18-CORRUPT-FALLBACK-OK");
+
+    expect_authorization_failure(
+        artifact, generated, artifact->bytes, artifact->size - 1u, 18u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_MALFORMED, 0,
+        "truncation-fallback", "RIBOS-R18-TRUNCATION-FALLBACK-OK");
+
+    binding = *generated;
+    signed_binding = *generated->signed_policy;
+    signed_binding.product_digest[0] ^= 0x80u;
+    binding.signed_policy = &signed_binding;
+    expect_authorization_failure(
+        artifact, &binding, artifact->bytes, artifact->size, 18u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_KEY_POLICY, 0,
+        "product-fallback", "RIBOS-R18-PRODUCT-FALLBACK-OK");
 
     alternate_schema = *ribos_schema_reference_v1();
     alternate_schema.product_id = "ribon.schema-mismatch.r18";
     binding = *generated;
     binding.schema = alternate_schema_provider;
-    if (!initialize_transaction(&validation_transaction)) {
-        validation_fail("transaction-schema");
-    }
-    initialize_fixture(&fixture, artifact, &binding);
-    if (execute_policy(
-            &validation_transaction,
-            &fixture,
-            artifact,
-            &binding,
-            artifact->bytes,
-            artifact->size,
-            &receipt) != RIBON_RIBOS_POLICY_STATUS_AUTHORIZATION ||
-        fixture.fallback_calls != 1u) {
-        validation_fail("schema-fallback");
-    }
-    marker("RIBOS-R18-SCHEMA-FALLBACK-OK");
+    expect_authorization_failure(
+        artifact, &binding, artifact->bytes, artifact->size, 18u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_IDENTITY, 0,
+        "schema-fallback", "RIBOS-R18-SCHEMA-FALLBACK-OK");
+
+    memcpy(altered_artifact, artifact->bytes, artifact->size);
+    altered_artifact[artifact->key_id_offset] ^= 0x20u;
+    expect_authorization_failure(
+        artifact, generated, altered_artifact, artifact->size, 18u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_KEY_POLICY, 0,
+        "key-fallback", "RIBOS-R18-KEY-FALLBACK-OK");
+
+    expect_authorization_failure(
+        artifact, generated, artifact->bytes, artifact->size, 17u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_KEY_POLICY, 0,
+        "sequence-fallback", "RIBOS-R18-SEQUENCE-FALLBACK-OK");
+
+    expect_authorization_failure(
+        artifact, generated, artifact->bytes, artifact->size, 18u,
+        RIBON_RIBOS_AUTHORIZATION_FAILURE_STATE_INVALID, 1,
+        "state-fallback", "RIBOS-R18-STATE-FALLBACK-OK");
 
     binding = *generated;
     limits = *generated->limits;
     limits.maximum_instructions = 1u;
     binding.limits = &limits;
-    if (!initialize_transaction(&validation_transaction)) {
+    if (!initialize_transaction(&validation_transaction, 0)) {
         validation_fail("transaction-budget");
     }
     initialize_fixture(&fixture, artifact, &binding);
@@ -569,13 +647,16 @@ run_validation(const struct ValidationArtifact *artifact)
             &binding,
             artifact->bytes,
             artifact->size,
+            RIBON_RIBOS_POLICY_ACTIVATION_EXISTING,
+            0u,
+            18u,
             &receipt) != RIBON_RIBOS_POLICY_STATUS_VERIFICATION ||
         fixture.fallback_calls != 1u || fixture.helper_calls != 0u) {
         validation_fail("budget-fallback");
     }
     marker("RIBOS-R18-BUDGET-FALLBACK-OK");
 
-    if (!initialize_transaction(&validation_transaction)) {
+    if (!initialize_transaction(&validation_transaction, 0)) {
         validation_fail("transaction-deadline");
     }
     initialize_fixture(&fixture, artifact, generated);
@@ -587,6 +668,9 @@ run_validation(const struct ValidationArtifact *artifact)
             generated,
             artifact->bytes,
             artifact->size,
+            RIBON_RIBOS_POLICY_ACTIVATION_EXISTING,
+            0u,
+            18u,
             &receipt) != RIBON_RIBOS_POLICY_STATUS_VM_FAULT ||
         receipt.outcome_kind != RIBOS_VM_OUTCOME_VM_FAULT ||
         receipt.recovery_notified != 1u ||
@@ -596,6 +680,85 @@ run_validation(const struct ValidationArtifact *artifact)
         validation_fail("deadline-fallback");
     }
     marker("RIBOS-R18-DEADLINE-FALLBACK-OK");
+
+    if (!initialize_transaction(&validation_transaction, 0)) {
+        validation_fail("transaction-trial-confirm");
+    }
+    initialize_fixture(&fixture, trial_artifact, generated);
+    ribon_validation_timer_step_set(1u);
+    if (execute_policy(
+            &validation_transaction,
+            &fixture,
+            trial_artifact,
+            generated,
+            trial_artifact->bytes,
+            trial_artifact->size,
+            RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL,
+            2u,
+            19u,
+            &receipt) != RIBON_RIBOS_POLICY_STATUS_OK ||
+        receipt.rollback_authority !=
+            RIBON_PROTECTED_STATE_AUTHORITY_TRIAL ||
+        receipt.rollback_floor != 18u ||
+        receipt.trial_attempts_remaining != 1u ||
+        ribon_ribos_policy_confirm(
+            generated,
+            19u,
+            &state_receipt) != RIBON_RIBOS_POLICY_STATUS_OK ||
+        state_receipt.confirmed_floor != 19u ||
+        state_receipt.pending_sequence != 0u) {
+        validation_fail("trial-confirm");
+    }
+    marker("RIBOS-R18-TRIAL-CONFIRM-OK");
+
+    if (!initialize_transaction(&validation_transaction, 0)) {
+        validation_fail("transaction-trial-failure");
+    }
+    initialize_fixture(&fixture, trial_artifact, generated);
+    fixture.reject_action = 1u;
+    ribon_validation_timer_step_set(1u);
+    if (execute_policy(
+            &validation_transaction,
+            &fixture,
+            trial_artifact,
+            generated,
+            trial_artifact->bytes,
+            trial_artifact->size,
+            RIBON_RIBOS_POLICY_ACTIVATION_START_TRIAL,
+            2u,
+            19u,
+            &receipt) != RIBON_RIBOS_POLICY_STATUS_ACTION_REJECTED ||
+        receipt.rollback_authority !=
+            RIBON_PROTECTED_STATE_AUTHORITY_TRIAL ||
+        receipt.trial_attempts_remaining != 1u ||
+        fixture.fallback_calls != 1u ||
+        ribon_ribos_policy_fail_trial(
+            generated,
+            &state_receipt) != RIBON_RIBOS_POLICY_STATUS_OK ||
+        state_receipt.confirmed_floor != 18u ||
+        state_receipt.pending_sequence != 0u ||
+        !initialize_transaction(&validation_transaction, 1)) {
+        validation_fail("trial-failure");
+    }
+    initialize_fixture(&fixture, artifact, generated);
+    ribon_validation_timer_step_set(1u);
+    if (execute_policy(
+            &validation_transaction,
+            &fixture,
+            artifact,
+            generated,
+            artifact->bytes,
+            artifact->size,
+            RIBON_RIBOS_POLICY_ACTIVATION_EXISTING,
+            0u,
+            18u,
+            &receipt) != RIBON_RIBOS_POLICY_STATUS_OK ||
+        receipt.rollback_authority !=
+            RIBON_PROTECTED_STATE_AUTHORITY_CONFIRMED ||
+        receipt.rollback_floor != 18u || fixture.fallback_calls != 0u) {
+        validation_fail("trial-confirmed-fallback");
+    }
+    marker("RIBOS-R18-TRIAL-ROLLBACK-OK");
 
     if (!network_is_absent()) {
         validation_fail("normal-network-authority");
@@ -608,6 +771,7 @@ ribon_raw_fdt_boot_main(uint64_t native0, uint64_t native1)
 {
     const struct RibonPortDescriptor *port = ribon_port_selected();
     struct ValidationArtifact artifact;
+    struct ValidationArtifact trial_artifact;
 
     (void)native0;
     (void)native1;
@@ -622,11 +786,18 @@ ribon_raw_fdt_boot_main(uint64_t native0, uint64_t native1)
         validation_halt();
     }
     marker("RIBOS-R18-QEMU-ENTRY");
-    if (!inspect_artifact(&artifact)) {
+    if (!inspect_artifact(
+            &artifact,
+            ribon_ribos_validation_artifact,
+            ribon_ribos_validation_artifact_size) ||
+        !inspect_artifact(
+            &trial_artifact,
+            ribon_ribos_validation_trial_artifact,
+            ribon_ribos_validation_trial_artifact_size)) {
         validation_fail("artifact-open");
     }
     marker("RIBOS-R18-ARTIFACT-OPEN-OK");
-    run_validation(&artifact);
+    run_validation(&artifact, &trial_artifact);
     marker("RIBOS-R18-QEMU-VALIDATION-OK");
     validation_halt();
 }

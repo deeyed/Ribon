@@ -77,10 +77,11 @@ def derive_manifest(source: dict[str, object]) -> dict[str, object]:
         "artifact": "ribon-ribos-validation",
     }
     manifest["evidence"] = {
-        "class": "qemu-smoke",
+        "class": "qemu-runtime",
         "claim": (
-            "same signed fixture artifact through generated product binding, "
-            "generic Ribon adapter and target-neutral VM"
+            "same real Ed25519 signed confirmed/trial policies through the "
+            "generated product binding, generic Ribon adapter, protected "
+            "reference state and target-neutral VM"
         ),
     }
     manifest["signature_provider"] = {
@@ -90,13 +91,13 @@ def derive_manifest(source: dict[str, object]) -> dict[str, object]:
         "symbol": "ribon_ed25519_signature_provider_descriptor",
     }
     manifest["key_policy"] = {
-        "generation": 18,
+        "generation": 19,
         "id": "trust.ribos-qemu-validation.v1",
         "keys": [
             {
-                "id": "ribon-r18-fixture-key",
+                "id": "ribon-validation-policy-key",
                 "issuer": None,
-                "maximum_sequence": 18,
+                "maximum_sequence": 19,
                 "minimum_sequence": 18,
                 "modes": ["normal"],
                 "public_key_hex": VALIDATION_PUBLIC_KEY_HEX,

@@ -550,9 +550,17 @@ RIBOS_R18_UNSIGNED_A := $(RIBOS_R18_DIR)/generated/policy-a.rba
 RIBOS_R18_UNSIGNED_B := $(RIBOS_R18_DIR)/generated/policy-b.rba
 RIBOS_R18_ARTIFACT := $(RIBOS_R18_DIR)/generated/policy-signed.rba
 RIBOS_R18_ARTIFACT_B := $(RIBOS_R18_DIR)/generated/policy-signed-b.rba
+RIBOS_R18_TRIAL_ARTIFACT := \
+	$(RIBOS_R18_DIR)/generated/policy-trial-signed.rba
+RIBOS_R18_TRIAL_ARTIFACT_B := \
+	$(RIBOS_R18_DIR)/generated/policy-trial-signed-b.rba
 RIBOS_R18_GOLDEN_SHA256 := \
 	language/ribos/vm/tests/golden/aggregate_ownership-r18.sha256
+RIBOS_R18_TRIAL_GOLDEN_SHA256 := \
+	language/ribos/vm/tests/golden/aggregate_ownership-r19.sha256
 RIBOS_R18_EMBED_C := $(RIBOS_R18_DIR)/generated/embedded_policy.c
+RIBOS_R18_TRIAL_EMBED_C := \
+	$(RIBOS_R18_DIR)/generated/embedded_trial_policy.c
 RIBOS_R18_COMMON_SRCS := \
 	src/core/arena.c \
 	src/core/context.c \
@@ -590,6 +598,7 @@ RIBOS_R18_AARCH64_OBJS := \
 	$(RIBOS_R18_AARCH64_SRCS:%.c=$(RIBOS_R18_AARCH64_DIR)/obj/%.o) \
 	$(RIBOS_R18_AARCH64_DIR)/obj/generated/plugin_registry.o \
 	$(RIBOS_R18_AARCH64_DIR)/obj/generated/embedded_policy.o \
+	$(RIBOS_R18_AARCH64_DIR)/obj/generated/embedded_trial_policy.o \
 	$(RIBOS_R18_AARCH64_DIR)/obj/targets/qemu-aarch64-virt-raw-fdt/entry.o
 RIBOS_R18_AARCH64_VM_OBJS := \
 	$(RIBOS_TARGET_CORE_SRCS:%.c=$(RIBOS_R18_AARCH64_DIR)/obj/%.o)
@@ -610,6 +619,7 @@ RIBOS_R18_RISCV64_OBJS := \
 	$(RIBOS_R18_RISCV64_SRCS:%.c=$(RIBOS_R18_RISCV64_DIR)/obj/%.o) \
 	$(RIBOS_R18_RISCV64_DIR)/obj/generated/plugin_registry.o \
 	$(RIBOS_R18_RISCV64_DIR)/obj/generated/embedded_policy.o \
+	$(RIBOS_R18_RISCV64_DIR)/obj/generated/embedded_trial_policy.o \
 	$(RIBOS_R18_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o
 RIBOS_R18_RISCV64_VM_OBJS := \
 	$(RIBOS_TARGET_CORE_SRCS:%.c=$(RIBOS_R18_RISCV64_DIR)/obj/%.o)
@@ -631,7 +641,8 @@ RIBOS_R18_AMD64_SRCS := $(RIBOS_R18_COMMON_SRCS) \
 RIBOS_R18_AMD64_OBJS := \
 	$(RIBOS_R18_AMD64_SRCS:%.c=$(RIBOS_R18_AMD64_DIR)/obj/%.o) \
 	$(RIBOS_R18_AMD64_DIR)/obj/generated/plugin_registry.o \
-	$(RIBOS_R18_AMD64_DIR)/obj/generated/embedded_policy.o
+	$(RIBOS_R18_AMD64_DIR)/obj/generated/embedded_policy.o \
+	$(RIBOS_R18_AMD64_DIR)/obj/generated/embedded_trial_policy.o
 RIBOS_R18_AMD64_VM_OBJS := \
 	$(RIBOS_TARGET_CORE_SRCS:%.c=$(RIBOS_R18_AMD64_DIR)/obj/%.o)
 RIBOS_R18_AMD64_VM_LIB := $(RIBOS_R18_AMD64_DIR)/libribos-target-core.a
@@ -703,7 +714,9 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-ribos-normal-no-network check-ribos-factory-recovery \
 	check-ribos-host-boundary check-ribos-golden-artifact \
 	check-ribos-cross-arch-objects check-ribos-cross-arch-qemu \
-	check-ribos-r18 ribos-libraries \
+	check-ribos-r18 ribos-r18-release-artifacts \
+	check-ribos-release-reproducibility \
+	check-ribos-production-policy ribos-libraries \
 	check-security-ed25519-provider check-security-ed25519-sanitizer \
 	check-security-ed25519-cross-compile check-security-provider-graphs \
 	check-security-key-policy check-security-key-policy-sanitizer \
@@ -1332,7 +1345,7 @@ $(RIBOS_R18_ARTIFACT): $(RIBOS_R18_UNSIGNED_A) \
 	$(PYTHON) tools/sign_ribos_policy.py \
 		--input $< --output $@ --product-manifest $(RIBOS_R18_MANIFEST) \
 		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
-		--key-id ribon-r18-fixture-key \
+		--key-id ribon-validation-policy-key \
 		--rollback-domain ribon.policy.ribos-qemu-validation.v1 \
 		--sequence 18 --mode normal \
 		--expected-public-key \
@@ -1346,21 +1359,57 @@ $(RIBOS_R18_ARTIFACT_B): $(RIBOS_R18_UNSIGNED_B) \
 	$(PYTHON) tools/sign_ribos_policy.py \
 		--input $< --output $@ --product-manifest $(RIBOS_R18_MANIFEST) \
 		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
-		--key-id ribon-r18-fixture-key \
+		--key-id ribon-validation-policy-key \
 		--rollback-domain ribon.policy.ribos-qemu-validation.v1 \
 		--sequence 18 --mode normal \
 		--expected-public-key \
 			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a \
 		--expected-sha256 $(RIBOS_R18_GOLDEN_SHA256)
 
+$(RIBOS_R18_TRIAL_ARTIFACT): $(RIBOS_R18_UNSIGNED_A) \
+		$(RIBOS_R18_MANIFEST) $(RIBOS_R18_TRIAL_GOLDEN_SHA256) \
+		tests/fixtures/security/rfc8032-test1-seed.hex \
+		tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py \
+		--input $< --output $@ --product-manifest $(RIBOS_R18_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-validation-policy-key \
+		--rollback-domain ribon.policy.ribos-qemu-validation.v1 \
+		--sequence 19 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a \
+		--expected-sha256 $(RIBOS_R18_TRIAL_GOLDEN_SHA256)
+
+$(RIBOS_R18_TRIAL_ARTIFACT_B): $(RIBOS_R18_UNSIGNED_B) \
+		$(RIBOS_R18_MANIFEST) $(RIBOS_R18_TRIAL_GOLDEN_SHA256) \
+		tests/fixtures/security/rfc8032-test1-seed.hex \
+		tools/sign_ribos_policy.py
+	$(PYTHON) tools/sign_ribos_policy.py \
+		--input $< --output $@ --product-manifest $(RIBOS_R18_MANIFEST) \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--key-id ribon-validation-policy-key \
+		--rollback-domain ribon.policy.ribos-qemu-validation.v1 \
+		--sequence 19 --mode normal \
+		--expected-public-key \
+			d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a \
+		--expected-sha256 $(RIBOS_R18_TRIAL_GOLDEN_SHA256)
+
 $(RIBOS_R18_EMBED_C): $(RIBOS_R18_ARTIFACT) tools/embed_binary.py
 	$(PYTHON) tools/embed_binary.py --input $< --output $@ \
 		--symbol ribon_ribos_validation_artifact
 
+$(RIBOS_R18_TRIAL_EMBED_C): \
+		$(RIBOS_R18_TRIAL_ARTIFACT) tools/embed_binary.py
+	$(PYTHON) tools/embed_binary.py --input $< --output $@ \
+		--symbol ribon_ribos_validation_trial_artifact
+
 check-ribos-golden-artifact: \
-		$(RIBOS_R18_ARTIFACT) $(RIBOS_R18_ARTIFACT_B)
+		$(RIBOS_R18_ARTIFACT) $(RIBOS_R18_ARTIFACT_B) \
+		$(RIBOS_R18_TRIAL_ARTIFACT) $(RIBOS_R18_TRIAL_ARTIFACT_B)
 	cmp $(RIBOS_R18_ARTIFACT) $(RIBOS_R18_ARTIFACT_B)
-	@echo "RIBOS-R18-GOLDEN-ARTIFACT-OK rebuilds=2 wire=little-endian"
+	cmp $(RIBOS_R18_TRIAL_ARTIFACT) $(RIBOS_R18_TRIAL_ARTIFACT_B)
+	@echo "RIBOS-R18-GOLDEN-ARTIFACT-OK policies=2 rebuilds=2 \
+wire=little-endian"
 
 $(RIBOS_R18_AARCH64_REGISTRY_C): \
 		$(RIBOS_R18_MANIFEST) tools/generate_plugin_registry.py
@@ -1382,6 +1431,11 @@ $(RIBOS_R18_AARCH64_DIR)/obj/generated/plugin_registry.o: \
 
 $(RIBOS_R18_AARCH64_DIR)/obj/generated/embedded_policy.o: \
 		$(RIBOS_R18_EMBED_C) Makefile
+	@mkdir -p $(@D)
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(RIBOS_R18_AARCH64_DIR)/obj/generated/embedded_trial_policy.o: \
+		$(RIBOS_R18_TRIAL_EMBED_C) Makefile
 	@mkdir -p $(@D)
 	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
@@ -1425,6 +1479,11 @@ $(RIBOS_R18_RISCV64_DIR)/obj/generated/plugin_registry.o: \
 
 $(RIBOS_R18_RISCV64_DIR)/obj/generated/embedded_policy.o: \
 		$(RIBOS_R18_EMBED_C) Makefile
+	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(RIBOS_R18_RISCV64_DIR)/obj/generated/embedded_trial_policy.o: \
+		$(RIBOS_R18_TRIAL_EMBED_C) Makefile
 	@mkdir -p $(@D)
 	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
@@ -1472,13 +1531,19 @@ $(RIBOS_R18_AMD64_DIR)/obj/generated/embedded_policy.o: \
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
+$(RIBOS_R18_AMD64_DIR)/obj/generated/embedded_trial_policy.o: \
+		$(RIBOS_R18_TRIAL_EMBED_C) Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
 $(RIBOS_R18_AMD64_VM_LIB): $(RIBOS_R18_AMD64_VM_OBJS) Makefile
 	$(RM) $@
 	$(LLVM_AR) rcs $@ $(RIBOS_R18_AMD64_VM_OBJS)
 
 $(RIBOS_R18_AMD64_APP): $(RIBOS_R18_AMD64_OBJS) \
 		$(RIBOS_R18_AMD64_VM_LIB)
-	$(LLD_LINK) /subsystem:efi_application /entry:efi_main /nodefaultlib /opt:ref \
+	$(LLD_LINK) /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/brepro /opt:ref \
 		/machine:x64 /map:$(RIBOS_R18_AMD64_DIR)/ribon-ribos.map \
 		/out:$@ $(RIBOS_R18_AMD64_OBJS) $(RIBOS_R18_AMD64_VM_LIB)
 
@@ -1635,7 +1700,9 @@ check-ribos-cross-arch-qemu: \
 		$(RIBOS_R18_AMD64_ESP)/EFI/BOOT/BOOTX64.EFI \
 		$(RIBOS_R18_AARCH64_IMAGE) \
 		$(RIBOS_R18_RISCV64_IMAGE) \
-		$(RIBOS_R18_ARTIFACT)
+		$(RIBOS_R18_ARTIFACT) $(RIBOS_R18_TRIAL_ARTIFACT) \
+		$(RIBOS_R18_MANIFEST) $(RIBOS_R18_AMD64_GRAPH) \
+		$(RIBOS_R18_AARCH64_GRAPH) $(RIBOS_R18_RISCV64_GRAPH)
 	$(PYTHON) tools/ribos_cross_arch_qemu.py \
 		--qemu-x86-64 $(QEMU_X86_64) \
 		--qemu-aarch64 $(QEMU_AARCH64) \
@@ -1646,15 +1713,44 @@ check-ribos-cross-arch-qemu: \
 		--riscv64-image $(RIBOS_R18_RISCV64_IMAGE) \
 		--riscv64-firmware $(RISCV64_OPENSBI_FIRMWARE) \
 		--artifact $(RIBOS_R18_ARTIFACT) \
+		--trial-artifact $(RIBOS_R18_TRIAL_ARTIFACT) \
+		--product-manifest $(RIBOS_R18_MANIFEST) \
+		--graph $(RIBOS_R18_AMD64_GRAPH) \
+		--graph $(RIBOS_R18_AARCH64_GRAPH) \
+		--graph $(RIBOS_R18_RISCV64_GRAPH) \
 		--source-revision $(shell git rev-parse HEAD) \
 		--output-dir $(RESULTS_DIR)/ribos-r18
 
 check-ribos-r18: check-ribos-golden-artifact \
 		check-ribos-cross-arch-objects check-security-provider-graphs \
 		check-security-key-policy-graphs \
+		check-security-protected-state-graphs \
 		check-ribos-cross-arch-qemu
-	@echo "RIBOS-R18-AGGREGATE-OK artifact=golden targets=3 \
-qemu=guest-executed hardware=not-run"
+	@echo "RIBOS-R18-AGGREGATE-OK artifacts=confirmed,trial targets=3 \
+qemu=guest-executed negative=target hostile=bounded hardware=not-run"
+
+ribos-r18-release-artifacts: check-ribos-golden-artifact \
+		$(RIBOS_R18_AMD64_APP) $(RIBOS_R18_AARCH64_IMAGE) \
+		$(RIBOS_R18_RISCV64_IMAGE)
+
+check-ribos-release-reproducibility:
+	$(PYTHON) tools/check_ribos_release_reproducibility.py \
+		--make $(MAKE) --root $(ROOT) \
+		--work-root $(BUILD_ROOT)/tests/ribos-release-reproducibility
+
+check-ribos-production-policy: check-uefi-product-hermeticity \
+		check-ribos-executable-corpus check-ribos-hostile \
+		check-security-ed25519-provider check-security-ed25519-sanitizer \
+		check-security-ed25519-cross-compile check-security-provider-graphs \
+		check-security-key-policy check-security-key-policy-sanitizer \
+		check-security-key-policy-graphs check-security-protected-state \
+		check-security-protected-state-sanitizer \
+		check-security-protected-state-graphs \
+		check-ribos-ribon-integration check-ribos-product-graphs \
+		check-ribos-normal-no-network check-ribos-factory-recovery \
+		check-ribos-r18 check-ribos-release-reproducibility
+	@echo "RIBOS-PRODUCTION-POLICY-OK authorization=ed25519-key-policy-rollback \
+targets=amd64,aarch64,riscv64 qemu=runtime reproducible=yes hardware=not-run"
 
 $(KERNEL_FIXTURE): tools/make_elf64_fixture.py
 	@mkdir -p $(@D)
@@ -2574,6 +2670,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-ribon-integration check-ribos-product-graphs \
 	check-ribos-normal-no-network check-ribos-factory-recovery \
 	check-ribos-host-boundary check-ribos-r18 \
+	check-ribos-production-policy \
 	check-security-ed25519-provider check-security-ed25519-sanitizer \
 	check-security-ed25519-cross-compile check-security-provider-graphs \
 	check-security-key-policy check-security-key-policy-sanitizer \

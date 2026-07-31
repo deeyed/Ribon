@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute one signed Ribos artifact through three Ribon QEMU validation targets."""
+"""Execute confirmed and trial Ribos policies through three QEMU targets."""
 
 from __future__ import annotations
 
@@ -13,23 +13,38 @@ import subprocess
 import time
 
 
+CORE_RECEIPT = (
+    "RIBOS-R18-CORE-COMMIT-OK "
+    "receipt=v1-stage8-action21-helpers4-fallback0"
+)
 MARKERS = (
     "RIBOS-R18-QEMU-ENTRY",
     "RIBOS-R18-ARTIFACT-OPEN-OK",
     "RIBOS-R18-TRANSACTION-PREPARED",
     "RIBOS-R18-POLICY-EXECUTE",
     "RIBOS-R18-SIGNED-AUTH-OK",
-    (
-        "RIBOS-R18-CORE-COMMIT-OK "
-        "receipt=v1-stage8-action21-helpers4-fallback0"
-    ),
+    CORE_RECEIPT,
     "RIBOS-R18-SIGNATURE-FALLBACK-OK",
     "RIBOS-R18-CORRUPT-FALLBACK-OK",
+    "RIBOS-R18-TRUNCATION-FALLBACK-OK",
+    "RIBOS-R18-PRODUCT-FALLBACK-OK",
     "RIBOS-R18-SCHEMA-FALLBACK-OK",
+    "RIBOS-R18-KEY-FALLBACK-OK",
+    "RIBOS-R18-SEQUENCE-FALLBACK-OK",
+    "RIBOS-R18-STATE-FALLBACK-OK",
     "RIBOS-R18-BUDGET-FALLBACK-OK",
     "RIBOS-R18-DEADLINE-FALLBACK-OK",
+    "RIBOS-R18-TRIAL-CONFIRM-OK",
+    "RIBOS-R18-TRIAL-ROLLBACK-OK",
     "RIBOS-R18-NETWORK-ABSENT-OK",
     "RIBOS-R18-QEMU-VALIDATION-OK",
+)
+FORBIDDEN_MARKERS = (
+    "RIBOS-R18-QEMU-FAIL",
+    "RIBON-PANIC",
+    "PARUS:PANIC",
+    "Unhandled Exception",
+    "ASSERT_EFI_ERROR",
 )
 
 
@@ -76,7 +91,8 @@ def commands(args: argparse.Namespace) -> dict[str, list[str]]:
             "-no-shutdown",
             "-drive",
             f"if=pflash,format=raw,readonly=on,file={args.x86_64_firmware}",
-            "-drive", f"format=raw,file=fat:rw:{args.x86_64_esp}",
+            "-snapshot",
+            "-drive", f"format=raw,file=fat:{args.x86_64_esp}",
         ],
         "aarch64": [
             args.qemu_aarch64,
@@ -169,10 +185,12 @@ def execute(
     log_path.write_bytes(output)
     lines = marker_lines(bytes(output))
     counts = {marker: lines.count(marker) for marker in MARKERS}
+    decoded = output.decode("utf-8", errors="replace")
+    forbidden = [marker for marker in FORBIDDEN_MARKERS if marker in decoded]
     passed = (
         not timed_out
         and not forced_kill
-        and "RIBOS-R18-QEMU-FAIL" not in lines
+        and not forbidden
         and lines == list(MARKERS)
         and all(count == 1 for count in counts.values())
     )
@@ -183,7 +201,8 @@ def execute(
         "network_arguments": ["-net", "none"],
         "markers": lines,
         "marker_counts": counts,
-        "semantic_receipt": lines[5] if len(lines) > 5 else None,
+        "semantic_receipt": CORE_RECEIPT if CORE_RECEIPT in lines else None,
+        "forbidden_markers": forbidden,
         "timed_out": timed_out,
         "forced_kill": forced_kill,
         "cleanup_complete": process.poll() is not None,
@@ -205,13 +224,64 @@ def main() -> int:
     parser.add_argument("--riscv64-image", type=Path, required=True)
     parser.add_argument("--riscv64-firmware", type=Path, required=True)
     parser.add_argument("--artifact", type=Path, required=True)
+    parser.add_argument("--trial-artifact", type=Path, required=True)
+    parser.add_argument("--product-manifest", type=Path, required=True)
+    parser.add_argument("--graph", type=Path, action="append", required=True)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=20.0)
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    if len(args.graph) != 3:
+        raise SystemExit("exactly three --graph arguments are required")
     artifact_hash = sha256_file(args.artifact)
+    trial_artifact_hash = sha256_file(args.trial_artifact)
+    product_manifest_hash = sha256_file(args.product_manifest)
+    product_manifest = json.loads(
+        args.product_manifest.read_text(encoding="utf-8")
+    )
+    graph_reports = [
+        json.loads(path.read_text(encoding="utf-8")) for path in args.graph
+    ]
+    graph_identity_ok = all(
+        graph.get("product_id") == "ribos-qemu-validation"
+        and graph.get("source_manifest_sha256") == product_manifest_hash
+        and graph.get("signature_provider", {}).get("class") == "production"
+        and graph.get("ribos_policy", {}).get("authorization", {}).get("class")
+            == "signed-policy"
+        and graph.get("protected_state_provider", {}).get("class")
+            == "reference"
+        and graph.get("key_policy", {}).get("keys", [{}])[0].get("id")
+            == "ribon-validation-policy-key"
+        and graph.get("key_policy", {}).get("keys", [{}])[0].get(
+            "minimum_sequence"
+        ) == 18
+        and graph.get("key_policy", {}).get("keys", [{}])[0].get(
+            "maximum_sequence"
+        ) == 19
+        for graph in graph_reports
+    )
+    graph_key_policy_digests = {
+        graph.get("key_policy_digest_sha256") for graph in graph_reports
+    }
+    graph_domain_digests = {
+        tuple(graph.get("protected_state_domain_digests_sha256", []))
+        for graph in graph_reports
+    }
+    stable_bytes = args.artifact.read_bytes()
+    if len(stable_bytes) < 128:
+        raise SystemExit("stable artifact is shorter than the envelope")
+    payload_offset = int.from_bytes(stable_bytes[24:32], "little")
+    schema_offset = payload_offset + 96
+    if schema_offset > len(stable_bytes) or len(stable_bytes) - schema_offset < 32:
+        raise SystemExit("stable artifact schema digest is out of range")
+    schema_digest = stable_bytes[schema_offset:schema_offset + 32].hex()
+    image_hashes_before = {
+        "amd64_esp_sha256": sha256_tree(args.x86_64_esp),
+        "aarch64_sha256": sha256_file(args.aarch64_image),
+        "riscv64_sha256": sha256_file(args.riscv64_image),
+    }
     target_commands = commands(args)
     results = []
     for architecture in ("amd64", "aarch64", "riscv64"):
@@ -229,21 +299,56 @@ def main() -> int:
         tuple(result["markers"]) for result in results
     }
     artifact_hash_after = sha256_file(args.artifact)
+    trial_artifact_hash_after = sha256_file(args.trial_artifact)
+    image_hashes_after = {
+        "amd64_esp_sha256": sha256_tree(args.x86_64_esp),
+        "aarch64_sha256": sha256_file(args.aarch64_image),
+        "riscv64_sha256": sha256_file(args.riscv64_image),
+    }
     report = {
-        "schema": "ribon-ribos-cross-architecture-qemu-v1",
-        "schema_version": 1,
+        "schema": "ribon-ribos-cross-architecture-qemu-v2",
+        "schema_version": 2,
         "source_revision": args.source_revision,
-        "artifact": {
-            "path": str(args.artifact),
-            "sha256": artifact_hash,
-            "sha256_after_run": artifact_hash_after,
-            "immutable": artifact_hash == artifact_hash_after,
+        "artifacts": {
+            "confirmed": {
+                "path": str(args.artifact),
+                "sequence": 18,
+                "sha256": artifact_hash,
+                "sha256_after_run": artifact_hash_after,
+                "immutable": artifact_hash == artifact_hash_after,
+            },
+            "trial": {
+                "path": str(args.trial_artifact),
+                "sequence": 19,
+                "sha256": trial_artifact_hash,
+                "sha256_after_run": trial_artifact_hash_after,
+                "immutable": trial_artifact_hash == trial_artifact_hash_after,
+            },
         },
         "targets": results,
         "composed_images": {
-            "amd64_esp_sha256": sha256_tree(args.x86_64_esp),
-            "aarch64_sha256": sha256_file(args.aarch64_image),
-            "riscv64_sha256": sha256_file(args.riscv64_image),
+            "before": image_hashes_before,
+            "after": image_hashes_after,
+            "immutable": image_hashes_before == image_hashes_after,
+        },
+        "release_identity": {
+            "product_id": product_manifest.get("product_id"),
+            "product_manifest_path": str(args.product_manifest),
+            "product_manifest_sha256": product_manifest_hash,
+            "schema_digest_sha256": schema_digest,
+            "graph_paths": [str(path) for path in args.graph],
+            "graph_sha256": [sha256_file(path) for path in args.graph],
+            "graph_identity_closed": graph_identity_ok,
+            "same_key_policy_digest": len(graph_key_policy_digests) == 1,
+            "key_policy_digest_sha256": (
+                next(iter(graph_key_policy_digests))
+                if len(graph_key_policy_digests) == 1 else None
+            ),
+            "same_rollback_domain_digest": len(graph_domain_digests) == 1,
+            "rollback_domain_digests_sha256": (
+                list(next(iter(graph_domain_digests)))
+                if len(graph_domain_digests) == 1 else None
+            ),
         },
         "semantic_equivalence": {
             "same_marker_sequence": len(marker_sequences) == 1,
@@ -254,6 +359,21 @@ def main() -> int:
             "normal_mode_transport": "absent",
             "qemu_nic": "disabled",
         },
+        "target_scenarios": {
+            "positive": ["confirmed-policy", "trial-confirm", "trial-fallback"],
+            "negative": [
+                "signature-mutation",
+                "payload-mutation",
+                "artifact-truncation",
+                "wrong-product",
+                "wrong-schema",
+                "wrong-key",
+                "wrong-sequence",
+                "corrupt-protected-state",
+                "instruction-budget",
+                "deadline",
+            ],
+        },
         "evidence": {
             "host": "golden artifact and build orchestration",
             "target_object": "freestanding cross-compiled images",
@@ -263,9 +383,14 @@ def main() -> int:
     }
     passed = (
         artifact_hash == artifact_hash_after
+        and trial_artifact_hash == trial_artifact_hash_after
+        and image_hashes_before == image_hashes_after
         and all(result["outcome"] == "passed" for result in results)
         and len(marker_sequences) == 1
         and len(receipts) == 1
+        and graph_identity_ok
+        and len(graph_key_policy_digests) == 1
+        and len(graph_domain_digests) == 1
     )
     report["outcome"] = "passed" if passed else "failed"
     result_path = args.output_dir / "ribos-r18-cross-architecture.json"
@@ -281,7 +406,8 @@ def main() -> int:
         return 1
     print(
         "RIBOS-R18-CROSS-ARCH-QEMU-OK "
-        f"artifact={artifact_hash} semantic-receipt=equivalent hardware=not-run"
+        f"confirmed={artifact_hash} trial={trial_artifact_hash} "
+        "semantic-receipt=equivalent negative=10 hardware=not-run"
     )
     return 0
 
