@@ -14,6 +14,7 @@ code_paths:
   - include/Ribon/port/
   - include/Ribon/policy/
   - include/Ribon/security/
+  - include/Ribon/update/
 tests:
   - ribon-public-api-lint
   - ribon-doxygen
@@ -150,6 +151,18 @@ Protected-state API는 domain-bound provider, redundant record/selector journal,
 attempt-before-transfer transition을 제공한다. Signer, private key, mutable trust-store update와 raw
 storage address는 이 ABI에 포함하지 않는다. Product graph는 hardware/reference/fixture class를
 분리해 정확한 signature, key-store와 protected-state symbol을 선택한다.
+
+## Update manifest API
+
+```text
+Ribon/update/manifest.h
+```
+
+Update manifest API는 bounded component table, product/target binding, update-only signed message,
+detached signature envelope와 immutable key-policy authorization을 제공한다. Source path, transport,
+storage writer, raw flash address, private key와 protected rollback-state mutation은 이 ABI에 포함하지
+않는다. Manifest와 envelope는 C struct layout이 아니라 explicit little-endian reader/writer로
+직렬화한다.
 
 ## Architecture API
 

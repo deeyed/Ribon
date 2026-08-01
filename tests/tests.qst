@@ -249,6 +249,47 @@ qstar.test_suite "security_protected_state_tests" {
   description = qstar.status("Redundant journal and rollback state machine"),
 }
 
+qstar.test "update_manifest_unit" {
+  sources = {
+    "tests/update/manifest_tests.c",
+  },
+  deps = {
+    "//src/plugins:libribon_security_ed25519",
+    "//src/update:libribon_update_manifest",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.run_target "update_manifest_contract" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-update-manifest",
+    "check-update-manifest",
+  },
+  timeout = 240,
+  expect = {
+    contains = "RIBON-UPDATE-MANIFEST-V1-OK",
+  },
+  description = qstar.status("Verifying canonical signed update-manifest v1"),
+}
+
+qstar.test_suite "update_manifest_tests" {
+  tests = {
+    "//tests:update_manifest_unit",
+    "//tests:update_manifest_contract",
+  },
+  tags = {
+    "host",
+    "update",
+    "manifest",
+    "security",
+  },
+  description = qstar.status("Update manifest codec and authorization closure"),
+}
+
 qstar.run_target "ribos_production_policy" {
   command = qstar.cli {
     "make",
@@ -293,6 +334,8 @@ qstar.group "ribon_tests" {
     "//tests:security_key_policy_graphs",
     "//tests:security_protected_state_unit",
     "//tests:security_protected_state_graphs",
+    "//tests:update_manifest_unit",
+    "//tests:update_manifest_contract",
     "//tests:ribos_production_policy",
   },
 }

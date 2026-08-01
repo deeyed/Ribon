@@ -10,12 +10,15 @@ code_paths:
   - src/protocols/
   - products/
   - include/Ribon/security/protected_state.h
+  - include/Ribon/update/manifest.h
   - src/security/protected_state.c
+  - src/update/manifest.c
 tests:
   - ribon-update-state-machine
   - ribon-update-power-loss-test
   - ribon-update-rollback-test
   - make check-security-protected-state
+  - make check-update-manifest
 hardware:
   - none
 supersedes:
@@ -60,6 +63,10 @@ Signed manifest는 다음 정보를 포함한다.
 - recovery와 confirmation policy
 
 Transport URI와 mirror는 서명된 정책 또는 provisioned endpoint에서 얻는다.
+
+Canonical wire, update-only signed message, detached signature envelope와 independent reader의
+세부 계약은 {doc}`signed-update-manifest-v1`이 소유한다. Source JSON이나 native C struct를 target
+manifest wire로 사용하지 않는다.
 
 ## Write 순서
 

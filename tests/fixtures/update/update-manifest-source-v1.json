@@ -1,0 +1,51 @@
+{
+  "architecture_id": "architecture.aarch64",
+  "bundle_generation": 9,
+  "components": [
+    {
+      "bundle_offset": 0,
+      "destination_class": "kernel-slot",
+      "destination_id": "slot.inactive.kernel",
+      "entry_contract_id": "entry.aarch64.direct-v1",
+      "expected_sha256": "d82a4dc818ae66d3ae55f37346bc7a4814de040394eb3c28abe8dc95decd43d6",
+      "image_format": "elf64",
+      "logical_id": "system.kernel",
+      "maximum_size": 1048576,
+      "required": true,
+      "role": "kernel",
+      "source": "kernel.payload"
+    },
+    {
+      "bundle_offset": 4096,
+      "destination_class": "policy-slot",
+      "destination_id": "slot.inactive.policy",
+      "entry_contract_id": "policy.ribos.artifact-v1",
+      "expected_sha256": "010c25a18fc974d27db612bdb8ce98eee667a4d2971e0a1bd58b7857ae3bd7ac",
+      "image_format": "opaque",
+      "logical_id": "boot.policy",
+      "maximum_size": 65536,
+      "required": true,
+      "role": "policy",
+      "source": "policy.payload"
+    }
+  ],
+  "creation_policy_version": 3,
+  "environment_id": "environment.raw-fdt",
+  "hardware_revision": {
+    "maximum": 7,
+    "minimum": 2
+  },
+  "manifest_schema_id": "ribon.update.manifest.v1",
+  "mode": "recovery",
+  "platform_id": "platform.qemu-virt",
+  "predecessor_generation": 8,
+  "product_id": "product.update-manifest-vector",
+  "protocol": {
+    "id": "protocol.synthetic-v1",
+    "major": 1,
+    "minor": 0
+  },
+  "rollback_domain": "ribon.update.vector.v1",
+  "rollback_sequence": 42,
+  "schema": "ribon-update-manifest-source-v1"
+}

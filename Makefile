@@ -113,6 +113,7 @@ RIBOS_HOST_VERIFIER_INVALID := \
 RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_RUNNER := $(BUILD_ROOT)/tools/ribos-run
 SECURITY_BUILD_DIR := $(BUILD_ROOT)/security
+UPDATE_MANIFEST_BUILD_DIR := $(BUILD_ROOT)/update-manifest
 SECURITY_TEST := $(TEST_BUILD_DIR)/ed25519_provider_tests
 SECURITY_SANITIZER_TEST := $(TEST_BUILD_DIR)/ed25519_provider_sanitizer_tests
 KEY_POLICY_TEST := $(TEST_BUILD_DIR)/key_policy_tests
@@ -120,6 +121,9 @@ KEY_POLICY_SANITIZER_TEST := $(TEST_BUILD_DIR)/key_policy_sanitizer_tests
 PROTECTED_STATE_TEST := $(TEST_BUILD_DIR)/protected_state_tests
 PROTECTED_STATE_SANITIZER_TEST := \
 	$(TEST_BUILD_DIR)/protected_state_sanitizer_tests
+UPDATE_MANIFEST_TEST := $(TEST_BUILD_DIR)/update_manifest_tests
+UPDATE_MANIFEST_SANITIZER_TEST := \
+	$(TEST_BUILD_DIR)/update_manifest_sanitizer_tests
 SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
 SECURITY_KEY_POLICY_SRCS := src/security/key_policy.c
 SECURITY_PROTECTED_STATE_SRCS := \
@@ -130,6 +134,9 @@ SECURITY_PROVIDER_SRCS := \
 	src/plugins/security/ed25519/provider.c \
 	third_party/monocypher/4.0.3/monocypher.c \
 	third_party/monocypher/4.0.3/monocypher-ed25519.c
+UPDATE_MANIFEST_SRCS := \
+	src/update/manifest.c \
+	src/security/sha256.c
 HOST_SECURITY_SRCS := $(SECURITY_KEY_POLICY_SRCS) \
 	$(SECURITY_PROTECTED_STATE_SRCS) $(SECURITY_PROVIDER_SRCS)
 HOST_SECURITY_OBJS := $(HOST_SECURITY_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
@@ -721,6 +728,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-security-ed25519-cross-compile check-security-provider-graphs \
 	check-security-key-policy check-security-key-policy-sanitizer \
 	check-security-key-policy-graphs \
+	check-update-manifest check-update-manifest-sanitizer \
+	check-update-manifest-cross-compile \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke \
@@ -1641,6 +1650,54 @@ check-security-protected-state: $(PROTECTED_STATE_TEST)
 
 check-security-protected-state-sanitizer: $(PROTECTED_STATE_SANITIZER_TEST)
 	$(PROTECTED_STATE_SANITIZER_TEST)
+
+$(UPDATE_MANIFEST_TEST): tests/update/manifest_tests.c \
+		$(UPDATE_MANIFEST_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROVIDER_SRCS) include/Ribon/update/manifest.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		tests/update/manifest_tests.c $(UPDATE_MANIFEST_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) -o $@
+
+$(UPDATE_MANIFEST_SANITIZER_TEST): tests/update/manifest_tests.c \
+		$(UPDATE_MANIFEST_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROVIDER_SRCS) include/Ribon/update/manifest.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(SECURITY_INCLUDE_FLAGS) tests/update/manifest_tests.c \
+		$(UPDATE_MANIFEST_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROVIDER_SRCS) -o $@
+
+check-update-manifest: $(UPDATE_MANIFEST_TEST)
+	$(UPDATE_MANIFEST_TEST)
+	$(PYTHON) tests/update/manifest_tool_tests.py \
+		--c-codec $(UPDATE_MANIFEST_TEST) \
+		--tool tools/update_manifest.py \
+		--source tests/fixtures/update/update-manifest-source-v1.json \
+		--vector tests/fixtures/update/update-manifest-vector-v1.json \
+		--seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--openssl openssl
+
+check-update-manifest-sanitizer: $(UPDATE_MANIFEST_SANITIZER_TEST)
+	$(UPDATE_MANIFEST_SANITIZER_TEST)
+
+check-update-manifest-cross-compile:
+	@set -e; \
+	for target in x86_64 aarch64 riscv64; do \
+		case "$$target" in \
+			x86_64) compiler=/usr/bin/clang; triple=x86_64-none-elf;; \
+			aarch64) compiler=$(AARCH64_CC); triple=aarch64-none-elf;; \
+			riscv64) compiler=$(RISCV64_CC); triple=riscv64-none-elf;; \
+		esac; \
+		for source in $(UPDATE_MANIFEST_SRCS); do \
+			object=$(UPDATE_MANIFEST_BUILD_DIR)/$$target/$${source%.c}.o; \
+			mkdir -p "$$(dirname "$$object")"; \
+			"$$compiler" --target="$$triple" $(FREESTANDING_FLAGS) \
+				-c "$$source" -o "$$object"; \
+		done; \
+	done
+	@echo "RIBON-UPDATE-MANIFEST-CROSS-COMPILE-OK targets=x86_64,aarch64,riscv64"
 
 check-security-ed25519-cross-compile:
 	@set -e; \
@@ -2677,6 +2734,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-security-key-policy-graphs \
 	check-security-protected-state check-security-protected-state-sanitizer \
 	check-security-protected-state-graphs \
+	check-update-manifest check-update-manifest-sanitizer \
+	check-update-manifest-cross-compile \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

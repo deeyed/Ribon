@@ -11,12 +11,15 @@ code_paths:
   - src/security/key_policy.c
   - src/plugins/security/ed25519/provider.c
   - tools/inspect_ribos_trust_message.py
+  - include/Ribon/update/manifest.h
+  - src/update/manifest.c
 tests:
   - make check-ribos-artifact
   - make check-security-ed25519-provider
   - make check-security-key-policy
   - make check-security-key-policy-graphs
   - ribon-trust-message-vector-v1
+  - make check-update-manifest
 hardware:
   - none
 supersedes:
@@ -101,6 +104,7 @@ Trust-store key record는 여러 usage를 허용할 수 있지만 authorization 
 Ribos `.rba`에는 mode와 policy usage가 동일한 번호로 대응해야 한다. Update-manifest 또는
 boot-image usage로 Ribos policy를 서명하면 codec 또는 authorization이 거부한다. Update와 image
 codec은 같은 registry를 사용하되 object별 별도 canonical message contract를 가져야 한다.
+Update object의 exact message는 {doc}`../update/signed-update-manifest-v1`이 소유한다.
 
 ## Canonical 232-byte message
 
@@ -208,7 +212,7 @@ Canonical vector와 codec unit test만으로는 다음을 증명하지 않는다
 - production public key와 private-key 보관 방식
 - TPM, RPMB, secure element 또는 fuse-backed rollback state
 - power-loss-safe journal과 physical flash 동작
-- update manifest와 boot image codec 구현
+- boot image codec 구현
 
 Ed25519 equation과 strict input profile은 별도 signature-provider gate가 같은 message bytes로
 검사한다. Bounded immutable key table, lifecycle, authority containment와 최대 두 edge delegation은
