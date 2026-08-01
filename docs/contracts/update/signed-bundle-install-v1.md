@@ -5,7 +5,9 @@ authority: normative
 last_verified: 2026-08-01
 code_paths:
   - include/Ribon/update/installer.h
+  - include/Ribon/update/transaction.h
   - src/update/installer.c
+  - src/update/transaction.c
   - src/environments/uefi-app/update_storage.h
   - src/environments/uefi-app/update_storage.c
   - targets/x86_64-uefi-update-recovery/entry.c
@@ -16,6 +18,7 @@ tests:
   - make check-update-installer
   - make check-uefi-update-storage
   - make check-qemu-update-install
+  - make check-update-power-cut
   - qstar --file qstar.lua check
 hardware:
   - qemu-q35-uefi
@@ -57,19 +60,25 @@ Installer는 다음 순서를 고정한다.
 
 1. Request, provider, layout, current metadata와 bundle range를 검증한다.
 2. Manifest와 signature envelope를 독립 승인한다.
-3. Target이 active slot이 아니고 입력 snapshot에서 `EMPTY`인지 확인한다.
+3. Target이 active slot이 아니며 새 install 또는 same-identity resume가 가능한지 확인한다.
 4. Manifest digest와 ordered component digest의 image-set identity를 계산한다.
-5. Caller snapshot에서 `EMPTY -> STAGING` successor와 semantic inactive-slot handle을 만든다.
+5. `EMPTY`, `BAD` 또는 inactive `CONFIRMED`에서 `STAGING` successor를 만들거나 같은 identity의
+   `STAGING`, `VERIFIED`, `PENDING` resume state를 승인한다.
 6. 각 component를 manifest order로 exact read하고 content digest를 확인한다.
 7. Aligned backing tail을 0으로 만든 뒤 semantic erase와 write를 수행한다.
-8. 같은 backing range를 전부 다시 읽고 exact content digest와 zero tail을 확인한다.
-9. Provider flush를 성공시킨다.
+8. 모든 component write 뒤 provider flush를 성공시킨다.
+9. 각 backing range를 전부 다시 읽고 exact content digest와 zero tail을 확인한다.
 10. 같은 identity로 `STAGING -> VERIFIED` successor와 receipt를 반환한다.
 
 Metadata successor 반환은 media commit과 다르다. Product adapter는 verified successor를 redundant
 metadata media에 기록하고 flush한 뒤 independent reader로 재개방해야 한다. Installer가 실패하면
 `VERIFIED` successor를 반환하지 않는다. Partial bytes가 남을 수 있으나 current durable metadata가
 `EMPTY` 또는 이전 state인 동안 boot authority가 되지 않는다.
+
+Crash-consistent product는 loose successor를 직접 commit하지 않고
+{doc}`transaction-journal-v1`의 coordinator를 사용한다. 이 경로는 durable journal을 유일한 current
+metadata authority로 사용하며 `STAGING`, payload flush, `VERIFIED`, `PENDING`의 ordering과 idempotent
+resume를 함께 닫는다.
 
 ## UEFI Block I/O adapter
 
@@ -123,7 +132,8 @@ boot는 같은 runtime disk에서 `VERIFIED`를 재개방한다. 각 QEMU proces
 Recovery product manifest는 provider class, layout/media identity와 read, writer, metadata, flush
 service ID를 exact binding으로 선언한다. Composer는 service kind와 complete capability set을 다시
 검사한다. Normal bootloader product는 `update_storage`, inactive writer service와 writer capability를
-가질 수 없다. Normal `UEFI_SRCS`에는 `update_storage.c`와 installer가 포함되지 않는다.
+가질 수 없다. Normal `UEFI_SRCS`에는 `update_storage.c`, installer와 transaction coordinator가
+포함되지 않는다.
 
 ## 검증과 비주장
 
@@ -143,4 +153,4 @@ claim이 아니다.
 - firmware가 보장하는 physical erase/discard
 - network OTA, fleet rollout 또는 OS health confirmation
 - production UEFI Secure Boot, measured boot 또는 key provisioning
-- 새 slot의 `PENDING`, boot, confirmation이나 rollback 완료
+- 새 slot의 boot, confirmation이나 rollback 완료

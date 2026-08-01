@@ -77,15 +77,20 @@ Product-bound manifest 승인부터 component full readback과 `VERIFIED` succes
 transaction은 {doc}`signed-bundle-install-v1`이 소유한다. Firmware adapter는 storage mechanism만
 제공하고 installer의 update 의미를 복제하지 않는다.
 
+`STAGING` durable commit부터 payload flush, `VERIFIED`, `PENDING`과 crash resume까지의 ordering은
+{doc}`transaction-journal-v1`이 소유한다. Update journal의 `PENDING`은 protected-state trial과
+attempt 소비가 commit되기 전에는 boot authority가 아니다.
+
 ## Write 순서
 
 1. Active confirmed destination과 다른 inactive destination을 선택한다.
 2. Manifest signature, product compatibility와 rollback sequence를 write 전에 검증한다.
-3. `STAGING` successor를 만들고 durable transaction 계층이 필요하면 journal에 기록한다.
-4. Payload를 bounded chunk로 기록하며 digest를 누적한다.
-5. Flush 뒤 전체 component를 다시 읽어 검증한다.
-6. `VERIFIED`를 redundant metadata에 commit하고 재개방한다.
-7. 별도 commit으로 `PENDING`을 연다.
+3. `STAGING` successor를 transaction journal에 commit하고 reopen한다.
+4. Payload를 bounded chunk로 기록하며 source digest를 검증한다.
+5. 모든 component write를 flush한 뒤 전체 component를 다시 읽어 검증한다.
+6. `VERIFIED`를 journal에 commit하고 재개방한다.
+7. 별도 journal commit으로 `PENDING`을 연다.
+8. Protected state의 exact successor trial과 attempt를 commit한 뒤에만 transfer authority를 연다.
 
 Partial payload와 `STAGING` destination을 실행하지 않는다.
 

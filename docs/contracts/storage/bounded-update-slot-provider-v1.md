@@ -132,6 +132,10 @@ short callback result는 fail-closed다. Flush는 session 전체 identity를 다
 호출한다. Metadata write ordering과 redundant selector commit은 protected-state 또는 update
 transaction 계층이 소유한다.
 
+Canonical `update-journal` range의 앞 3072 byte에 두 record와 두 selector를 배치하는 방식,
+selector commit point와 replay scanner는 {doc}`../update/transaction-journal-v1`이 소유한다.
+Storage provider는 newest generation, slot state 또는 rollback floor를 판정하지 않는다.
+
 Product-bound authorization, component write, full readback과 `VERIFIED` successor의 조합은
 {doc}`../update/signed-bundle-install-v1`이 소유한다. Storage provider는 그 계약에서도 signature,
 slot selection과 lifecycle policy를 판정하지 않는다.

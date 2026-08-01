@@ -129,6 +129,12 @@ UPDATE_STORAGE_TEST := $(TEST_BUILD_DIR)/update_storage_tests
 UPDATE_STORAGE_SANITIZER_TEST := \
 	$(TEST_BUILD_DIR)/update_storage_sanitizer_tests
 UPDATE_INSTALLER_TEST := $(TEST_BUILD_DIR)/update_installer_tests
+UPDATE_POWER_CUT_TEST := $(TEST_BUILD_DIR)/update_power_cut_tests
+UPDATE_POWER_CUT_SANITIZER_TEST := \
+	$(TEST_BUILD_DIR)/update_power_cut_sanitizer_tests
+UPDATE_POWER_CUT_DIR := $(BUILD_ROOT)/update-power-cut
+UPDATE_POWER_CUT_CASES := $(UPDATE_POWER_CUT_DIR)/cases
+UPDATE_POWER_CUT_COVERAGE := $(UPDATE_POWER_CUT_DIR)/coverage.json
 UEFI_UPDATE_STORAGE_TEST := $(TEST_BUILD_DIR)/uefi_update_storage_tests
 SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
 SECURITY_KEY_POLICY_SRCS := src/security/key_policy.c
@@ -598,6 +604,7 @@ UEFI_UPDATE_SRCS := \
 	src/update/manifest.c \
 	src/update/storage.c \
 	src/update/installer.c \
+	src/update/transaction.c \
 	src/security/sha256.c \
 	src/security/key_policy.c \
 	src/security/protected_state.c \
@@ -793,6 +800,9 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-update-storage check-update-storage-sanitizer \
 	check-update-storage-cross-compile check-update-storage-graphs \
 	check-update-installer check-uefi-update-storage check-qemu-update-install \
+	check-update-power-cut check-update-power-cut-host \
+	check-update-power-cut-sanitizer check-update-transaction-cross-compile \
+	check-qemu-update-power-cut \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke \
@@ -1846,6 +1856,66 @@ check-update-installer: $(UPDATE_INSTALLER_TEST)
 		$(UEFI_UPDATE_FIXTURE_DIR)/update.bin \
 		$(UEFI_UPDATE_FIXTURE_DIR)/layout.bin
 
+$(UPDATE_POWER_CUT_TEST): tests/update/power_cut_tests.c \
+		src/update/transaction.c src/update/installer.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) \
+		include/Ribon/update/transaction.h include/Ribon/update/installer.h \
+		$(UEFI_UPDATE_FIXTURE_STAMP) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		tests/update/power_cut_tests.c src/update/transaction.c \
+		src/update/installer.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) -o $@
+
+$(UPDATE_POWER_CUT_SANITIZER_TEST): tests/update/power_cut_tests.c \
+		src/update/transaction.c src/update/installer.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) \
+		include/Ribon/update/transaction.h include/Ribon/update/installer.h \
+		$(UEFI_UPDATE_FIXTURE_STAMP) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(SECURITY_INCLUDE_FLAGS) tests/update/power_cut_tests.c \
+		src/update/transaction.c src/update/installer.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) -o $@
+
+check-update-power-cut-host: $(UPDATE_POWER_CUT_TEST)
+	@mkdir -p $(UPDATE_POWER_CUT_CASES)
+	$(UPDATE_POWER_CUT_TEST) \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.sig \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.bin \
+		$(UEFI_UPDATE_FIXTURE_DIR)/layout.bin \
+		$(UEFI_UPDATE_DISK) $(UPDATE_POWER_CUT_CASES) \
+		$(UPDATE_POWER_CUT_COVERAGE)
+
+check-update-power-cut-sanitizer: $(UPDATE_POWER_CUT_SANITIZER_TEST)
+	@mkdir -p $(UPDATE_POWER_CUT_DIR)/sanitizer-cases
+	$(UPDATE_POWER_CUT_SANITIZER_TEST) \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.sig \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.bin \
+		$(UEFI_UPDATE_FIXTURE_DIR)/layout.bin \
+		$(UEFI_UPDATE_DISK) $(UPDATE_POWER_CUT_DIR)/sanitizer-cases \
+		$(UPDATE_POWER_CUT_DIR)/sanitizer-coverage.json
+
+check-update-transaction-cross-compile:
+	@set -e; \
+	for target in x86_64 aarch64 riscv64; do \
+		case "$$target" in \
+			x86_64) compiler=/usr/bin/clang; triple=x86_64-none-elf;; \
+			aarch64) compiler=$(AARCH64_CC); triple=aarch64-none-elf;; \
+			riscv64) compiler=$(RISCV64_CC); triple=riscv64-none-elf;; \
+		esac; \
+		for source in src/update/installer.c src/update/transaction.c; do \
+			object=$(UPDATE_POWER_CUT_DIR)/$$target/$${source%.c}.o; \
+			mkdir -p "$$(dirname "$$object")"; \
+			"$$compiler" --target="$$triple" $(FREESTANDING_FLAGS) \
+				$(SECURITY_INCLUDE_FLAGS) -c "$$source" -o "$$object"; \
+		done; \
+	done
+	@echo "RIBON-UPDATE-TRANSACTION-CROSS-COMPILE-OK targets=x86_64,aarch64,riscv64"
+
 $(UEFI_UPDATE_STORAGE_TEST): tests/update/uefi_storage_tests.c \
 		src/environments/uefi-app/update_storage.c $(UPDATE_STORAGE_SRCS) \
 		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) \
@@ -2677,6 +2747,25 @@ check-qemu-update-install: x86_64-uefi-update-recovery-smoke
 		--manifest $(UEFI_UPDATE_FIXTURE_DIR)/update.man \
 		--provenance $(UEFI_UPDATE_FIXTURE_PROVENANCE)
 
+check-qemu-update-power-cut: check-update-power-cut-host \
+		x86_64-uefi-update-recovery
+	$(PYTHON) tools/qemu_update_power_cut.py \
+		--qemu $(QEMU_X86_64) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--esp-template $(UEFI_UPDATE_ESP) --boot-app $(UEFI_UPDATE_APP) \
+		--manifest $(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		--bundle $(UEFI_UPDATE_FIXTURE_DIR)/update.bin \
+		--product-manifest $(UEFI_UPDATE_MANIFEST) \
+		--fixture-provenance $(UEFI_UPDATE_FIXTURE_PROVENANCE) \
+		--coverage $(UPDATE_POWER_CUT_COVERAGE) \
+		--case-root $(UPDATE_POWER_CUT_CASES) \
+		--inspector tools/inspect_qemu_update_transaction.py \
+		--source-revision $(shell git rev-parse HEAD) \
+		--results $(UEFI_UPDATE_RESULTS)/power-cut
+
+check-update-power-cut: check-update-power-cut-host \
+		check-update-power-cut-sanitizer \
+		check-update-transaction-cross-compile check-qemu-update-power-cut
+
 x86_64-uefi-parus-fixture-smoke: x86_64-uefi-parus-fixture
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
@@ -2974,6 +3063,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-update-storage check-update-storage-sanitizer \
 	check-update-storage-cross-compile check-update-storage-graphs \
 	check-update-installer check-uefi-update-storage \
+	check-update-power-cut \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

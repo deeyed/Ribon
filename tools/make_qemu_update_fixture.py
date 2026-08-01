@@ -26,6 +26,8 @@ PRIVATE_SEED = bytes.fromhex(
 KEY_ID = "ribon-update-release-2026q3"
 LAYOUT_SOURCE = Path("tests/fixtures/update/update-layout-source-v1.json")
 PROVENANCE_SCHEMA = "ribon-qemu-update-fixture-v1"
+TRANSACTION_RECORD_BYTES = 1024
+TRANSACTION_SELECTOR_BYTES = 512
 
 
 def load_tool(name: str):
@@ -117,6 +119,39 @@ def metadata_wire(layout_digest: bytes) -> bytes:
     return bytes(output)
 
 
+def transaction_record(metadata: bytes) -> bytes:
+    """Encode the generation-1 complete transaction record independently."""
+
+    layout_tool = load_tool("update_layout.py")
+    output = bytearray(TRANSACTION_RECORD_BYTES)
+    output[:32] = b"RIBON-UPDATE-TXN-RECORD-V1".ljust(32, b"\0")
+    struct.pack_into("<HHIIIIIQQ", output, 32, 1, 240,
+                     TRANSACTION_RECORD_BYTES, 1, 0, 4, 0, 1, 0)
+    output[104:136] = hashlib.sha256(metadata).digest()
+    output[136:168] = metadata[88:120]
+    output[168:200] = metadata[120:152]
+    output[200:232] = metadata[152:184]
+    output[240:752] = metadata
+    output[752:784] = hashlib.sha256(output[:752]).digest()
+    struct.pack_into("<I", output, 784, layout_tool.crc32c(output[:784]))
+    return bytes(output)
+
+
+def transaction_selector(record: bytes) -> bytes:
+    """Encode the generation-1 selector for record slot zero."""
+
+    layout_tool = load_tool("update_layout.py")
+    output = bytearray(TRANSACTION_SELECTOR_BYTES)
+    output[:32] = b"RIBON-UPDATE-TXN-SELECT-V1".ljust(32, b"\0")
+    struct.pack_into("<HHIIIQ", output, 32, 1, 128,
+                     TRANSACTION_SELECTOR_BYTES, 0, 0, 1)
+    output[56:88] = record[752:784]
+    struct.pack_into("<Q", output, 88, 0)
+    output[128:160] = hashlib.sha256(output[:128]).digest()
+    struct.pack_into("<I", output, 160, layout_tool.crc32c(output[:160]))
+    return bytes(output)
+
+
 def gpt_entry(type_id: uuid.UUID, unique_id: uuid.UUID,
               first: int, last: int, name: str) -> bytes:
     """Encode one UEFI GPT entry with deterministic GUIDs and UTF-16 name."""
@@ -198,6 +233,12 @@ def build_disk(identity: bytes, regions: list[dict[str, object]]) -> tuple[bytes
     metadata_offset = int(by_name["slot-metadata"]["offset"])
     disk[metadata_offset:metadata_offset + 512] = metadata
     disk[metadata_offset + 512:metadata_offset + 1024] = metadata
+    initial_record = transaction_record(metadata)
+    initial_selector = transaction_selector(initial_record)
+    journal_offset = int(by_name["update-journal"]["offset"])
+    disk[journal_offset:journal_offset + len(initial_record)] = initial_record
+    selector_offset = journal_offset + 2 * TRANSACTION_RECORD_BYTES
+    disk[selector_offset:selector_offset + len(initial_selector)] = initial_selector
     return bytes(disk), {
         "disk_guid": str(disk_id),
         "partitions": [
@@ -208,6 +249,11 @@ def build_disk(identity: bytes, regions: list[dict[str, object]]) -> tuple[bytes
         "active_slot_sha256": hashlib.sha256(
             disk[active_offset:active_offset + int(slot_a["length"])]
         ).hexdigest(),
+        "transaction_journal": {
+            "generation": 1,
+            "record_sha256": hashlib.sha256(initial_record).hexdigest(),
+            "selector_sha256": hashlib.sha256(initial_selector).hexdigest(),
+        },
     }
 
 

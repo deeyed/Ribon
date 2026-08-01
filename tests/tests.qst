@@ -376,6 +376,50 @@ qstar.test_suite "update_installer_tests" {
   description = qstar.status("Inactive-slot installer and reboot persistence evidence"),
 }
 
+qstar.run_target "update_power_cut_contract" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-update-power-cut",
+    "check-update-power-cut-host",
+    "check-update-power-cut-sanitizer",
+    "check-update-transaction-cross-compile",
+  },
+  timeout = 600,
+  expect = {
+    contains = "RIBON-UPDATE-TRANSACTION-CROSS-COMPILE-OK",
+  },
+  description = qstar.status("Exhausting transactional install fault boundaries"),
+}
+
+qstar.run_target "qemu_update_power_cut" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-qemu-update-power-cut",
+    "check-qemu-update-power-cut",
+  },
+  timeout = 900,
+  expect = {
+    contains = "RIBON-D04-QEMU-POWER-CUT-RECOVERY-OK",
+  },
+  description = qstar.status("Reopening selected update crash states on q35 UEFI"),
+}
+
+qstar.test_suite "update_power_cut_tests" {
+  tests = {
+    "//tests:update_power_cut_contract",
+    "//tests:qemu_update_power_cut",
+  },
+  tags = {
+    "update",
+    "crash-consistency",
+    "qemu-runtime",
+    "fault-injection",
+  },
+  description = qstar.status("Transactional install replay and confirmed predecessor safety"),
+}
+
 qstar.run_target "ribos_production_policy" {
   command = qstar.cli {
     "make",
@@ -426,6 +470,8 @@ qstar.group "ribon_tests" {
     "//tests:update_storage_contract",
     "//tests:update_installer_contract",
     "//tests:qemu_update_install",
+    "//tests:update_power_cut_contract",
+    "//tests:qemu_update_power_cut",
     "//tests:ribos_production_policy",
   },
 }

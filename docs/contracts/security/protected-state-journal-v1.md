@@ -143,6 +143,11 @@ journal도 uninitialized로 취급하지 않는다.
 입력 state가 `CONFIRMED(N)`일 때만 `N+1`과 1..32 attempts를 받아 `TRIAL(N,N+1)`을 commit한다.
 `N`, `N+2`, overflow와 이미 열린 trial은 거부한다.
 
+Update 경로에서는 {doc}`../update/transaction-journal-v1`의 exact target identity가 `PENDING(N+1)`으로
+commit된 뒤에만 begin-trial을 호출한다. Update journal의 PENDING만으로 transfer하지 않으며,
+protected-state commit 전에 crash가 나면 candidate는 inert pending으로 남는다. Retry는 동일 identity의
+trial을 열어야 하고 confirmed floor를 낮추어서는 안 된다.
+
 ### Authorize와 consume
 
 `CONFIRMED(N)`은 `N`만 승인한다. `TRIAL(N,N+1)`은 fallback용 `N`과 attempts가 남은 `N+1`만

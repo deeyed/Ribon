@@ -10,6 +10,8 @@
 /** @brief Allocation-free signed-bundle installer native ABI다. */
 #define RIBON_UPDATE_INSTALLER_ABI_VERSION 1u
 
+struct RibonUpdateTransactionObserver;
+
 /** @brief Bundle source가 exact byte range를 caller buffer로 복사하는 callback이다. */
 typedef int (*RibonUpdateBundleReadFn)(
     void *context,
@@ -45,6 +47,21 @@ struct RibonUpdateInstallRequest {
     void *scratch;
     size_t scratch_size;
     uint64_t deadline_ticks;
+    struct RibonUpdateTransactionObserver *observer;
+    uint64_t reserved[4];
+};
+
+/** @brief Authorization과 current slot identity에서 재개 가능한 install plan을 만든다. */
+struct RibonUpdateInstallPlan {
+    uint32_t size;
+    uint32_t abi_version;
+    enum RibonUpdateSlotState resume_state;
+    uint32_t target_slot;
+    uint32_t component_count;
+    uint32_t flags;
+    uint8_t manifest_digest[RIBON_UPDATE_MANIFEST_DIGEST_BYTES];
+    uint8_t image_set_digest[RIBON_UPDATE_MANIFEST_DIGEST_BYTES];
+    struct RibonUpdateSlotMetadata staging_metadata;
     uint64_t reserved[4];
 };
 
@@ -73,7 +90,13 @@ enum RibonUpdateInstallStatus {
     RIBON_UPDATE_INSTALL_STATUS_STORAGE_IO = -7,
     RIBON_UPDATE_INSTALL_STATUS_READBACK_DIGEST = -8,
     RIBON_UPDATE_INSTALL_STATUS_STATE = -9,
+    RIBON_UPDATE_INSTALL_STATUS_INTERRUPTED = -10,
 };
+
+/** @brief Signed manifest를 승인하고 EMPTY 또는 동일 identity retry plan을 만든다. */
+int ribon_update_install_prepare(
+    const struct RibonUpdateInstallRequest *request,
+    struct RibonUpdateInstallPlan *plan);
 
 /** @brief Signed bundle을 inactive slot에 설치하고 full readback 뒤 VERIFIED로 닫는다. */
 int ribon_update_install_signed_bundle(

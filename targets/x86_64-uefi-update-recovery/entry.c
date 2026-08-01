@@ -6,6 +6,7 @@
 #include <Ribon/port/port.h>
 #include <Ribon/security/protected_state.h>
 #include <Ribon/update/installer.h>
+#include <Ribon/update/transaction.h>
 
 #include "../../src/security/sha256.h"
 
@@ -24,6 +25,7 @@ static _Alignas(4096) uint8_t manifest_bytes[UPDATE_MANIFEST_CAPACITY];
 static _Alignas(4096) uint8_t envelope_bytes[UPDATE_ENVELOPE_CAPACITY];
 static _Alignas(4096) uint8_t bundle_bytes[UPDATE_BUNDLE_CAPACITY];
 static _Alignas(4096) uint8_t install_scratch[UPDATE_SCRATCH_CAPACITY];
+static uint8_t transaction_mode_bytes[16];
 static struct RibonUefiUpdateStorageContext update_storage;
 static const struct RibonDiagnosticSinkServiceOperations *diagnostic_sink;
 
@@ -148,6 +150,85 @@ static struct RibonUpdateManifestExpectation fixture_expectation(
     return expectation;
 }
 
+/** @brief Journal authority에서 interrupted install을 PENDING까지 idempotent하게 닫는다. */
+static EFI_STATUS run_transaction_mode(
+    uint64_t manifest_size,
+    uint64_t envelope_size,
+    uint64_t bundle_size)
+{
+    struct RibonUpdateManifestExpectation expectation =
+        fixture_expectation(ribon_generated_product_source_digest());
+    struct MemoryBundle memory_bundle = {
+        .bytes = bundle_bytes,
+        .size = bundle_size,
+    };
+    struct RibonUpdateBundleSource bundle = {
+        .size = sizeof(bundle),
+        .abi_version = RIBON_UPDATE_INSTALLER_ABI_VERSION,
+        .byte_size = bundle_size,
+        .context = &memory_bundle,
+        .read = bundle_read,
+    };
+    struct RibonUpdateInstallRequest install = {
+        .size = sizeof(install),
+        .abi_version = RIBON_UPDATE_INSTALLER_ABI_VERSION,
+        .target_slot = 1u,
+        .authorization = {
+            .size = sizeof(struct RibonUpdateManifestAuthorization),
+            .abi_version = RIBON_UPDATE_MANIFEST_ABI_VERSION,
+            .manifest = manifest_bytes,
+            .manifest_size = (size_t)manifest_size,
+            .signature_envelope = envelope_bytes,
+            .signature_envelope_size = (size_t)envelope_size,
+            .expectation = &expectation,
+            .key_policy = ribon_generated_key_policy_store(),
+            .signature_provider = ribon_generated_signature_provider(),
+        },
+        .bundle = &bundle,
+        .provider = &update_storage.provider,
+        .layout = &update_storage.layout,
+        .scratch = install_scratch,
+        .scratch_size = sizeof(install_scratch),
+        .deadline_ticks = 1u,
+    };
+    struct RibonUpdateTransactionJournal journal = {
+        .size = sizeof(journal),
+        .abi_version = RIBON_UPDATE_TRANSACTION_ABI_VERSION,
+        .provider = &update_storage.provider,
+        .layout = &update_storage.layout,
+        .minimum_generation = 1u,
+        .deadline_ticks = 1u,
+    };
+    struct RibonUpdateTransactionalInstallRequest request = {
+        .size = sizeof(request),
+        .abi_version = RIBON_UPDATE_TRANSACTION_ABI_VERSION,
+        .pending_attempts = 3u,
+        .install = &install,
+        .journal = &journal,
+    };
+    struct RibonUpdateTransactionalInstallResult result;
+    int status;
+
+    status = ribon_update_install_transactionally(&request, &result);
+    if (status != RIBON_UPDATE_TRANSACTION_STATUS_OK ||
+        result.snapshot.target_slot != 1u ||
+        result.snapshot.target_state != RIBON_UPDATE_SLOT_PENDING ||
+        result.snapshot.metadata.active_slot != 0u ||
+        result.snapshot.metadata.pending_slot != 1u ||
+        result.snapshot.metadata.slots[0].state != RIBON_UPDATE_SLOT_CONFIRMED ||
+        result.snapshot.metadata.slots[1].state != RIBON_UPDATE_SLOT_PENDING) {
+        return fail(status == RIBON_UPDATE_TRANSACTION_STATUS_OK ?
+            "transaction-result" :
+            ribon_update_transaction_status_name(
+                (enum RibonUpdateTransactionStatus)status));
+    }
+    marker("RIBON-D04-TRANSACTION-PENDING");
+    if (result.resumed_from == RIBON_UPDATE_SLOT_PENDING) {
+        marker("RIBON-D04-TRANSACTION-REOPEN-PENDING");
+    }
+    return EFI_SUCCESS;
+}
+
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
 {
     const struct RibonPortDescriptor *port = ribon_port_selected();
@@ -174,6 +255,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_tab
     uint64_t manifest_size = 0u;
     uint64_t envelope_size = 0u;
     uint64_t bundle_size = 0u;
+    uint64_t transaction_mode_size = 0u;
     int status;
 
     if (!ribon_port_descriptor_is_valid(port) || port->diagnostic_sink == NULL ||
@@ -216,6 +298,15 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_tab
             bundle_bytes, sizeof(bundle_bytes), &bundle_size) !=
             RIBON_UEFI_APP_STATUS_OK) {
         return fail("esp-update-input");
+    }
+    if (ribon_uefi_app_read_file(&native, "/RIBON/TRANSACT.V1",
+            transaction_mode_bytes, sizeof(transaction_mode_bytes),
+            &transaction_mode_size) == RIBON_UEFI_APP_STATUS_OK &&
+        transaction_mode_size == sizeof(transaction_mode_bytes) &&
+        memcmp(transaction_mode_bytes, "RIBON-D04-TXN-V1",
+            sizeof(transaction_mode_bytes)) == 0) {
+        return run_transaction_mode(
+            manifest_size, envelope_size, bundle_size);
     }
     if (ribon_uefi_update_storage_read_metadata(&update_storage, &metadata) !=
             RIBON_UEFI_UPDATE_STORAGE_OK) {

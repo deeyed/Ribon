@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
   - docs/
   - include/Ribon/
@@ -57,6 +57,7 @@ contracts/security/key-policy-rollback-v1
 contracts/security/protected-state-journal-v1
 contracts/update/signed-update-manifest-v1
 contracts/update/signed-bundle-install-v1
+contracts/update/transaction-journal-v1
 contracts/storage/bounded-update-slot-provider-v1
 contracts/frontends/environment-port-image-boundary
 contracts/frontends/raw-fdt-boot-module-bundle
@@ -145,6 +146,7 @@ adr/0045-signed-ribos-release-evidence
 adr/0046-signed-update-manifest-v1
 adr/0047-bounded-update-slot-provider
 adr/0048-uefi-block-update-adapter
+adr/0049-crash-consistent-update-transaction-journal
 ```
 
 ```{toctree}
@@ -223,4 +225,5 @@ log/2026-08-01-r08-signed-policy-release-evidence
 log/2026-08-01-d01-signed-update-manifest
 log/2026-08-01-d02-bounded-update-storage
 log/2026-08-01-d03-qemu-signed-bundle-install
+log/2026-08-01-d04-transactional-update-fault-closure
 ```

@@ -113,11 +113,12 @@ def main() -> int:
     update_sources = {
         "src/environments/uefi-app/update_storage.c",
         "src/update/installer.c",
+        "src/update/transaction.c",
     }
     if update_sources.intersection(normal_uefi):
-        fail("normal UEFI source graph links update writer or installer")
+        fail("normal UEFI source graph links update writer, installer, or transaction")
     if not update_sources.issubset(recovery_uefi):
-        fail("recovery UEFI source graph lacks update writer or installer")
+        fail("recovery UEFI source graph lacks update writer, installer, or transaction")
     if any("network" in source for source in recovery_uefi):
         fail("recovery UEFI update graph unexpectedly links network source")
     print(

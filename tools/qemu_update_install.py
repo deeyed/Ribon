@@ -29,10 +29,12 @@ def sha256(path: Path) -> str:
 
 
 def tree_digest(root: Path) -> str:
-    """Hash a directory as sorted relative paths and exact file digests."""
+    """Hash immutable ESP inputs while excluding firmware-owned NvVars output."""
 
     digest = hashlib.sha256()
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        if path.relative_to(root).as_posix() == "NvVars":
+            continue
         relative = path.relative_to(root).as_posix().encode("utf-8")
         digest.update(len(relative).to_bytes(4, "little"))
         digest.update(relative)
@@ -261,6 +263,9 @@ def main() -> int:
             "serial_install": {"path": str(first_log), "sha256": sha256(first_log)},
             "serial_reopen": {"path": str(second_log), "sha256": sha256(second_log)},
         }
+        nvvars = args.esp / "NvVars"
+        if nvvars.is_file():
+            artifacts["nvvars"] = {"path": str(nvvars), "sha256": sha256(nvvars)}
         report = {
             "schema": "ribon-qemu-update-install-result-v1",
             "source_revision": args.source_revision,

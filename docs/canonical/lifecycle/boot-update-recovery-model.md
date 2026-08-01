@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-01
 code_paths:
   - include/Ribon/boot/plan.h
   - include/Ribon/policy/ribos.h
@@ -11,11 +11,13 @@ code_paths:
   - src/plugins/update/
   - src/plugins/policy/
   - src/plugins/watchdog/
+  - src/update/transaction.c
   - src/protocols/
   - products/
 tests:
   - make check-boot-lifecycle
   - ribon-update-power-loss-test
+  - make check-update-power-cut
   - ribon-product-mode-graph-lint
 hardware:
   - none
@@ -183,6 +185,15 @@ layout digest에 결속한다. Metadata generation과 image generation은 독립
 confirmed slot은 writer handle 대상이 아니다. Inactive slot은 semantic `STAGING` handle로만
 read/write/erase할 수 있고 metadata generation이 바뀌면 handle은 stale이다. Wire와 provider 세부
 계약은 {doc}`../../contracts/storage/bounded-update-slot-provider-v1`이 소유한다.
+
+Crash-consistent install은 {doc}`../../contracts/update/transaction-journal-v1`의 selector-committed
+journal을 사용한다. Canonical durable 순서는 `STAGING -> component write/full readback -> payload
+flush -> VERIFIED -> PENDING`이다. Interruption 뒤 RAM successor를 이어 쓰지 않고 journal을
+reopen하며, same-identity `PENDING` retry는 새 generation을 만들지 않는다.
+
+`PENDING`은 transfer authority가 아니다. Protected state에서 exact successor trial과 attempt 소비를
+commit한 뒤에만 candidate transfer가 가능하다. 두 journal 사이 crash는 pending candidate를 inert
+상태로 남기며 active confirmed predecessor를 계속 보존한다.
 
 ## Confirmation
 
