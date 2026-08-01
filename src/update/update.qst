@@ -24,3 +24,16 @@ qstar.staticlib "libribon_update_storage" {
     "//qstar/policies:ribon_host_c",
   },
 }
+
+qstar.staticlib "libribon_update_installer" {
+  artifact_name = "libribon-update-installer.a",
+  sources = {
+    "src/update/installer.c",
+  },
+  deps = {
+    "//src/update:libribon_update_storage",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}

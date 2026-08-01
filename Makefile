@@ -128,6 +128,8 @@ UPDATE_MANIFEST_SANITIZER_TEST := \
 UPDATE_STORAGE_TEST := $(TEST_BUILD_DIR)/update_storage_tests
 UPDATE_STORAGE_SANITIZER_TEST := \
 	$(TEST_BUILD_DIR)/update_storage_sanitizer_tests
+UPDATE_INSTALLER_TEST := $(TEST_BUILD_DIR)/update_installer_tests
+UEFI_UPDATE_STORAGE_TEST := $(TEST_BUILD_DIR)/uefi_update_storage_tests
 SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
 SECURITY_KEY_POLICY_SRCS := src/security/key_policy.c
 SECURITY_PROTECTED_STATE_SRCS := \
@@ -559,6 +561,56 @@ UEFI_EXTERNAL_OBJS := $(UEFI_SRCS:%.c=$(UEFI_EXTERNAL_DIR)/obj/%.o)
 UEFI_EXTERNAL_OBJS += \
 	$(UEFI_EXTERNAL_DIR)/obj/generated/plugin_registry.o
 
+UEFI_UPDATE_PRODUCT := x86_64-uefi-update-recovery
+UEFI_UPDATE_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_UPDATE_PRODUCT)
+UEFI_UPDATE_MANIFEST := \
+	products/validation/manifests/x86_64-uefi-update-recovery.json
+UEFI_UPDATE_REGISTRY_C := $(UEFI_UPDATE_DIR)/generated/plugin_registry.c
+UEFI_UPDATE_GRAPH := $(UEFI_UPDATE_DIR)/results/object-graph.json
+UEFI_UPDATE_FIXTURE_DIR := $(UEFI_UPDATE_DIR)/fixture
+UEFI_UPDATE_FIXTURE_STAMP := $(UEFI_UPDATE_FIXTURE_DIR)/generated.stamp
+UEFI_UPDATE_DISK := $(UEFI_UPDATE_FIXTURE_DIR)/update-disk.raw
+UEFI_UPDATE_FIXTURE_PROVENANCE := $(UEFI_UPDATE_FIXTURE_DIR)/provenance.json
+UEFI_UPDATE_APP := $(UEFI_UPDATE_DIR)/BOOTX64.EFI
+UEFI_UPDATE_ESP := $(UEFI_UPDATE_DIR)/esp
+UEFI_UPDATE_RESULTS := $(UEFI_UPDATE_DIR)/results
+UEFI_UPDATE_SRCS := \
+	src/core/arena.c \
+	src/core/context.c \
+	src/core/plugin.c \
+	src/core/registry.c \
+	src/core/service_directory.c \
+	src/core/memory.c \
+	src/common/environment.c \
+	src/common/protocol.c \
+	src/common/boot.c \
+	src/common/image.c \
+	src/common/port.c \
+	src/common/freestanding/string.c \
+	src/arch/common.c \
+	src/arch/x86_64/arch.c \
+	src/arch/x86_64/io.c \
+	src/modes/recovery.c \
+	src/image-formats/elf64.c \
+	products/validation/uefi-update-recovery/protocol.c \
+	src/environments/uefi-app/uefi_app.c \
+	src/environments/uefi-app/update_storage.c \
+	src/update/manifest.c \
+	src/update/storage.c \
+	src/update/installer.c \
+	src/security/sha256.c \
+	src/security/key_policy.c \
+	src/security/protected_state.c \
+	src/security/signature.c \
+	src/plugins/security/ed25519/provider.c \
+	third_party/monocypher/4.0.3/monocypher.c \
+	third_party/monocypher/4.0.3/monocypher-ed25519.c \
+	products/validation/uefi-update-recovery/protected_state.c \
+	ports/qemu/pc-x86_64/port.c \
+	targets/x86_64-uefi-update-recovery/entry.c
+UEFI_UPDATE_OBJS := $(UEFI_UPDATE_SRCS:%.c=$(UEFI_UPDATE_DIR)/obj/%.o)
+UEFI_UPDATE_OBJS += $(UEFI_UPDATE_DIR)/obj/generated/plugin_registry.o
+
 RIBOS_R18_DIR := $(TARGET_BUILD_ROOT)/ribos-r18
 RIBOS_R18_MANIFEST := $(RIBOS_R18_DIR)/generated/product.json
 RIBOS_R18_UNSIGNED_A := $(RIBOS_R18_DIR)/generated/policy-a.rba
@@ -740,6 +792,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-update-manifest-cross-compile \
 	check-update-storage check-update-storage-sanitizer \
 	check-update-storage-cross-compile check-update-storage-graphs \
+	check-update-installer check-uefi-update-storage check-qemu-update-install \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke \
@@ -1775,6 +1828,38 @@ check-update-storage-graphs:
 		--composer tools/generate_plugin_registry.py \
 		--manifest products/validation/manifests/update-storage-reference.json
 
+$(UPDATE_INSTALLER_TEST): tests/update/installer_tests.c \
+		tests/update/reference_storage.c tests/update/reference_storage.h \
+		src/update/installer.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) \
+		include/Ribon/update/installer.h $(UEFI_UPDATE_FIXTURE_STAMP) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		tests/update/installer_tests.c tests/update/reference_storage.c \
+		src/update/installer.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) -o $@
+
+check-update-installer: $(UPDATE_INSTALLER_TEST)
+	$(UPDATE_INSTALLER_TEST) \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.sig \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.bin \
+		$(UEFI_UPDATE_FIXTURE_DIR)/layout.bin
+
+$(UEFI_UPDATE_STORAGE_TEST): tests/update/uefi_storage_tests.c \
+		src/environments/uefi-app/update_storage.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) \
+		src/environments/uefi-app/update_storage.h $(UEFI_UPDATE_FIXTURE_STAMP) Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		-Iinclude/uefi -Iinclude/uefi/X64 -fshort-wchar \
+		tests/update/uefi_storage_tests.c \
+		src/environments/uefi-app/update_storage.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) -o $@
+
+check-uefi-update-storage: $(UEFI_UPDATE_STORAGE_TEST)
+	$(UEFI_UPDATE_STORAGE_TEST) $(UEFI_UPDATE_DISK)
+
 check-security-ed25519-cross-compile:
 	@set -e; \
 	for target in x86_64 aarch64 riscv64; do \
@@ -2518,6 +2603,80 @@ x86_64-uefi-parus-external:
 		UEFI_PARUS_PAYLOAD=$(abspath $(UEFI_PARUS_PAYLOAD)) \
 		x86_64-uefi-parus-external-product
 
+$(UEFI_UPDATE_REGISTRY_C): \
+	$(UEFI_UPDATE_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
+		--output $@ --report $(UEFI_UPDATE_GRAPH)
+
+$(UEFI_UPDATE_FIXTURE_STAMP): \
+	$(UEFI_UPDATE_MANIFEST) tests/fixtures/update/update-layout-source-v1.json \
+	tools/make_qemu_update_fixture.py tools/update_manifest.py tools/update_layout.py
+	$(PYTHON) tools/make_qemu_update_fixture.py \
+		--product-manifest $(UEFI_UPDATE_MANIFEST) \
+		--layout-source tests/fixtures/update/update-layout-source-v1.json \
+		--output-root $(UEFI_UPDATE_FIXTURE_DIR)
+	@touch $@
+
+$(UEFI_UPDATE_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(SECURITY_INCLUDE_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_UPDATE_DIR)/obj/generated/plugin_registry.o: $(UEFI_UPDATE_REGISTRY_C)
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(SECURITY_INCLUDE_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_UPDATE_APP): $(UEFI_UPDATE_OBJS)
+	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/machine:x64 /map:$(UEFI_UPDATE_DIR)/ribon.map /out:$@ \
+		$(UEFI_UPDATE_OBJS)
+
+$(UEFI_UPDATE_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_UPDATE_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(UEFI_UPDATE_ESP)/RIBON/UPDATE.MAN: $(UEFI_UPDATE_FIXTURE_STAMP)
+	@mkdir -p $(@D)
+	cp $(UEFI_UPDATE_FIXTURE_DIR)/update.man $@
+
+$(UEFI_UPDATE_ESP)/RIBON/UPDATE.SIG: $(UEFI_UPDATE_FIXTURE_STAMP)
+	@mkdir -p $(@D)
+	cp $(UEFI_UPDATE_FIXTURE_DIR)/update.sig $@
+
+$(UEFI_UPDATE_ESP)/RIBON/UPDATE.BIN: $(UEFI_UPDATE_FIXTURE_STAMP)
+	@mkdir -p $(@D)
+	cp $(UEFI_UPDATE_FIXTURE_DIR)/update.bin $@
+
+x86_64-uefi-update-recovery: \
+	$(UEFI_UPDATE_ESP)/EFI/BOOT/BOOTX64.EFI \
+	$(UEFI_UPDATE_ESP)/RIBON/UPDATE.MAN \
+	$(UEFI_UPDATE_ESP)/RIBON/UPDATE.SIG \
+	$(UEFI_UPDATE_ESP)/RIBON/UPDATE.BIN \
+	$(UEFI_UPDATE_FIXTURE_STAMP)
+
+x86_64-uefi-update-recovery-smoke: x86_64-uefi-update-recovery
+	$(PYTHON) tools/qemu_update_install.py \
+		--qemu $(QEMU_X86_64) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--esp $(UEFI_UPDATE_ESP) --disk $(UEFI_UPDATE_DISK) \
+		--boot-app $(UEFI_UPDATE_APP) \
+		--manifest $(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		--envelope $(UEFI_UPDATE_FIXTURE_DIR)/update.sig \
+		--bundle $(UEFI_UPDATE_FIXTURE_DIR)/update.bin \
+		--product-manifest $(UEFI_UPDATE_MANIFEST) \
+		--fixture-provenance $(UEFI_UPDATE_FIXTURE_PROVENANCE) \
+		--inspector tools/inspect_qemu_update_disk.py \
+		--source-revision $(shell git rev-parse HEAD) \
+		--results $(UEFI_UPDATE_RESULTS)
+
+check-qemu-update-install: x86_64-uefi-update-recovery-smoke
+	$(PYTHON) tests/update/qemu_update_fixture_tests.py \
+		--generator tools/make_qemu_update_fixture.py \
+		--product-manifest $(UEFI_UPDATE_MANIFEST) \
+		--layout-source tests/fixtures/update/update-layout-source-v1.json \
+		--inspector tools/inspect_qemu_update_disk.py \
+		--installed-disk $(UEFI_UPDATE_RESULTS)/update-disk-runtime.raw \
+		--manifest $(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		--provenance $(UEFI_UPDATE_FIXTURE_PROVENANCE)
+
 x86_64-uefi-parus-fixture-smoke: x86_64-uefi-parus-fixture
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
@@ -2814,6 +2973,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-update-manifest-cross-compile \
 	check-update-storage check-update-storage-sanitizer \
 	check-update-storage-cross-compile check-update-storage-graphs \
+	check-update-installer check-uefi-update-storage \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

@@ -73,14 +73,18 @@ writer handle은 {doc}`../storage/bounded-update-slot-provider-v1`이 소유한�
 storage offset을 만들지 않으며 storage provider는 manifest signature나 rollback authority를
 판정하지 않는다.
 
+Product-bound manifest 승인부터 component full readback과 `VERIFIED` successor까지의 exact
+transaction은 {doc}`signed-bundle-install-v1`이 소유한다. Firmware adapter는 storage mechanism만
+제공하고 installer의 update 의미를 복제하지 않는다.
+
 ## Write 순서
 
 1. Active confirmed destination과 다른 inactive destination을 선택한다.
-2. `STAGING` generation을 redundant metadata에 기록한다.
-3. Payload를 bounded chunk로 기록하며 digest를 누적한다.
-4. Flush 뒤 전체 component를 다시 읽어 검증한다.
-5. Manifest, product compatibility, sequence를 검증한다.
-6. `VERIFIED`를 commit한다.
+2. Manifest signature, product compatibility와 rollback sequence를 write 전에 검증한다.
+3. `STAGING` successor를 만들고 durable transaction 계층이 필요하면 journal에 기록한다.
+4. Payload를 bounded chunk로 기록하며 digest를 누적한다.
+5. Flush 뒤 전체 component를 다시 읽어 검증한다.
+6. `VERIFIED`를 redundant metadata에 commit하고 재개방한다.
 7. 별도 commit으로 `PENDING`을 연다.
 
 Partial payload와 `STAGING` destination을 실행하지 않는다.

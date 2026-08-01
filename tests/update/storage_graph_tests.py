@@ -91,8 +91,14 @@ def main() -> int:
         write(manifest, hostile)
         invoke(python, args.composer, manifest, output, False)
 
+        hostile = json.loads(json.dumps(source))
+        hostile["update_storage"]["media_identity_digest_sha256"] = "0" * 64
+        write(manifest, hostile)
+        invoke(python, args.composer, manifest, output, False)
+
     print(
-        "RIBON-UPDATE-STORAGE-GRAPH-HOSTILE-OK mode=1 binding=1 role=1 cap=1 digest=1"
+        "RIBON-UPDATE-STORAGE-GRAPH-HOSTILE-OK "
+        "mode=1 binding=1 role=1 cap=1 layout-digest=1 media-digest=1"
     )
     return 0
 

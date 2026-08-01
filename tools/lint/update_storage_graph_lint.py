@@ -20,6 +20,31 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def make_variable(text: str, name: str) -> set[str]:
+    """Read one simple multiline source-list assignment from the Makefile."""
+
+    lines = text.splitlines()
+    prefix = f"{name} :="
+    for index, line in enumerate(lines):
+        if not line.startswith(prefix):
+            continue
+        values: set[str] = set()
+        current = line[len(prefix):].strip()
+        while True:
+            continued = current.endswith("\\")
+            current = current.removesuffix("\\").strip()
+            if current:
+                values.add(current)
+            if not continued:
+                return values
+            index += 1
+            if index >= len(lines):
+                fail(f"unterminated Makefile variable {name}")
+            current = lines[index].strip()
+    fail(f"missing Makefile variable {name}")
+    return set()
+
+
 def main() -> int:
     """Check one positive recovery report and every source normal product."""
 
@@ -36,8 +61,11 @@ def main() -> int:
         or binding.get("schema") != "ribon-update-storage-binding-v1"
         or binding.get("layout_digest_sha256")
         != layout.get("layout_identity_sha256")
+        or not isinstance(binding.get("media_identity_digest_sha256"), str)
+        or len(binding["media_identity_digest_sha256"]) != 64
+        or set(binding["media_identity_digest_sha256"]) == {"0"}
     ):
-        fail("positive product does not bind the generated layout identity")
+        fail("positive product does not bind layout and media identities")
     service_by_id = {
         service.get("id"): service.get("kind")
         for service in report.get("services", [])
@@ -79,9 +107,22 @@ def main() -> int:
                 fail(f"normal product links writer service: {path.relative_to(ROOT)}")
     if checked == 0:
         fail("no normal bootloader product was inspected")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    normal_uefi = make_variable(makefile, "UEFI_SRCS")
+    recovery_uefi = make_variable(makefile, "UEFI_UPDATE_SRCS")
+    update_sources = {
+        "src/environments/uefi-app/update_storage.c",
+        "src/update/installer.c",
+    }
+    if update_sources.intersection(normal_uefi):
+        fail("normal UEFI source graph links update writer or installer")
+    if not update_sources.issubset(recovery_uefi):
+        fail("recovery UEFI source graph lacks update writer or installer")
+    if any("network" in source for source in recovery_uefi):
+        fail("recovery UEFI update graph unexpectedly links network source")
     print(
         f"RIBON-UPDATE-STORAGE-GRAPH-OK normal_products={checked} "
-        "writer_modes=recovery,provisioning"
+        "writer_modes=recovery,provisioning normal_uefi_writer=0 network=0"
     )
     return 0
 

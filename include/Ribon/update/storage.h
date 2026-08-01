@@ -24,6 +24,30 @@
 /** @brief Layout identity가 고정하는 canonical region 수다. */
 #define RIBON_UPDATE_LAYOUT_REGION_COUNT 11u
 
+/** @brief Product graph가 선택하는 update-storage adapter class다. */
+enum RibonUpdateStorageProviderClass {
+    RIBON_UPDATE_STORAGE_PROVIDER_CLASS_INVALID = 0,
+    RIBON_UPDATE_STORAGE_PROVIDER_CLASS_FIRMWARE = 1,
+    RIBON_UPDATE_STORAGE_PROVIDER_CLASS_NATIVE = 2,
+    RIBON_UPDATE_STORAGE_PROVIDER_CLASS_REFERENCE = 3,
+};
+
+/** @brief Generated product graph가 Core와 adapter에 공유하는 immutable binding이다. */
+struct RibonUpdateStorageProductBinding {
+    uint32_t size; /**< `sizeof(struct RibonUpdateStorageProductBinding)`이다. */
+    uint32_t abi_version; /**< `RIBON_UPDATE_STORAGE_ABI_VERSION`이다. */
+    enum RibonUpdateStorageProviderClass provider_class; /**< Adapter authority class다. */
+    uint32_t flags; /**< v1에서는 0이다. */
+    const char *layout_id; /**< Diagnostic-only stable layout ID다. */
+    uint8_t layout_digest[RIBON_UPDATE_MANIFEST_DIGEST_BYTES];
+    uint8_t media_identity_digest[RIBON_UPDATE_MANIFEST_DIGEST_BYTES];
+    const char *read_service_id; /**< Typed boot-source service ID다. */
+    const char *writer_service_id; /**< Typed inactive-slot writer service ID다. */
+    const char *metadata_service_id; /**< Typed metadata service ID다. */
+    const char *flush_service_id; /**< Typed durability service ID다. */
+    uint64_t reserved[4]; /**< v1에서는 모두 0이다. */
+};
+
 /** @brief Update provider가 제공하는 exact operation capability다. */
 enum RibonUpdateStorageCapability {
     RIBON_UPDATE_STORAGE_CAP_READ = 1u << 0,
@@ -268,6 +292,16 @@ int ribon_update_layout_calculate(
 int ribon_update_layout_identity_encode(
     const struct RibonUpdateLayout *layout,
     uint8_t output[RIBON_UPDATE_LAYOUT_IDENTITY_BYTES]);
+
+/** @brief Untrusted canonical layout identity를 독립 검증해 native view로 연다. */
+int ribon_update_layout_identity_open(
+    const uint8_t *bytes,
+    size_t size,
+    struct RibonUpdateLayout *layout);
+
+/** @brief Generated update-storage binding의 ABI와 identities를 검사한다. */
+int ribon_update_storage_product_binding_is_valid(
+    const struct RibonUpdateStorageProductBinding *binding);
 
 /** @brief Manifest component maximum range가 요구하는 aligned slot byte 수를 계산한다. */
 int ribon_update_manifest_required_slot_bytes(

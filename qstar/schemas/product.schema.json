@@ -79,6 +79,7 @@
         "provider_class",
         "layout_id",
         "layout_digest_sha256",
+        "media_identity_digest_sha256",
         "read_service_id",
         "writer_service_id",
         "metadata_service_id",
@@ -90,6 +91,10 @@
         "provider_class": {"enum": ["firmware", "native", "reference"]},
         "layout_id": {"type": "string", "minLength": 1, "maxLength": 128},
         "layout_digest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "media_identity_digest_sha256": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },

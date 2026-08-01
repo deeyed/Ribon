@@ -333,6 +333,49 @@ qstar.test_suite "update_storage_tests" {
   description = qstar.status("Bounded update-slot provider and graph isolation"),
 }
 
+qstar.run_target "update_installer_contract" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-update-installer",
+    "check-update-installer",
+    "check-uefi-update-storage",
+  },
+  timeout = 240,
+  expect = {
+    contains = "RIBON-UPDATE-INSTALLER-OK",
+  },
+  description = qstar.status("Verifying signed bundle installation and hostile I/O closure"),
+}
+
+qstar.run_target "qemu_update_install" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-qemu-update-install",
+    "check-qemu-update-install",
+  },
+  timeout = 600,
+  expect = {
+    contains = "RIBON-D03-QEMU-UPDATE-INSTALL-OK",
+  },
+  description = qstar.status("Installing and reopening a signed bundle on q35 UEFI media"),
+}
+
+qstar.test_suite "update_installer_tests" {
+  tests = {
+    "//tests:update_installer_contract",
+    "//tests:qemu_update_install",
+  },
+  tags = {
+    "update",
+    "qemu-runtime",
+    "uefi",
+    "fault-injection",
+  },
+  description = qstar.status("Inactive-slot installer and reboot persistence evidence"),
+}
+
 qstar.run_target "ribos_production_policy" {
   command = qstar.cli {
     "make",
@@ -381,6 +424,8 @@ qstar.group "ribon_tests" {
     "//tests:update_manifest_contract",
     "//tests:update_storage_unit",
     "//tests:update_storage_contract",
+    "//tests:update_installer_contract",
+    "//tests:qemu_update_install",
     "//tests:ribos_production_policy",
   },
 }

@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "product_id": "validation.x86_64-uefi-update-recovery",
+  "product_kind": "bootloader",
+  "target_id": "x86_64-uefi-update-recovery",
+  "architecture": "x86_64",
+  "environment": "uefi",
+  "port": "qemu-pc-x86_64",
+  "mode": "recovery",
+  "boot_protocols": [
+    "validation-update"
+  ],
+  "policies": [
+    "recovery"
+  ],
+  "image": {
+    "format": "pe-coff",
+    "recipe": "uefi-q35-signed-bundle-install",
+    "artifact": "BOOTX64.EFI"
+  },
+  "evidence": {
+    "class": "qemu-smoke",
+    "claim": "x86_64 QEMU q35 UEFI recovery installs one signed bundle into the exact inactive slot and reopens VERIFIED metadata"
+  },
+  "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.port.diagnostic-sink",
+      "kind": "diagnostic-sink",
+      "symbol": "ribon_port_diagnostic_sink_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_uefi_app_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.environment-quiesce",
+      "kind": "environment-quiesce",
+      "symbol": "ribon_uefi_app_environment_quiesce_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_uefi_app_monotonic_timer_service_descriptor"
+    },
+    {
+      "id": "service.uefi-update.inactive-slot-storage",
+      "kind": "inactive-slot-storage",
+      "symbol": "ribon_uefi_update_inactive_slot_storage_service_descriptor"
+    },
+    {
+      "id": "service.uefi-update.persistent-metadata",
+      "kind": "persistent-metadata",
+      "symbol": "ribon_uefi_update_persistent_metadata_service_descriptor"
+    },
+    {
+      "id": "service.uefi-update.storage-flush",
+      "kind": "storage-flush",
+      "symbol": "ribon_uefi_update_storage_flush_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.elf64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.validation-update",
+      "kind": "boot-protocol"
+    }
+  ],
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "INACTIVE_SLOT_ERASE",
+    "INACTIVE_SLOT_WRITE",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_ELF64",
+    "INACTIVE_SLOT_ERASE",
+    "INACTIVE_SLOT_WRITE",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "limits": {
+    "max_memory_regions": 256,
+    "max_load_segments": 32,
+    "max_components": 32,
+    "max_retries": 2,
+    "max_input_bytes": 67108864,
+    "max_handoff_bytes": 65536,
+    "arena_bytes": 262144,
+    "operation_deadline_ms": 30000
+  },
+  "update_storage": {
+    "schema": "ribon-update-storage-binding-v1",
+    "provider_class": "firmware",
+    "layout_id": "layout.qemu-q35-ab-v1",
+    "layout_digest_sha256": "1e1a7f165fa068dc048189919b6e4de7d28a31710b82451d0bcbb86c8396342a",
+    "media_identity_digest_sha256": "f8fe8573b4dfff8eefc5311753ad2be0c1648450f4e09e3251c49d4edbd4db2e",
+    "read_service_id": "service.uefi-app.boot-source",
+    "writer_service_id": "service.uefi-update.inactive-slot-storage",
+    "metadata_service_id": "service.uefi-update.persistent-metadata",
+    "flush_service_id": "service.uefi-update.storage-flush"
+  },
+  "signature_provider": {
+    "algorithm": "ed25519",
+    "class": "production",
+    "id": "security.signature.ed25519.monocypher",
+    "symbol": "ribon_ed25519_signature_provider_descriptor"
+  },
+  "key_policy": {
+    "generation": 1,
+    "id": "qemu-update-recovery-v1",
+    "keys": [
+      {
+        "id": "ribon-update-release-2026q3",
+        "issuer": null,
+        "maximum_sequence": 2,
+        "minimum_sequence": 2,
+        "modes": [
+          "recovery"
+        ],
+        "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        "rollback_domains": [
+          "ribon.update.qemu-q35.v1"
+        ],
+        "status": "active",
+        "usages": [
+          "update-manifest"
+        ]
+      }
+    ]
+  },
+  "protected_state_provider": {
+    "class": "reference",
+    "id": "security.protected-state.reference.qemu-update",
+    "rollback_domains": [
+      "ribon.update.qemu-q35.v1"
+    ],
+    "symbol": "ribon_qemu_update_protected_state_provider_descriptor"
+  },
+  "plugins": [
+    {
+      "id": "arch.x86_64",
+      "package": "ribon.arch.x86_64",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "environment.uefi-app",
+      "package": "ribon.environment.uefi-app",
+      "symbol": "ribon_uefi_app_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.elf64",
+      "package": "ribon.image.elf64",
+      "symbol": "ribon_elf64_image_plugin_descriptor"
+    },
+    {
+      "id": "protocol.validation-update",
+      "package": "ribon.validation.uefi-update-recovery",
+      "symbol": "ribon_uefi_update_validation_protocol_plugin_descriptor"
+    }
+  ]
+}

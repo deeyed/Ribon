@@ -126,6 +126,7 @@
     "provider_class": "reference",
     "layout_id": "layout.validation.ab-v1",
     "layout_digest_sha256": "1e1a7f165fa068dc048189919b6e4de7d28a31710b82451d0bcbb86c8396342a",
+    "media_identity_digest_sha256": "fcf2320ae836dd39a8fe45843f809aae76082af14661482abacc7645052a4ee2",
     "read_service_id": "service.update-reference.boot-source",
     "writer_service_id": "service.update-reference.inactive-slot-storage",
     "metadata_service_id": "service.update-reference.persistent-metadata",

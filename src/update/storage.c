@@ -285,6 +285,79 @@ ribon_update_layout_identity_encode(
     return RIBON_UPDATE_STORAGE_STATUS_OK;
 }
 
+/** @brief Untrusted canonical layout identity를 독립 검증해 native view로 연다. */
+int
+ribon_update_layout_identity_open(
+    const uint8_t *bytes,
+    size_t size,
+    struct RibonUpdateLayout *layout)
+{
+    uint32_t index;
+
+    if (layout != NULL) {
+        memset(layout, 0, sizeof(*layout));
+    }
+    if (bytes == NULL || layout == NULL ||
+        size != RIBON_UPDATE_LAYOUT_IDENTITY_BYTES ||
+        !bytes_equal(bytes, ribon_update_layout_magic,
+            sizeof(ribon_update_layout_magic)) ||
+        load_u16(bytes + 32u) != RIBON_UPDATE_STORAGE_ABI_VERSION ||
+        load_u16(bytes + 34u) != LAYOUT_HEADER_BYTES ||
+        load_u32(bytes + 36u) != RIBON_UPDATE_LAYOUT_IDENTITY_BYTES ||
+        load_u32(bytes + 56u) != RIBON_UPDATE_LAYOUT_REGION_COUNT ||
+        !bytes_zero(bytes + 60u, LAYOUT_HEADER_BYTES - 60u) ||
+        !bytes_zero(bytes + LAYOUT_HEADER_BYTES +
+                RIBON_UPDATE_LAYOUT_REGION_COUNT * LAYOUT_REGION_BYTES,
+            (LAYOUT_REGION_CAPACITY - RIBON_UPDATE_LAYOUT_REGION_COUNT) *
+                LAYOUT_REGION_BYTES)) {
+        return RIBON_UPDATE_STORAGE_STATUS_MALFORMED;
+    }
+    layout->size = sizeof(*layout);
+    layout->abi_version = RIBON_UPDATE_STORAGE_ABI_VERSION;
+    layout->region_count = RIBON_UPDATE_LAYOUT_REGION_COUNT;
+    layout->media_capacity_bytes = load_u64(bytes + 40u);
+    layout->allocation_alignment = load_u64(bytes + 48u);
+    for (index = 0u; index < RIBON_UPDATE_LAYOUT_REGION_COUNT; ++index) {
+        const uint8_t *row = bytes + LAYOUT_HEADER_BYTES +
+            (size_t)index * LAYOUT_REGION_BYTES;
+        layout->regions[index].kind =
+            (enum RibonUpdateLayoutRegionKind)load_u32(row);
+        layout->regions[index].flags = load_u32(row + 4u);
+        layout->regions[index].offset = load_u64(row + 8u);
+        layout->regions[index].length = load_u64(row + 16u);
+    }
+    if (!layout_is_structurally_valid(layout)) {
+        memset(layout, 0, sizeof(*layout));
+        return RIBON_UPDATE_STORAGE_STATUS_MALFORMED;
+    }
+    ribon_security_sha256(bytes, size, layout->identity_digest);
+    return RIBON_UPDATE_STORAGE_STATUS_OK;
+}
+
+/** @brief Generated update-storage binding의 ABI와 identities를 검사한다. */
+int
+ribon_update_storage_product_binding_is_valid(
+    const struct RibonUpdateStorageProductBinding *binding)
+{
+    return binding != NULL && binding->size == sizeof(*binding) &&
+        binding->abi_version == RIBON_UPDATE_STORAGE_ABI_VERSION &&
+        binding->provider_class >= RIBON_UPDATE_STORAGE_PROVIDER_CLASS_FIRMWARE &&
+        binding->provider_class <= RIBON_UPDATE_STORAGE_PROVIDER_CLASS_REFERENCE &&
+        binding->flags == 0u && binding->layout_id != NULL &&
+        binding->layout_id[0] != '\0' &&
+        !bytes_zero(binding->layout_digest, sizeof(binding->layout_digest)) &&
+        !bytes_zero(binding->media_identity_digest,
+            sizeof(binding->media_identity_digest)) &&
+        binding->read_service_id != NULL && binding->read_service_id[0] != '\0' &&
+        binding->writer_service_id != NULL &&
+        binding->writer_service_id[0] != '\0' &&
+        binding->metadata_service_id != NULL &&
+        binding->metadata_service_id[0] != '\0' &&
+        binding->flush_service_id != NULL &&
+        binding->flush_service_id[0] != '\0' &&
+        bytes_zero(binding->reserved, sizeof(binding->reserved));
+}
+
 /** @brief Source-neutral input에서 deterministic A/B layout을 계산한다. */
 int
 ribon_update_layout_calculate(
@@ -442,12 +515,16 @@ slot_entry_is_valid(
     uint32_t expected_slot,
     uint64_t metadata_generation)
 {
-    const int empty_identity =
+    int empty_identity;
+
+    if (entry == NULL) {
+        return 0;
+    }
+    empty_identity =
         bytes_zero(entry->manifest_digest, sizeof(entry->manifest_digest)) &&
         bytes_zero(entry->image_set_digest, sizeof(entry->image_set_digest)) &&
         bytes_zero(entry->layout_digest, sizeof(entry->layout_digest));
-
-    if (entry == NULL || entry->slot_id != expected_slot || entry->flags != 0u ||
+    if (entry->slot_id != expected_slot || entry->flags != 0u ||
         entry->state < RIBON_UPDATE_SLOT_EMPTY ||
         entry->state > RIBON_UPDATE_SLOT_BAD ||
         entry->boot_attempts > METADATA_MAX_BOOT_ATTEMPTS ||

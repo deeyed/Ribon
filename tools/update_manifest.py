@@ -80,6 +80,7 @@ SOURCE_KEYS = {
     "rollback_sequence",
     "schema",
 }
+SOURCE_OPTIONAL_KEYS = {"product_digest_sha256"}
 COMPONENT_KEYS = {
     "bundle_offset",
     "destination_class",
@@ -180,9 +181,16 @@ def read_exact_component(root: Path, component: dict[str, Any], index: int) -> b
 def parse_source(path: Path) -> dict[str, Any]:
     """Load and exact-shape-check one source-neutral component manifest."""
 
-    document = exact_object(
-        json.loads(path.read_text(encoding="utf-8")), SOURCE_KEYS, "source manifest"
-    )
+    raw_document = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(raw_document, dict)
+        or not SOURCE_KEYS.issubset(raw_document)
+        or not set(raw_document).issubset(SOURCE_KEYS | SOURCE_OPTIONAL_KEYS)
+    ):
+        raise ValueError(
+            "source manifest must contain the v1 fields and optional exact product digest"
+        )
+    document = raw_document
     if document["schema"] != SOURCE_SCHEMA:
         raise ValueError("unsupported source manifest schema")
     if document["mode"] not in MODES:
@@ -285,7 +293,11 @@ def parse_source(path: Path) -> dict[str, Any]:
             0xFFFFFFFFFFFFFFFF,
             "predecessor_generation",
         ),
-        "product_digest": digest_id(document["product_id"], "product_id"),
+        "product_digest": (
+            digest_hex(document["product_digest_sha256"], "product_digest_sha256")
+            if "product_digest_sha256" in document
+            else digest_id(document["product_id"], "product_id")
+        ),
         "protocol_digest": digest_id(protocol["id"], "protocol.id"),
         "protocol_major": integer(protocol["major"], 0xFFFF, "protocol.major"),
         "protocol_minor": integer(protocol["minor"], 0xFFFF, "protocol.minor"),

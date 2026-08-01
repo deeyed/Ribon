@@ -195,6 +195,17 @@ test_layout_and_manifest(void)
     struct RibonUpdateLayoutInput input = layout_input();
     struct RibonUpdateLayout layout;
     struct RibonUpdateLayout repeated;
+    struct RibonUpdateLayout reopened;
+    struct RibonUpdateStorageProductBinding binding = {
+        .size = sizeof(binding),
+        .abi_version = RIBON_UPDATE_STORAGE_ABI_VERSION,
+        .provider_class = RIBON_UPDATE_STORAGE_PROVIDER_CLASS_REFERENCE,
+        .layout_id = "layout.validation.ab-v1",
+        .read_service_id = "service.read",
+        .writer_service_id = "service.write",
+        .metadata_service_id = "service.metadata",
+        .flush_service_id = "service.flush",
+    };
     struct RibonUpdateManifestView manifest;
     uint8_t manifest_bytes[MANIFEST_BYTES];
     uint8_t identity[512];
@@ -215,6 +226,33 @@ test_layout_and_manifest(void)
                memcmp(identity, identity_repeated, sizeof(identity)) == 0 &&
                memcmp(layout.identity_digest, repeated.identity_digest, 32u) == 0,
            "layout identity deterministic");
+    expect(ribon_update_layout_identity_open(
+               identity, sizeof(identity), &reopened) ==
+               RIBON_UPDATE_STORAGE_STATUS_OK &&
+               reopened.media_capacity_bytes == layout.media_capacity_bytes &&
+               memcmp(reopened.identity_digest, layout.identity_digest, 32u) == 0,
+           "canonical layout identity independently reopens");
+    memcpy(binding.layout_digest, layout.identity_digest,
+        sizeof(binding.layout_digest));
+    fill_digest(binding.media_identity_digest, 0xd0u);
+    expect(ribon_update_storage_product_binding_is_valid(&binding),
+           "product binding closes layout, media, and service identities");
+    memset(binding.media_identity_digest, 0, sizeof(binding.media_identity_digest));
+    expect(!ribon_update_storage_product_binding_is_valid(&binding),
+           "zero media identity binding rejected");
+    fill_digest(binding.media_identity_digest, 0xd0u);
+    binding.provider_class = RIBON_UPDATE_STORAGE_PROVIDER_CLASS_INVALID;
+    expect(!ribon_update_storage_product_binding_is_valid(&binding),
+           "unknown product provider class rejected");
+    binding.provider_class = RIBON_UPDATE_STORAGE_PROVIDER_CLASS_REFERENCE;
+    identity[128u + 8u] ^= 1u;
+    expect(ribon_update_layout_identity_open(identity, sizeof(identity), &reopened) ==
+               RIBON_UPDATE_STORAGE_STATUS_MALFORMED,
+           "mutated layout sequence rejected by independent reader");
+    expect(ribon_update_layout_identity_open(
+               identity_repeated, sizeof(identity_repeated) - 1u, &reopened) ==
+               RIBON_UPDATE_STORAGE_STATUS_MALFORMED,
+           "truncated layout identity rejected");
     for (index = 0u; index < RIBON_UPDATE_LAYOUT_REGION_COUNT; ++index) {
         expect(layout.regions[index].kind ==
                    (enum RibonUpdateLayoutRegionKind)(index + 1u) &&

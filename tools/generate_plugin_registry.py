@@ -136,10 +136,16 @@ UPDATE_STORAGE_KEYS = {
     "provider_class",
     "layout_id",
     "layout_digest_sha256",
+    "media_identity_digest_sha256",
     "read_service_id",
     "writer_service_id",
     "metadata_service_id",
     "flush_service_id",
+}
+UPDATE_STORAGE_PROVIDER_CLASSES = {
+    "firmware": "RIBON_UPDATE_STORAGE_PROVIDER_CLASS_FIRMWARE",
+    "native": "RIBON_UPDATE_STORAGE_PROVIDER_CLASS_NATIVE",
+    "reference": "RIBON_UPDATE_STORAGE_PROVIDER_CLASS_REFERENCE",
 }
 SIGNATURE_PROVIDER_KEYS = {"algorithm", "class", "id", "symbol"}
 PROTECTED_STATE_PROVIDER_KEYS = {"class", "id", "rollback_domains", "symbol"}
@@ -1049,6 +1055,15 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
                 for character in str(update_storage["layout_digest_sha256"])
             )
             or set(str(update_storage["layout_digest_sha256"])) == {"0"}
+            or not isinstance(
+                update_storage.get("media_identity_digest_sha256"), str
+            )
+            or len(str(update_storage["media_identity_digest_sha256"])) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in str(update_storage["media_identity_digest_sha256"])
+            )
+            or set(str(update_storage["media_identity_digest_sha256"])) == {"0"}
         ):
             raise ValueError(
                 "update_storage must define one recovery/provisioning bounded provider"
@@ -1488,6 +1503,45 @@ ribon_generated_protected_state_binding(void) {{
 """
 
 
+def _render_update_storage(manifest: dict[str, object]) -> str:
+    """Render the exact product-selected update media binding or null getter."""
+
+    binding = manifest.get("update_storage")
+    if binding is None:
+        return """
+const struct RibonUpdateStorageProductBinding *
+ribon_generated_update_storage_binding(void) {
+    return 0;
+}
+"""
+    assert isinstance(binding, dict)
+    provider_class = UPDATE_STORAGE_PROVIDER_CLASSES[str(binding["provider_class"])]
+    return f"""
+static const struct RibonUpdateStorageProductBinding
+generated_update_storage_binding = {{
+    .size = sizeof(generated_update_storage_binding),
+    .abi_version = RIBON_UPDATE_STORAGE_ABI_VERSION,
+    .provider_class = {provider_class},
+    .layout_id = "{binding['layout_id']}",
+    .layout_digest = {{
+        {_c_bytes(bytes.fromhex(str(binding['layout_digest_sha256'])))}
+    }},
+    .media_identity_digest = {{
+        {_c_bytes(bytes.fromhex(str(binding['media_identity_digest_sha256'])))}
+    }},
+    .read_service_id = "{binding['read_service_id']}",
+    .writer_service_id = "{binding['writer_service_id']}",
+    .metadata_service_id = "{binding['metadata_service_id']}",
+    .flush_service_id = "{binding['flush_service_id']}",
+}};
+
+const struct RibonUpdateStorageProductBinding *
+ribon_generated_update_storage_binding(void) {{
+    return &generated_update_storage_binding;
+}}
+"""
+
+
 def _render_ribos_policy(manifest: dict[str, object]) -> str:
     policy = manifest.get("ribos_policy")
     if policy is None:
@@ -1784,6 +1838,7 @@ def render(manifest: dict[str, object]) -> str:
     ribos_policy = _render_ribos_policy(manifest)
     key_policy = _render_key_policy(manifest)
     protected_state = _render_protected_state(manifest)
+    update_storage_binding = _render_update_storage(manifest)
     signature_extern = (
         "extern const struct RibonSignatureProvider " +
         str(signature_provider["symbol"]) + ";"
@@ -1803,6 +1858,7 @@ def render(manifest: dict[str, object]) -> str:
 #include <Ribon/security/key_policy.h>
 #include <Ribon/security/protected_state.h>
 #include <Ribon/security/signature.h>
+#include <Ribon/update/storage.h>
 {ribos_includes}
 
 {externs}
@@ -1815,6 +1871,7 @@ static const uint8_t generated_product_source_digest[32] = {{
 
 {key_policy}
 {protected_state}
+{update_storage_binding}
 
 static const struct RibonPluginDescriptor *const generated_plugins[] = {{
 {pointers}
