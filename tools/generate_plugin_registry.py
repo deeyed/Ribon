@@ -147,6 +147,24 @@ UPDATE_STORAGE_PROVIDER_CLASSES = {
     "native": "RIBON_UPDATE_STORAGE_PROVIDER_CLASS_NATIVE",
     "reference": "RIBON_UPDATE_STORAGE_PROVIDER_CLASS_REFERENCE",
 }
+RECOVERY_NETWORK_KEYS = {
+    "schema",
+    "transport",
+    "service_id",
+    "server_ipv4",
+    "station_ipv4",
+    "subnet_mask_ipv4",
+    "block_size",
+    "retry_count",
+    "absolute_deadline_ms",
+    "objects",
+}
+RECOVERY_NETWORK_OBJECT_KEYS = {"kind", "path", "maximum_bytes"}
+RECOVERY_NETWORK_OBJECT_KINDS = (
+    "manifest",
+    "signature-envelope",
+    "bundle",
+)
 SIGNATURE_PROVIDER_KEYS = {"algorithm", "class", "id", "symbol"}
 PROTECTED_STATE_PROVIDER_KEYS = {"class", "id", "rollback_domains", "symbol"}
 KEY_POLICY_KEYS = {"generation", "id", "keys"}
@@ -1068,6 +1086,83 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             raise ValueError(
                 "update_storage must define one recovery/provisioning bounded provider"
             )
+    recovery_network = manifest.get("recovery_network")
+    if recovery_network is not None:
+        if (
+            product_kind != "bootloader"
+            or manifest["mode"] not in {"recovery", "provisioning"}
+            or environment != "uefi"
+            or not isinstance(recovery_network, dict)
+            or set(recovery_network) != RECOVERY_NETWORK_KEYS
+            or recovery_network.get("schema") !=
+                "ribon-recovery-network-binding-v1"
+            or recovery_network.get("transport") != "uefi-bounded-tftp"
+            or not isinstance(recovery_network.get("service_id"), str)
+            or not str(recovery_network["service_id"])
+            or any(
+                not isinstance(recovery_network.get(field), list)
+                or len(recovery_network[field]) != 4
+                for field in (
+                    "server_ipv4", "station_ipv4", "subnet_mask_ipv4"
+                )
+            )
+            or any(
+                not isinstance(octet, int) or octet < 0 or octet > 255
+                for field in (
+                    "server_ipv4", "station_ipv4", "subnet_mask_ipv4"
+                )
+                for octet in recovery_network[field]
+            )
+            or recovery_network["server_ipv4"][0] == 0
+            or recovery_network["server_ipv4"][0] >= 224
+            or recovery_network["station_ipv4"][0] == 0
+            or recovery_network["station_ipv4"][0] >= 224
+            or recovery_network["subnet_mask_ipv4"][0] == 0
+            or not isinstance(recovery_network.get("block_size"), int)
+            or not 512 <= recovery_network["block_size"] <= 1468
+            or not isinstance(recovery_network.get("retry_count"), int)
+            or not 0 <= recovery_network["retry_count"] <= 3
+            or not isinstance(recovery_network.get("absolute_deadline_ms"), int)
+            or not recovery_network["retry_count"] <
+                recovery_network["absolute_deadline_ms"] <= 30000
+            or not isinstance(recovery_network.get("objects"), list)
+            or len(recovery_network["objects"]) !=
+                len(RECOVERY_NETWORK_OBJECT_KINDS)
+        ):
+            raise ValueError(
+                "recovery_network must define one bounded UEFI TFTP provider"
+            )
+        normalized_objects = []
+        for expected_kind, item in zip(
+            RECOVERY_NETWORK_OBJECT_KINDS,
+            recovery_network["objects"],
+            strict=True,
+        ):
+            if (
+                not isinstance(item, dict)
+                or set(item) != RECOVERY_NETWORK_OBJECT_KEYS
+                or item.get("kind") != expected_kind
+                or not isinstance(item.get("path"), str)
+                or not 1 <= len(item["path"].encode("ascii", errors="ignore")) <= 96
+                or item["path"].startswith("/")
+                or item["path"].endswith("/")
+                or ".." in item["path"]
+                or any(
+                    character not in
+                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/"
+                    for character in item["path"]
+                )
+                or not isinstance(item.get("maximum_bytes"), int)
+                or not 1 <= item["maximum_bytes"] <= 64 * 1024 * 1024
+                or item["maximum_bytes"] >=
+                    (65535 - 1) * recovery_network["block_size"]
+            ):
+                raise ValueError(
+                    "recovery network objects must be canonical bounded role rows"
+                )
+            normalized_objects.append(dict(item))
+        recovery_network = dict(recovery_network)
+        recovery_network["objects"] = normalized_objects
 
     plugins = manifest.get("plugins")
     if not isinstance(plugins, list) or not plugins:
@@ -1201,6 +1296,32 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         manifest["update_storage"] = {
             key: update_storage[key] for key in sorted(UPDATE_STORAGE_KEYS)
         }
+    network_services = [
+        service for service in services
+        if service["kind"] == "network-transport"
+    ]
+    if recovery_network is None:
+        if network_services or "NETWORK_TRANSPORT" in required or \
+                "NETWORK_TRANSPORT" in allowed:
+            raise ValueError(
+                "network transport authority requires recovery_network binding"
+            )
+    else:
+        assert isinstance(recovery_network, dict)
+        if network_services != [{
+            "id": recovery_network["service_id"],
+            "kind": "network-transport",
+            "symbol": "ribon_uefi_bounded_tftp_network_service_descriptor",
+        }]:
+            raise ValueError(
+                "recovery_network requires the exact generated UEFI TFTP service"
+            )
+        if "NETWORK_TRANSPORT" not in required or \
+                "NETWORK_TRANSPORT" not in allowed:
+            raise ValueError(
+                "recovery_network requires network transport capability"
+            )
+        manifest["recovery_network"] = recovery_network
     limits = manifest.get("limits")
     if (
         not isinstance(limits, dict)
@@ -1208,6 +1329,16 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         or any(not isinstance(limits[key], int) or limits[key] <= 0 for key in LIMIT_KEYS)
     ):
         raise ValueError("limits must contain positive values for the complete ABI")
+    if isinstance(recovery_network, dict) and (
+        recovery_network["retry_count"] > limits["max_retries"]
+        or max(
+            int(item["maximum_bytes"])
+            for item in recovery_network["objects"]
+        ) > limits["max_input_bytes"]
+        or recovery_network["absolute_deadline_ms"] >
+            limits["operation_deadline_ms"]
+    ):
+        raise ValueError("recovery_network exceeds product resource limits")
     max_plugins = manifest.get("max_plugins")
     if not isinstance(max_plugins, int) or max_plugins < len(plugins) or max_plugins > 64:
         raise ValueError("max_plugins must bound the graph and the core ABI")
@@ -1542,6 +1673,66 @@ ribon_generated_update_storage_binding(void) {{
 """
 
 
+def _render_recovery_network(manifest: dict[str, object]) -> str:
+    """Render one immutable recovery endpoint/budget binding or null getter."""
+
+    binding = manifest.get("recovery_network")
+    if binding is None:
+        return """
+const struct RibonRecoveryNetworkProductBinding *
+ribon_generated_recovery_network_binding(void) {
+    return 0;
+}
+"""
+    assert isinstance(binding, dict)
+    objects = binding["objects"]
+    assert isinstance(objects, list)
+    kinds = {
+        "manifest": "RIBON_RECOVERY_NETWORK_OBJECT_MANIFEST",
+        "signature-envelope":
+            "RIBON_RECOVERY_NETWORK_OBJECT_SIGNATURE_ENVELOPE",
+        "bundle": "RIBON_RECOVERY_NETWORK_OBJECT_BUNDLE",
+    }
+    rows = "\n".join(
+        """        {
+            .kind = %(kind)s,
+            .path = \"%(path)s\",
+            .maximum_bytes = UINT64_C(%(maximum)s),
+        },""" % {
+            "kind": kinds[str(item["kind"])],
+            "path": item["path"],
+            "maximum": item["maximum_bytes"],
+        }
+        for item in objects
+        if isinstance(item, dict)
+    )
+    server = binding["server_ipv4"]
+    station = binding["station_ipv4"]
+    subnet = binding["subnet_mask_ipv4"]
+    assert isinstance(server, list) and isinstance(station, list) and isinstance(subnet, list)
+    return f"""
+static const struct RibonRecoveryNetworkProductBinding
+generated_recovery_network_binding = {{
+    .size = sizeof(generated_recovery_network_binding),
+    .abi_version = RIBON_RECOVERY_NETWORK_ABI_VERSION,
+    .transport_class = RIBON_RECOVERY_NETWORK_TRANSPORT_UEFI_BOUNDED_TFTP,
+    .service_id = "{binding['service_id']}",
+    .server_ipv4 = {{ {', '.join(str(value) + 'u' for value in server)} }},
+    .station_ipv4 = {{ {', '.join(str(value) + 'u' for value in station)} }},
+    .subnet_mask_ipv4 = {{ {', '.join(str(value) + 'u' for value in subnet)} }},
+    .block_size = {binding['block_size']}u,
+    .retry_count = {binding['retry_count']}u,
+    .absolute_deadline_ms = {binding['absolute_deadline_ms']}u,
+    .objects = {{
+{rows}
+    }},
+}};
+
+const struct RibonRecoveryNetworkProductBinding *
+ribon_generated_recovery_network_binding(void) {{
+    return &generated_recovery_network_binding;
+}}
+"""
 def _render_ribos_policy(manifest: dict[str, object]) -> str:
     policy = manifest.get("ribos_policy")
     if policy is None:
@@ -1839,6 +2030,7 @@ def render(manifest: dict[str, object]) -> str:
     key_policy = _render_key_policy(manifest)
     protected_state = _render_protected_state(manifest)
     update_storage_binding = _render_update_storage(manifest)
+    recovery_network_binding = _render_recovery_network(manifest)
     signature_extern = (
         "extern const struct RibonSignatureProvider " +
         str(signature_provider["symbol"]) + ";"
@@ -1858,6 +2050,7 @@ def render(manifest: dict[str, object]) -> str:
 #include <Ribon/security/key_policy.h>
 #include <Ribon/security/protected_state.h>
 #include <Ribon/security/signature.h>
+#include <Ribon/network/recovery.h>
 #include <Ribon/update/storage.h>
 {ribos_includes}
 
@@ -1872,6 +2065,7 @@ static const uint8_t generated_product_source_digest[32] = {{
 {key_policy}
 {protected_state}
 {update_storage_binding}
+{recovery_network_binding}
 
 static const struct RibonPluginDescriptor *const generated_plugins[] = {{
 {pointers}
@@ -1985,6 +2179,7 @@ def main() -> int:
             "payload": manifest.get("payload"),
             "boot_module_bundle": manifest.get("boot_module_bundle"),
             "update_storage": manifest.get("update_storage"),
+            "recovery_network": manifest.get("recovery_network"),
             "signature_provider": manifest.get("signature_provider"),
             "key_policy": manifest.get("key_policy"),
             "key_policy_digest_sha256": (

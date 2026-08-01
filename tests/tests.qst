@@ -420,6 +420,64 @@ qstar.test_suite "update_power_cut_tests" {
   description = qstar.status("Transactional install replay and confirmed predecessor safety"),
 }
 
+qstar.test "recovery_network_unit" {
+  sources = {
+    "tests/network/recovery_network_tests.c",
+  },
+  deps = {
+    "//src/common:libribon_recovery_network",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.run_target "recovery_network_contract" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-recovery-network",
+    "check-recovery-network-host",
+    "check-recovery-network-sanitizer",
+    "check-recovery-network-cross-compile",
+    "check-recovery-network-graphs",
+  },
+  timeout = 600,
+  expect = {
+    contains = "RIBON-D05-RECOVERY-NETWORK-GRAPH-OK",
+  },
+  description = qstar.status("Verifying bounded recovery fetch and normal-product isolation"),
+}
+
+qstar.run_target "qemu_recovery_network_update" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-qemu-recovery-network",
+    "check-qemu-recovery-network-update",
+  },
+  timeout = 900,
+  expect = {
+    contains = "RIBON-D05-QEMU-RECOVERY-NETWORK-UPDATE-OK",
+  },
+  description = qstar.status("Fetching and installing a signed update through q35 SNP TFTP"),
+}
+
+qstar.test_suite "recovery_network_tests" {
+  tests = {
+    "//tests:recovery_network_unit",
+    "//tests:recovery_network_contract",
+    "//tests:qemu_recovery_network_update",
+  },
+  tags = {
+    "network",
+    "recovery",
+    "qemu-runtime",
+    "uefi",
+  },
+  description = qstar.status("Recovery-only bounded update transport evidence"),
+}
+
 qstar.run_target "ribos_production_policy" {
   command = qstar.cli {
     "make",
@@ -472,6 +530,9 @@ qstar.group "ribon_tests" {
     "//tests:qemu_update_install",
     "//tests:update_power_cut_contract",
     "//tests:qemu_update_power_cut",
+    "//tests:recovery_network_unit",
+    "//tests:recovery_network_contract",
+    "//tests:qemu_recovery_network_update",
     "//tests:ribos_production_policy",
   },
 }

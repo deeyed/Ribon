@@ -10,6 +10,8 @@
 struct RibonProductDescriptor;
 struct RibonBootModuleBundle;
 struct RibonUpdateStorageProvider;
+struct RibonRecoveryNetworkRequest;
+struct RibonRecoveryNetworkResult;
 
 /** @brief Typed service descriptor를 식별하는 magic이다. */
 #define RIBON_SERVICE_DESCRIPTOR_MAGIC 0x52425356u
@@ -87,7 +89,8 @@ typedef int (*RibonServiceResetFn)(void *, uint32_t);
 typedef int (*RibonServiceMetadataReadFn)(void *, uint64_t, void *, uint64_t);
 typedef int (*RibonServiceMetadataWriteFn)(void *, uint64_t, const void *, uint64_t);
 typedef int (*RibonServiceNetworkFetchFn)(
-    void *, const struct RibonBootSource *, uint64_t, void *, uint64_t, uint64_t *, uint64_t);
+    void *, const struct RibonRecoveryNetworkRequest *,
+    struct RibonRecoveryNetworkResult *);
 typedef int (*RibonServiceRandomFillFn)(void *, void *, uint64_t);
 typedef int (*RibonServiceDiagnosticWriteFn)(void *, const void *, uint64_t);
 typedef int (*RibonServiceDiagnosticInitializeFn)(void *);
@@ -140,6 +143,14 @@ struct RibonStorageFlushServiceOperations {
     uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
     void *context; /**< Environment-owned borrowed context다. */
     RibonServiceStorageFlushFn flush; /**< Bounded durability barrier다. */
+};
+
+/** @brief Recovery/provisioning outbound bounded fetch operation table이다. */
+struct RibonNetworkTransportServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    void *context; /**< Target adapter가 소유하는 bounded native context다. */
+    RibonServiceNetworkFetchFn fetch; /**< 한 product-selected object의 단일 시도다. */
 };
 
 /** @brief Environment native service closure role의 typed operation table이다. */
@@ -275,6 +286,10 @@ int ribon_payload_placement_service_operations_are_valid(
 
 /** @brief Inactive-slot service가 bounded update provider ABI를 정확히 고르는지 검사한다. */
 int ribon_inactive_slot_storage_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor);
+
+/** @brief Network transport service가 단일 bounded fetch callback만 노출하는지 검사한다. */
+int ribon_network_transport_service_operations_are_valid(
     const struct RibonServiceDescriptor *descriptor);
 
 /** @brief QStar가 생성한 product service directory를 반환한다. */

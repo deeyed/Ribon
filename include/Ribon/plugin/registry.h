@@ -11,6 +11,7 @@ struct RibonSignatureProvider;
 struct RibonKeyPolicyStore;
 struct RibonProtectedStateProductBinding;
 struct RibonUpdateStorageProductBinding;
+struct RibonRecoveryNetworkProductBinding;
 
 /** @brief Generated immutable plugin pointer array다. */
 struct RibonPluginRegistry {
@@ -66,5 +67,9 @@ ribon_generated_protected_state_binding(void);
 /** @brief Product graph가 생성한 update-storage binding 또는 NULL을 반환한다. */
 const struct RibonUpdateStorageProductBinding *
 ribon_generated_update_storage_binding(void);
+
+/** @brief Product graph가 생성한 recovery-network binding 또는 NULL을 반환한다. */
+const struct RibonRecoveryNetworkProductBinding *
+ribon_generated_recovery_network_binding(void);
 
 #endif

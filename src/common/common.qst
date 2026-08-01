@@ -17,3 +17,14 @@ qstar.staticlib "libribon_boot" {
     "//qstar/policies:ribon_host_c",
   },
 }
+
+qstar.staticlib "libribon_recovery_network" {
+  artifact_name = "libribon-recovery-network.a",
+  sources = {
+    "src/common/net/recovery.c",
+    "src/common/net/tftp.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}

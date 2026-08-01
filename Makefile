@@ -136,6 +136,9 @@ UPDATE_POWER_CUT_DIR := $(BUILD_ROOT)/update-power-cut
 UPDATE_POWER_CUT_CASES := $(UPDATE_POWER_CUT_DIR)/cases
 UPDATE_POWER_CUT_COVERAGE := $(UPDATE_POWER_CUT_DIR)/coverage.json
 UEFI_UPDATE_STORAGE_TEST := $(TEST_BUILD_DIR)/uefi_update_storage_tests
+RECOVERY_NETWORK_TEST := $(TEST_BUILD_DIR)/recovery_network_tests
+RECOVERY_NETWORK_SANITIZER_TEST := \
+	$(TEST_BUILD_DIR)/recovery_network_sanitizer_tests
 SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
 SECURITY_KEY_POLICY_SRCS := src/security/key_policy.c
 SECURITY_PROTECTED_STATE_SRCS := \
@@ -618,6 +621,67 @@ UEFI_UPDATE_SRCS := \
 UEFI_UPDATE_OBJS := $(UEFI_UPDATE_SRCS:%.c=$(UEFI_UPDATE_DIR)/obj/%.o)
 UEFI_UPDATE_OBJS += $(UEFI_UPDATE_DIR)/obj/generated/plugin_registry.o
 
+UEFI_NETWORK_UPDATE_PRODUCT := x86_64-uefi-network-update-recovery
+UEFI_NETWORK_UPDATE_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_NETWORK_UPDATE_PRODUCT)
+UEFI_NETWORK_UPDATE_MANIFEST := \
+	products/validation/manifests/x86_64-uefi-network-update-recovery.json
+UEFI_NETWORK_UPDATE_REGISTRY_C := \
+	$(UEFI_NETWORK_UPDATE_DIR)/generated/plugin_registry.c
+UEFI_NETWORK_UPDATE_GRAPH := \
+	$(UEFI_NETWORK_UPDATE_DIR)/results/object-graph.json
+UEFI_NETWORK_UPDATE_FIXTURE_DIR := $(UEFI_NETWORK_UPDATE_DIR)/fixture
+UEFI_NETWORK_UPDATE_FIXTURE_STAMP := \
+	$(UEFI_NETWORK_UPDATE_FIXTURE_DIR)/generated.stamp
+UEFI_NETWORK_UPDATE_DISK := \
+	$(UEFI_NETWORK_UPDATE_FIXTURE_DIR)/update-disk.raw
+UEFI_NETWORK_UPDATE_FIXTURE_PROVENANCE := \
+	$(UEFI_NETWORK_UPDATE_FIXTURE_DIR)/provenance.json
+UEFI_NETWORK_UPDATE_APP := $(UEFI_NETWORK_UPDATE_DIR)/BOOTX64.EFI
+UEFI_NETWORK_UPDATE_ESP := $(UEFI_NETWORK_UPDATE_DIR)/esp
+UEFI_NETWORK_UPDATE_RESULTS := $(UEFI_NETWORK_UPDATE_DIR)/results
+UEFI_NETWORK_UPDATE_SRCS := \
+	src/core/arena.c \
+	src/core/context.c \
+	src/core/plugin.c \
+	src/core/registry.c \
+	src/core/service_directory.c \
+	src/core/memory.c \
+	src/common/environment.c \
+	src/common/protocol.c \
+	src/common/boot.c \
+	src/common/image.c \
+	src/common/port.c \
+	src/common/freestanding/string.c \
+	src/common/net/recovery.c \
+	src/common/net/tftp.c \
+	src/arch/common.c \
+	src/arch/x86_64/arch.c \
+	src/arch/x86_64/io.c \
+	src/modes/recovery.c \
+	src/image-formats/elf64.c \
+	products/validation/uefi-update-recovery/protocol.c \
+	src/environments/uefi-app/uefi_app.c \
+	src/environments/uefi-app/update_storage.c \
+	src/environments/uefi-app/recovery_network.c \
+	src/update/manifest.c \
+	src/update/storage.c \
+	src/update/installer.c \
+	src/update/transaction.c \
+	src/security/sha256.c \
+	src/security/key_policy.c \
+	src/security/protected_state.c \
+	src/security/signature.c \
+	src/plugins/security/ed25519/provider.c \
+	third_party/monocypher/4.0.3/monocypher.c \
+	third_party/monocypher/4.0.3/monocypher-ed25519.c \
+	products/validation/uefi-update-recovery/protected_state.c \
+	ports/qemu/pc-x86_64/port.c \
+	targets/x86_64-uefi-network-update-recovery/entry.c
+UEFI_NETWORK_UPDATE_OBJS := \
+	$(UEFI_NETWORK_UPDATE_SRCS:%.c=$(UEFI_NETWORK_UPDATE_DIR)/obj/%.o)
+UEFI_NETWORK_UPDATE_OBJS += \
+	$(UEFI_NETWORK_UPDATE_DIR)/obj/generated/plugin_registry.o
+
 RIBOS_R18_DIR := $(TARGET_BUILD_ROOT)/ribos-r18
 RIBOS_R18_MANIFEST := $(RIBOS_R18_DIR)/generated/product.json
 RIBOS_R18_UNSIGNED_A := $(RIBOS_R18_DIR)/generated/policy-a.rba
@@ -802,7 +866,10 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-update-installer check-uefi-update-storage check-qemu-update-install \
 	check-update-power-cut check-update-power-cut-host \
 	check-update-power-cut-sanitizer check-update-transaction-cross-compile \
-	check-qemu-update-power-cut \
+	check-qemu-update-power-cut check-recovery-network-host \
+	check-recovery-network-sanitizer check-recovery-network-cross-compile \
+	check-recovery-network-graphs check-qemu-recovery-network-update \
+	check-recovery-network-update x86_64-uefi-network-update-recovery \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke \
@@ -1930,6 +1997,56 @@ $(UEFI_UPDATE_STORAGE_TEST): tests/update/uefi_storage_tests.c \
 check-uefi-update-storage: $(UEFI_UPDATE_STORAGE_TEST)
 	$(UEFI_UPDATE_STORAGE_TEST) $(UEFI_UPDATE_DISK)
 
+$(RECOVERY_NETWORK_TEST): tests/network/recovery_network_tests.c \
+		src/common/net/recovery.c src/common/net/tftp.c \
+		src/core/service_directory.c include/Ribon/network/recovery.h \
+		include/Ribon/network/tftp.h include/Ribon/service/directory.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) \
+		tests/network/recovery_network_tests.c \
+		src/common/net/recovery.c src/common/net/tftp.c \
+		src/core/service_directory.c -o $@
+
+$(RECOVERY_NETWORK_SANITIZER_TEST): tests/network/recovery_network_tests.c \
+		src/common/net/recovery.c src/common/net/tftp.c \
+		src/core/service_directory.c include/Ribon/network/recovery.h \
+		include/Ribon/network/tftp.h include/Ribon/service/directory.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		tests/network/recovery_network_tests.c \
+		src/common/net/recovery.c src/common/net/tftp.c \
+		src/core/service_directory.c -o $@
+
+check-recovery-network-host: $(RECOVERY_NETWORK_TEST)
+	$(RECOVERY_NETWORK_TEST)
+
+check-recovery-network-sanitizer: $(RECOVERY_NETWORK_SANITIZER_TEST)
+	$(RECOVERY_NETWORK_SANITIZER_TEST)
+
+check-recovery-network-cross-compile:
+	@set -e; \
+	for target in x86_64 aarch64 riscv64; do \
+		case "$$target" in \
+		x86_64) compiler=/usr/bin/clang; triple=x86_64-none-elf;; \
+		aarch64) compiler=$(AARCH64_CC); triple=aarch64-none-elf;; \
+		riscv64) compiler=$(RISCV64_CC); triple=riscv64-none-elf;; \
+		esac; \
+		for source in src/common/net/recovery.c src/common/net/tftp.c; do \
+			object=$(BUILD_ROOT)/recovery-network/$$target/$${source%.c}.o; \
+			mkdir -p "$$(dirname "$$object")"; \
+			"$$compiler" --target="$$triple" $(FREESTANDING_FLAGS) \
+				-c "$$source" -o "$$object"; \
+		done; \
+	done
+	@echo "RIBON-D05-RECOVERY-NETWORK-CROSS-COMPILE-OK targets=x86_64,aarch64,riscv64"
+
+check-recovery-network-graphs: $(UEFI_NETWORK_UPDATE_GRAPH) \
+		check-normal-media-surface
+	$(PYTHON) tests/network/recovery_network_graph_tests.py \
+		--composer tools/generate_plugin_registry.py \
+		--manifest $(UEFI_NETWORK_UPDATE_MANIFEST)
+
 check-security-ed25519-cross-compile:
 	@set -e; \
 	for target in x86_64 aarch64 riscv64; do \
@@ -2766,6 +2883,69 @@ check-update-power-cut: check-update-power-cut-host \
 		check-update-power-cut-sanitizer \
 		check-update-transaction-cross-compile check-qemu-update-power-cut
 
+$(UEFI_NETWORK_UPDATE_REGISTRY_C): \
+	$(UEFI_NETWORK_UPDATE_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
+		--output $@ --report $(UEFI_NETWORK_UPDATE_GRAPH)
+
+$(UEFI_NETWORK_UPDATE_GRAPH): $(UEFI_NETWORK_UPDATE_REGISTRY_C)
+	@test -f $@
+
+$(UEFI_NETWORK_UPDATE_FIXTURE_STAMP): \
+	$(UEFI_NETWORK_UPDATE_MANIFEST) \
+	tests/fixtures/update/update-layout-source-v1.json \
+	tools/make_qemu_update_fixture.py tools/update_manifest.py tools/update_layout.py
+	$(PYTHON) tools/make_qemu_update_fixture.py \
+		--product-manifest $(UEFI_NETWORK_UPDATE_MANIFEST) \
+		--layout-source tests/fixtures/update/update-layout-source-v1.json \
+		--output-root $(UEFI_NETWORK_UPDATE_FIXTURE_DIR)
+	@touch $@
+
+$(UEFI_NETWORK_UPDATE_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(SECURITY_INCLUDE_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_NETWORK_UPDATE_DIR)/obj/generated/plugin_registry.o: \
+	$(UEFI_NETWORK_UPDATE_REGISTRY_C)
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(SECURITY_INCLUDE_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_NETWORK_UPDATE_APP): $(UEFI_NETWORK_UPDATE_OBJS)
+	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/machine:x64 /map:$(UEFI_NETWORK_UPDATE_DIR)/ribon.map /out:$@ \
+		$(UEFI_NETWORK_UPDATE_OBJS)
+
+$(UEFI_NETWORK_UPDATE_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_NETWORK_UPDATE_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+x86_64-uefi-network-update-recovery: \
+	$(UEFI_NETWORK_UPDATE_ESP)/EFI/BOOT/BOOTX64.EFI \
+	$(UEFI_NETWORK_UPDATE_FIXTURE_STAMP)
+
+check-qemu-recovery-network-update: x86_64-uefi-network-update-recovery
+	$(PYTHON) tools/qemu_recovery_network_update.py \
+		--qemu $(QEMU_X86_64) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--esp $(UEFI_NETWORK_UPDATE_ESP) \
+		--disk $(UEFI_NETWORK_UPDATE_DISK) \
+		--boot-app $(UEFI_NETWORK_UPDATE_APP) \
+		--tftp-root $(UEFI_NETWORK_UPDATE_FIXTURE_DIR) \
+		--manifest $(UEFI_NETWORK_UPDATE_FIXTURE_DIR)/update.man \
+		--envelope $(UEFI_NETWORK_UPDATE_FIXTURE_DIR)/update.sig \
+		--bundle $(UEFI_NETWORK_UPDATE_FIXTURE_DIR)/update.bin \
+		--product-manifest $(UEFI_NETWORK_UPDATE_MANIFEST) \
+		--fixture-provenance $(UEFI_NETWORK_UPDATE_FIXTURE_PROVENANCE) \
+		--inspector tools/inspect_qemu_update_transaction.py \
+		--source-revision $(shell git rev-parse HEAD) \
+		--results $(UEFI_NETWORK_UPDATE_RESULTS)
+
+check-recovery-network-update: check-recovery-network-host \
+		check-recovery-network-sanitizer \
+		check-recovery-network-cross-compile \
+		check-recovery-network-graphs check-update-manifest \
+		check-update-installer check-update-power-cut-host \
+		check-qemu-recovery-network-update
+
 x86_64-uefi-parus-fixture-smoke: x86_64-uefi-parus-fixture
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target x86_64-uefi --qemu $(QEMU_X86_64) \
@@ -3030,7 +3210,8 @@ check-one: $(HOST_REFERENCE) $(KERNEL_FIXTURE)
 check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-modules-fixture-package \
 	qemu-aarch64-virt-raw-fdt qemu-aarch64-virt-modules-fixture-product \
-	qemu-riscv64-virt-rph1-fixture-product x86_64-uefi-parus-fixture
+	qemu-riscv64-virt-rph1-fixture-product x86_64-uefi-parus-fixture \
+	x86_64-uefi-network-update-recovery
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
 check-uefi-product-hermeticity:
@@ -3063,7 +3244,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-update-storage check-update-storage-sanitizer \
 	check-update-storage-cross-compile check-update-storage-graphs \
 	check-update-installer check-uefi-update-storage \
-	check-update-power-cut \
+	check-update-power-cut check-recovery-network-update \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

@@ -147,6 +147,7 @@ adr/0046-signed-update-manifest-v1
 adr/0047-bounded-update-slot-provider
 adr/0048-uefi-block-update-adapter
 adr/0049-crash-consistent-update-transaction-journal
+adr/0050-recovery-only-bounded-network-update
 ```
 
 ```{toctree}
@@ -226,4 +227,5 @@ log/2026-08-01-d01-signed-update-manifest
 log/2026-08-01-d02-bounded-update-storage
 log/2026-08-01-d03-qemu-signed-bundle-install
 log/2026-08-01-d04-transactional-update-fault-closure
+log/2026-08-01-d05-bounded-recovery-network-update
 ```

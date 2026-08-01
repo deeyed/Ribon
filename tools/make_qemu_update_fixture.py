@@ -268,6 +268,10 @@ def main() -> int:
     try:
         root = args.output_root
         root.mkdir(parents=True, exist_ok=True)
+        product = json.loads(args.product_manifest.read_text(encoding="utf-8"))
+        product_id = product.get("product_id")
+        if not isinstance(product_id, str) or not product_id:
+            raise ValueError("product manifest lacks one stable product_id")
         update_tool = load_tool("update_manifest.py")
         layout_tool = load_tool("update_layout.py")
         kernel = component_bytes(b"ribon-qemu-update-kernel-v1")
@@ -317,7 +321,7 @@ def main() -> int:
             "product_digest_sha256": hashlib.sha256(
                 args.product_manifest.read_bytes()
             ).hexdigest(),
-            "product_id": "validation.x86_64-uefi-update-recovery",
+            "product_id": product_id,
             "protocol": {"id": "protocol.synthetic-v1", "major": 1, "minor": 0},
             "rollback_domain": "ribon.update.qemu-q35.v1",
             "rollback_sequence": 2,

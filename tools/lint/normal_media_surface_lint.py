@@ -10,7 +10,16 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 FORBIDDEN = {"INACTIVE_SLOT_WRITE", "INACTIVE_SLOT_ERASE", "NETWORK_TRANSPORT"}
-FORBIDDEN_LINK_TOKENS = ("inactive_slot", "inactive-slot", "network_transport", "network-transport")
+FORBIDDEN_LINK_TOKENS = (
+    "inactive_slot",
+    "inactive-slot",
+    "network_transport",
+    "network-transport",
+    "ribon_recovery_network",
+    "ribon_tftp",
+    "ribon_uefi_recovery_network",
+    "bounded_tftp",
+)
 
 
 def fail(message: str) -> None:
