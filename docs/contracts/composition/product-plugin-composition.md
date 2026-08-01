@@ -90,6 +90,17 @@ single key usage, rollback-domain digest와 resource limit을 생성한다. Comp
 
 Generated output은 정본 source가 아니며 build directory 밖에 기록하지 않는다.
 
+### Bounded update storage binding
+
+Writable update product는 `update_storage`에 canonical layout ID/digest, provider class와 서로 다른
+boot-source, inactive-slot-storage, persistent-metadata, storage-flush service ID를 기록한다. Composer는
+각 ID의 typed role과 `BOOT_SOURCE_READ`, `INACTIVE_SLOT_WRITE`, `INACTIVE_SLOT_ERASE`,
+`PERSISTENT_METADATA`, `STORAGE_FLUSH` required/allowed capability를 함께 검사한다.
+
+이 binding은 recovery 또는 provisioning bootloader에서만 유효하다. Binding 없는 product가 inactive
+writer service나 capability를 선언하거나 normal product가 binding을 선택하면 composition은
+실패한다. Source path, controller handle과 raw media offset은 product manifest field가 아니다.
+
 Signed object를 승인하는 product는 `signature_provider`에 algorithm, production/fixture class,
 stable provider ID와 descriptor symbol을 정확히 하나 선택한다. Composer는 provider pointer와
 source-manifest exact-byte digest를 같은 generated registry에 낸다. Production graph는 fixture

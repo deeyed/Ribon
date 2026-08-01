@@ -290,6 +290,49 @@ qstar.test_suite "update_manifest_tests" {
   description = qstar.status("Update manifest codec and authorization closure"),
 }
 
+qstar.test "update_storage_unit" {
+  sources = {
+    "tests/update/reference_storage.c",
+    "tests/update/storage_tests.c",
+  },
+  deps = {
+    "//src/plugins:libribon_security_ed25519",
+    "//src/update:libribon_update_storage",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
+qstar.run_target "update_storage_contract" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-update-storage",
+    "check-update-storage",
+    "check-update-storage-graphs",
+  },
+  timeout = 240,
+  expect = {
+    contains = "RIBON-UPDATE-STORAGE-GRAPH-HOSTILE-OK",
+  },
+  description = qstar.status("Verifying bounded update-storage provider closure"),
+}
+
+qstar.test_suite "update_storage_tests" {
+  tests = {
+    "//tests:update_storage_unit",
+    "//tests:update_storage_contract",
+  },
+  tags = {
+    "host",
+    "update",
+    "storage",
+    "fault-injection",
+  },
+  description = qstar.status("Bounded update-slot provider and graph isolation"),
+}
+
 qstar.run_target "ribos_production_policy" {
   command = qstar.cli {
     "make",
@@ -336,6 +379,8 @@ qstar.group "ribon_tests" {
     "//tests:security_protected_state_graphs",
     "//tests:update_manifest_unit",
     "//tests:update_manifest_contract",
+    "//tests:update_storage_unit",
+    "//tests:update_storage_contract",
     "//tests:ribos_production_policy",
   },
 }

@@ -171,13 +171,18 @@ anti-rollback 검증 뒤에만 `VERIFIED`가 된다.
 
 ```text
 EMPTY -> STAGING -> VERIFIED -> PENDING -> CONFIRMED
-                    |           |
-                    v           v
-                  FAILED <---- FAILED
+          |           |           |
+          +-----------+-----------+-> BAD
 ```
 
 Power loss가 어느 write 경계에서 발생해도 이전 committed generation과 active confirmed
 image를 식별할 수 있어야 한다.
+
+Storage contract는 equal A/B slots, immutable recovery, metadata/journal과 guard range를 canonical
+layout digest에 결속한다. Metadata generation과 image generation은 독립적으로 증가하며 active
+confirmed slot은 writer handle 대상이 아니다. Inactive slot은 semantic `STAGING` handle로만
+read/write/erase할 수 있고 metadata generation이 바뀌면 handle은 stale이다. Wire와 provider 세부
+계약은 {doc}`../../contracts/storage/bounded-update-slot-provider-v1`이 소유한다.
 
 ## Confirmation
 

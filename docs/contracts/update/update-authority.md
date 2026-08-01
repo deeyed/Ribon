@@ -68,6 +68,11 @@ Canonical wire, update-only signed message, detached signature envelope와 indep
 세부 계약은 {doc}`signed-update-manifest-v1`이 소유한다. Source JSON이나 native C struct를 target
 manifest wire로 사용하지 않는다.
 
+Inactive media의 deterministic A/B range, exact LE slot metadata, active-slot protection과 semantic
+writer handle은 {doc}`../storage/bounded-update-slot-provider-v1`이 소유한다. Manifest authorization은
+storage offset을 만들지 않으며 storage provider는 manifest signature나 rollback authority를
+판정하지 않는다.
+
 ## Write 순서
 
 1. Active confirmed destination과 다른 inactive destination을 선택한다.

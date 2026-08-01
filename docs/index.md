@@ -56,6 +56,7 @@ contracts/security/signature-provider-v1
 contracts/security/key-policy-rollback-v1
 contracts/security/protected-state-journal-v1
 contracts/update/signed-update-manifest-v1
+contracts/storage/bounded-update-slot-provider-v1
 contracts/frontends/environment-port-image-boundary
 contracts/frontends/raw-fdt-boot-module-bundle
 contracts/storage/deterministic-boot-media
@@ -141,6 +142,7 @@ adr/0043-protected-rollback-state-journal
 adr/0044-signed-ribos-authorization-pipeline
 adr/0045-signed-ribos-release-evidence
 adr/0046-signed-update-manifest-v1
+adr/0047-bounded-update-slot-provider
 ```
 
 ```{toctree}
@@ -217,4 +219,5 @@ log/2026-08-01-r06-protected-rollback-state
 log/2026-08-01-r07-signed-ribos-authorization
 log/2026-08-01-r08-signed-policy-release-evidence
 log/2026-08-01-d01-signed-update-manifest
+log/2026-08-01-d02-bounded-update-storage
 ```

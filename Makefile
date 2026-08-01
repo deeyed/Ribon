@@ -114,6 +114,7 @@ RIBOS_VERIFIER := $(BUILD_ROOT)/tools/ribos-verify
 RIBOS_RUNNER := $(BUILD_ROOT)/tools/ribos-run
 SECURITY_BUILD_DIR := $(BUILD_ROOT)/security
 UPDATE_MANIFEST_BUILD_DIR := $(BUILD_ROOT)/update-manifest
+UPDATE_STORAGE_BUILD_DIR := $(BUILD_ROOT)/update-storage
 SECURITY_TEST := $(TEST_BUILD_DIR)/ed25519_provider_tests
 SECURITY_SANITIZER_TEST := $(TEST_BUILD_DIR)/ed25519_provider_sanitizer_tests
 KEY_POLICY_TEST := $(TEST_BUILD_DIR)/key_policy_tests
@@ -124,6 +125,9 @@ PROTECTED_STATE_SANITIZER_TEST := \
 UPDATE_MANIFEST_TEST := $(TEST_BUILD_DIR)/update_manifest_tests
 UPDATE_MANIFEST_SANITIZER_TEST := \
 	$(TEST_BUILD_DIR)/update_manifest_sanitizer_tests
+UPDATE_STORAGE_TEST := $(TEST_BUILD_DIR)/update_storage_tests
+UPDATE_STORAGE_SANITIZER_TEST := \
+	$(TEST_BUILD_DIR)/update_storage_sanitizer_tests
 SECURITY_INCLUDE_FLAGS := -Ithird_party/monocypher/4.0.3
 SECURITY_KEY_POLICY_SRCS := src/security/key_policy.c
 SECURITY_PROTECTED_STATE_SRCS := \
@@ -135,6 +139,10 @@ SECURITY_PROVIDER_SRCS := \
 	third_party/monocypher/4.0.3/monocypher.c \
 	third_party/monocypher/4.0.3/monocypher-ed25519.c
 UPDATE_MANIFEST_SRCS := \
+	src/update/manifest.c \
+	src/security/sha256.c
+UPDATE_STORAGE_SRCS := \
+	src/update/storage.c \
 	src/update/manifest.c \
 	src/security/sha256.c
 HOST_SECURITY_SRCS := $(SECURITY_KEY_POLICY_SRCS) \
@@ -730,6 +738,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-security-key-policy-graphs \
 	check-update-manifest check-update-manifest-sanitizer \
 	check-update-manifest-cross-compile \
+	check-update-storage check-update-storage-sanitizer \
+	check-update-storage-cross-compile check-update-storage-graphs \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
 	qemu-aarch64-virt-parus-smoke \
@@ -1698,6 +1708,72 @@ check-update-manifest-cross-compile:
 		done; \
 	done
 	@echo "RIBON-UPDATE-MANIFEST-CROSS-COMPILE-OK targets=x86_64,aarch64,riscv64"
+
+$(UPDATE_STORAGE_TEST): tests/update/storage_tests.c \
+		tests/update/reference_storage.c tests/update/reference_storage.h \
+		$(UPDATE_STORAGE_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROVIDER_SRCS) include/Ribon/update/storage.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		tests/update/storage_tests.c tests/update/reference_storage.c \
+		$(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) $(SECURITY_PROVIDER_SRCS) -o $@
+
+$(UPDATE_STORAGE_SANITIZER_TEST): tests/update/storage_tests.c \
+		tests/update/reference_storage.c tests/update/reference_storage.h \
+		$(UPDATE_STORAGE_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROVIDER_SRCS) include/Ribon/update/storage.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(SECURITY_INCLUDE_FLAGS) tests/update/storage_tests.c \
+		tests/update/reference_storage.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROVIDER_SRCS) -o $@
+
+check-update-storage: $(UPDATE_STORAGE_TEST)
+	$(UPDATE_STORAGE_TEST)
+	$(PYTHON) tests/update/storage_tool_tests.py \
+		--c-codec $(UPDATE_STORAGE_TEST) \
+		--layout-tool tools/update_layout.py \
+		--manifest-tool tools/update_manifest.py \
+		--layout-source tests/fixtures/update/update-layout-source-v1.json \
+		--manifest-source tests/fixtures/update/update-manifest-source-v1.json
+
+check-update-storage-sanitizer: $(UPDATE_STORAGE_SANITIZER_TEST)
+	$(UPDATE_STORAGE_SANITIZER_TEST)
+
+check-update-storage-cross-compile:
+	@set -e; \
+	for target in x86_64 aarch64 riscv64; do \
+		case "$$target" in \
+			x86_64) compiler=/usr/bin/clang; triple=x86_64-none-elf;; \
+			aarch64) compiler=$(AARCH64_CC); triple=aarch64-none-elf;; \
+			riscv64) compiler=$(RISCV64_CC); triple=riscv64-none-elf;; \
+		esac; \
+		object=$(UPDATE_STORAGE_BUILD_DIR)/$$target/storage.o; \
+		mkdir -p "$$(dirname "$$object")"; \
+		"$$compiler" --target="$$triple" $(FREESTANDING_FLAGS) \
+			-c src/update/storage.c -o "$$object"; \
+	done
+	@echo "RIBON-UPDATE-STORAGE-CROSS-COMPILE-OK targets=x86_64,aarch64,riscv64"
+
+check-update-storage-graphs:
+	@mkdir -p $(UPDATE_STORAGE_BUILD_DIR)
+	$(PYTHON) tools/update_layout.py compose \
+		--source tests/fixtures/update/update-layout-source-v1.json \
+		--output $(UPDATE_STORAGE_BUILD_DIR)/layout-provenance.json
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest products/validation/manifests/update-storage-reference.json \
+		--architecture x86_64 \
+		--output $(UPDATE_STORAGE_BUILD_DIR)/plugin_registry.c \
+		--report $(UPDATE_STORAGE_BUILD_DIR)/object-graph.json
+	$(PYTHON) tools/lint/update_storage_graph_lint.py \
+		--report $(UPDATE_STORAGE_BUILD_DIR)/object-graph.json \
+		--layout $(UPDATE_STORAGE_BUILD_DIR)/layout-provenance.json
+	$(PYTHON) tests/update/storage_graph_tests.py \
+		--composer tools/generate_plugin_registry.py \
+		--manifest products/validation/manifests/update-storage-reference.json
 
 check-security-ed25519-cross-compile:
 	@set -e; \
@@ -2736,6 +2812,8 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-security-protected-state-graphs \
 	check-update-manifest check-update-manifest-sanitizer \
 	check-update-manifest-cross-compile \
+	check-update-storage check-update-storage-sanitizer \
+	check-update-storage-cross-compile check-update-storage-graphs \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

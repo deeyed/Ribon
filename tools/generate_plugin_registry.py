@@ -131,6 +131,16 @@ BOOT_MODULE_BUNDLE_KEYS = {
     "maximum_modules",
     "provider",
 }
+UPDATE_STORAGE_KEYS = {
+    "schema",
+    "provider_class",
+    "layout_id",
+    "layout_digest_sha256",
+    "read_service_id",
+    "writer_service_id",
+    "metadata_service_id",
+    "flush_service_id",
+}
 SIGNATURE_PROVIDER_KEYS = {"algorithm", "class", "id", "symbol"}
 PROTECTED_STATE_PROVIDER_KEYS = {"class", "id", "rollback_domains", "symbol"}
 KEY_POLICY_KEYS = {"generation", "id", "keys"}
@@ -1001,6 +1011,48 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             raise ValueError(
                 "boot_module_bundle requires the exact raw-FDT generated provider"
             )
+    update_storage = manifest.get("update_storage")
+    if update_storage is not None:
+        if (
+            product_kind != "bootloader"
+            or manifest["mode"] not in {"recovery", "provisioning"}
+            or not isinstance(update_storage, dict)
+            or set(update_storage) != UPDATE_STORAGE_KEYS
+            or update_storage.get("schema") != "ribon-update-storage-binding-v1"
+            or update_storage.get("provider_class") not in
+                {"firmware", "native", "reference"}
+            or not isinstance(update_storage.get("layout_id"), str)
+            or not update_storage["layout_id"]
+            or any(
+                not isinstance(update_storage.get(key), str)
+                or not update_storage[key]
+                for key in (
+                    "read_service_id",
+                    "writer_service_id",
+                    "metadata_service_id",
+                    "flush_service_id",
+                )
+            )
+            or len(set(
+                str(update_storage[key])
+                for key in (
+                    "read_service_id",
+                    "writer_service_id",
+                    "metadata_service_id",
+                    "flush_service_id",
+                )
+            )) != 4
+            or not isinstance(update_storage.get("layout_digest_sha256"), str)
+            or len(str(update_storage["layout_digest_sha256"])) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in str(update_storage["layout_digest_sha256"])
+            )
+            or set(str(update_storage["layout_digest_sha256"])) == {"0"}
+        ):
+            raise ValueError(
+                "update_storage must define one recovery/provisioning bounded provider"
+            )
 
     plugins = manifest.get("plugins")
     if not isinstance(plugins, list) or not plugins:
@@ -1089,6 +1141,51 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
         raise ValueError(
             "boot_module_bundle, exact service, and capability authority must agree"
         )
+    writer_capabilities = {
+        "INACTIVE_SLOT_ERASE",
+        "INACTIVE_SLOT_WRITE",
+    }
+    writer_services = [
+        service for service in services
+        if service["kind"] == "inactive-slot-storage"
+    ]
+    if update_storage is None:
+        if writer_services or writer_capabilities.intersection(required) or \
+                writer_capabilities.intersection(allowed):
+            raise ValueError(
+                "inactive slot writer authority requires update_storage binding"
+            )
+    else:
+        assert isinstance(update_storage, dict)
+        service_by_id = {service["id"]: service for service in services}
+        expected_services = {
+            str(update_storage["read_service_id"]): "boot-source",
+            str(update_storage["writer_service_id"]): "inactive-slot-storage",
+            str(update_storage["metadata_service_id"]): "persistent-metadata",
+            str(update_storage["flush_service_id"]): "storage-flush",
+        }
+        if any(
+            service_by_id.get(service_id, {}).get("kind") != kind
+            for service_id, kind in expected_services.items()
+        ):
+            raise ValueError(
+                "update_storage service IDs must resolve to exact typed roles"
+            )
+        required_update_capabilities = {
+            "BOOT_SOURCE_READ",
+            "INACTIVE_SLOT_ERASE",
+            "INACTIVE_SLOT_WRITE",
+            "PERSISTENT_METADATA",
+            "STORAGE_FLUSH",
+        }
+        if not required_update_capabilities.issubset(required) or \
+                not required_update_capabilities.issubset(allowed):
+            raise ValueError(
+                "update_storage requires complete read, writer, metadata, and flush authority"
+            )
+        manifest["update_storage"] = {
+            key: update_storage[key] for key in sorted(UPDATE_STORAGE_KEYS)
+        }
     limits = manifest.get("limits")
     if (
         not isinstance(limits, dict)
@@ -1822,12 +1919,15 @@ def main() -> int:
             "service_selections": manifest["service_selections"],
             "plugin_selections": manifest["plugin_selections"],
             "mode": manifest["mode"],
+            "required_capabilities": manifest["required_capabilities"],
+            "allowed_capabilities": manifest["allowed_capabilities"],
             "plugins": [item["id"] for item in manifest["plugins"]],
             "packages": [item["package"] for item in manifest["plugins"]],
             "image": manifest["image"],
             "evidence": manifest["evidence"],
             "payload": manifest.get("payload"),
             "boot_module_bundle": manifest.get("boot_module_bundle"),
+            "update_storage": manifest.get("update_storage"),
             "signature_provider": manifest.get("signature_provider"),
             "key_policy": manifest.get("key_policy"),
             "key_policy_digest_sha256": (

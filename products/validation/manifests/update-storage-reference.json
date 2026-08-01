@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "product_id": "update-storage-reference",
+  "product_kind": "bootloader",
+  "target_id": "host-update-storage-reference",
+  "architecture": "x86_64",
+  "environment": "host",
+  "mode": "recovery",
+  "boot_protocols": [
+    "synthetic"
+  ],
+  "policies": [
+    "recovery"
+  ],
+  "image": {
+    "format": "host-object-graph",
+    "recipe": "validation-only",
+    "artifact": "update-storage-reference-registry.c"
+  },
+  "evidence": {
+    "class": "compile-only",
+    "claim": "bounded update-storage graph validation only"
+  },
+  "max_plugins": 8,
+  "services": [
+    {
+      "id": "service.update-reference.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_update_reference_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.update-reference.inactive-slot-storage",
+      "kind": "inactive-slot-storage",
+      "symbol": "ribon_update_reference_inactive_slot_storage_service_descriptor"
+    },
+    {
+      "id": "service.update-reference.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_update_reference_monotonic_timer_service_descriptor"
+    },
+    {
+      "id": "service.update-reference.persistent-metadata",
+      "kind": "persistent-metadata",
+      "symbol": "ribon_update_reference_persistent_metadata_service_descriptor"
+    },
+    {
+      "id": "service.update-reference.random-nonce",
+      "kind": "random-nonce",
+      "symbol": "ribon_update_reference_random_nonce_service_descriptor"
+    },
+    {
+      "id": "service.update-reference.storage-flush",
+      "kind": "storage-flush",
+      "symbol": "ribon_update_reference_storage_flush_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.elf64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.synthetic",
+      "kind": "boot-protocol"
+    }
+  ],
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "IMAGE_ELF64",
+    "INACTIVE_SLOT_ERASE",
+    "INACTIVE_SLOT_WRITE",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "RANDOM_NONCE",
+    "STORAGE_FLUSH"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "IMAGE_ELF64",
+    "INACTIVE_SLOT_ERASE",
+    "INACTIVE_SLOT_WRITE",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "RANDOM_NONCE",
+    "STORAGE_FLUSH"
+  ],
+  "limits": {
+    "max_memory_regions": 256,
+    "max_load_segments": 32,
+    "max_components": 32,
+    "max_retries": 4,
+    "max_input_bytes": 268435456,
+    "max_handoff_bytes": 65536,
+    "arena_bytes": 524288,
+    "operation_deadline_ms": 120000
+  },
+  "plugins": [
+    {
+      "id": "arch.x86_64",
+      "package": "ribon.arch.x86_64",
+      "symbol": "ribon_x86_64_plugin_descriptor"
+    },
+    {
+      "id": "environment.host",
+      "package": "ribon.environment.host",
+      "symbol": "ribon_host_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.elf64",
+      "package": "ribon.image.elf64",
+      "symbol": "ribon_elf64_image_plugin_descriptor"
+    },
+    {
+      "id": "protocol.synthetic",
+      "package": "ribon.protocol.synthetic",
+      "symbol": "ribon_synthetic_protocol_plugin_descriptor"
+    }
+  ],
+  "update_storage": {
+    "schema": "ribon-update-storage-binding-v1",
+    "provider_class": "reference",
+    "layout_id": "layout.validation.ab-v1",
+    "layout_digest_sha256": "1e1a7f165fa068dc048189919b6e4de7d28a31710b82451d0bcbb86c8396342a",
+    "read_service_id": "service.update-reference.boot-source",
+    "writer_service_id": "service.update-reference.inactive-slot-storage",
+    "metadata_service_id": "service.update-reference.persistent-metadata",
+    "flush_service_id": "service.update-reference.storage-flush"
+  }
+}

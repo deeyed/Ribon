@@ -134,3 +134,10 @@ payload digest를 검증한다. Fixture marker를 포함한 input은 external pr
 Normal product manifest와 final object graph에는 inactive-slot writer 또는 network transport
 authority가 없어야 한다. Recovery/network/update writer product는 별도 mode graph가 명시적으로
 선택할 때만 허용된다.
+
+## Update media와의 분리
+
+Read-only boot media pipeline은 update layout을 발견하거나 writer로 승격하지 않는다. Recovery와
+provisioning product의 writable media는 {doc}`bounded-update-slot-provider-v1`의 deterministic
+layout, semantic inactive-slot handle과 explicit provider binding을 사용한다. 같은 native device를
+사용하더라도 boot-source reader와 inactive writer는 product graph에서 서로 다른 typed service ID다.

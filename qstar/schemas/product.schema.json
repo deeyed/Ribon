@@ -72,6 +72,33 @@
         "provider": {"const": "generated-component-bundle-v1"}
       }
     },
+    "update_storage": {
+      "type": "object",
+      "required": [
+        "schema",
+        "provider_class",
+        "layout_id",
+        "layout_digest_sha256",
+        "read_service_id",
+        "writer_service_id",
+        "metadata_service_id",
+        "flush_service_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {"const": "ribon-update-storage-binding-v1"},
+        "provider_class": {"enum": ["firmware", "native", "reference"]},
+        "layout_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "layout_digest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "read_service_id": {"type": "string", "minLength": 1},
+        "writer_service_id": {"type": "string", "minLength": 1},
+        "metadata_service_id": {"type": "string", "minLength": 1},
+        "flush_service_id": {"type": "string", "minLength": 1}
+      }
+    },
     "signature_provider": {
       "type": "object",
       "required": ["algorithm", "class", "id", "symbol"],

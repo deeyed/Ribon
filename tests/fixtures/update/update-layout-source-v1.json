@@ -1,0 +1,12 @@
+{
+  "allocation_alignment": 4096,
+  "bootloader_bytes": 1048576,
+  "guard_gap_bytes": 4096,
+  "immutable_recovery_bytes": 2097152,
+  "media_capacity_bytes": 67108864,
+  "minimum_trailing_reserved_bytes": 1048576,
+  "schema": "ribon-update-layout-source-v1",
+  "slot_metadata_bytes": 4096,
+  "slot_payload_bytes": 16777216,
+  "update_journal_bytes": 65536
+}

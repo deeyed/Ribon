@@ -9,6 +9,7 @@
 
 struct RibonProductDescriptor;
 struct RibonBootModuleBundle;
+struct RibonUpdateStorageProvider;
 
 /** @brief Typed service descriptor를 식별하는 magic이다. */
 #define RIBON_SERVICE_DESCRIPTOR_MAGIC 0x52425356u
@@ -98,6 +99,13 @@ struct RibonBootSourceServiceOperations {
     uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
     void *context; /**< Environment-owned borrowed context다. */
     RibonServiceBootSourceReadFn read; /**< Bounded immutable source read다. */
+};
+
+/** @brief Recovery/provisioning inactive-slot provider의 typed operation table이다. */
+struct RibonInactiveSlotStorageServiceOperations {
+    uint32_t size; /**< Operation table byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_SERVICE_ABI_VERSION`이다. */
+    const struct RibonUpdateStorageProvider *provider; /**< Bounded generic provider다. */
 };
 
 /** @brief Monotonic-timer role의 typed operation table이다. */
@@ -263,6 +271,10 @@ int ribon_machine_description_service_operations_are_valid(
 
 /** @brief Payload-placement service operation table을 검사한다. */
 int ribon_payload_placement_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor);
+
+/** @brief Inactive-slot service가 bounded update provider ABI를 정확히 고르는지 검사한다. */
+int ribon_inactive_slot_storage_service_operations_are_valid(
     const struct RibonServiceDescriptor *descriptor);
 
 /** @brief QStar가 생성한 product service directory를 반환한다. */

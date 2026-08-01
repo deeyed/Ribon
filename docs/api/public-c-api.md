@@ -164,6 +164,18 @@ storage writer, raw flash address, private key와 protected rollback-state mutat
 않는다. Manifest와 envelope는 C struct layout이 아니라 explicit little-endian reader/writer로
 직렬화한다.
 
+## Update storage API
+
+```text
+Ribon/update/storage.h
+```
+
+Update storage API는 fixed media geometry, deterministic A/B layout, exact 512-byte layout identity와
+slot metadata codec, inactive `STAGING` slot semantic handle 및 bounded read/write/erase/flush를
+제공한다. Active confirmed slot, raw media offset, native firmware handle, filesystem, network transport와
+Ribos VM handle representation은 이 ABI에 포함하지 않는다. Product graph는 recovery/provisioning
+binding에서만 provider를 inactive-slot service로 선택한다.
+
 ## Architecture API
 
 ```text
