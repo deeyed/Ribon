@@ -160,16 +160,17 @@ static int pe_coff_analyze(
         uint64_t segment_end;
         struct RibonLoadSegment *segment;
 
-        if (virtual_size < raw_size) {
+        if (virtual_size == 0u) {
             virtual_size = raw_size;
         }
         if (virtual_size == 0u) {
             continue;
         }
         if (!pe_add(raw_offset, raw_size, &raw_end) || raw_end > image->size ||
+            (out != 0 && raw_size > virtual_size) ||
             !pe_add(image_base, virtual_address, &segment_base) ||
             !pe_add(segment_base, virtual_size, &segment_end) ||
-            (virtual_address % section_alignment) != 0u) {
+            (out != 0 && (virtual_address % section_alignment) != 0u)) {
             return RIBON_LOADER_STATUS_BAD_FORMAT;
         }
         for (uint32_t previous = 0u; previous < index; ++previous) {
@@ -181,7 +182,7 @@ static int pe_coff_analyze(
             const uint64_t previous_virtual_address = pe_read_u32(previous_section + 12u);
             uint64_t previous_base;
             uint64_t previous_end;
-            if (previous_size < previous_raw_size) {
+            if (previous_size == 0u) {
                 previous_size = previous_raw_size;
             }
             if (previous_size == 0u) {

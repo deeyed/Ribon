@@ -221,6 +221,24 @@ EXPECTED = {
             "ribon_port_selected",
         ),
     },
+    "x86_64-uefi-freebsd": {
+        "architecture": "x86_64",
+        "environment": "uefi",
+        "port": "qemu-pc-x86_64",
+        "map": "ribon.map",
+        "product_id": "bootmgr.x86_64-uefi-freebsd",
+        "needles": (
+            "uefi_app.o",
+            "terminal_image.o",
+            "pe_coff.o",
+            "ribon_freebsd_protocol_plugin_descriptor",
+            "ribon_port_selected",
+        ),
+        "forbidden": (
+            "ribon_linux_efi_protocol_plugin_descriptor",
+            "ribon_parus_protocol_plugin_descriptor",
+        ),
+    },
     "x86-bios-client": {
         "architecture": "x86_64",
         "environment": "bios",

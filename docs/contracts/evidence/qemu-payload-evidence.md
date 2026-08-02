@@ -8,6 +8,8 @@ code_paths:
   - tools/validate_external_parus_payload.py
   - tools/generate_boot_module_bundle.py
   - tools/prepare_external_linux_image.py
+  - tools/prepare_external_freebsd.py
+  - tools/compose_freebsd_uefi.py
   - tools/build_linux_initramfs.py
   - products/bootmgr/manifests/qemu-aarch64-virt-linux.json
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-modules.json
@@ -17,10 +19,12 @@ code_paths:
   - products/bootmgr/manifests/x86_64-uefi-parus-fixture.json
   - products/bootmgr/manifests/x86_64-uefi-parus-external.json
   - products/bootmgr/manifests/x86_64-uefi-linux.json
+  - products/bootmgr/manifests/x86_64-uefi-freebsd.json
   - tests/fixtures/riscv64/
   - tests/tools/qemu_target_smoke_tests.py
   - tests/tools/external_parus_payload_tests.py
   - tests/tools/external_linux_image_tests.py
+  - tests/tools/external_freebsd_tests.py
 tests:
   - make check-qemu-evidence
   - make check-boot-modules
@@ -31,6 +35,7 @@ tests:
   - make x86_64-uefi-parus-fixture-smoke
   - make UEFI_PARUS_PAYLOAD=/path/to/parus.elf x86_64-uefi-parus-external-smoke
   - make x86_64-uefi-linux-smoke
+  - make x86_64-uefi-freebsd-smoke
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
   - make qemu-riscv64-virt-rph1-fixture-smoke
 hardware:
@@ -102,8 +107,8 @@ artifact identity failure다.
 
 ## x86_64 UEFI product 격리
 
-`bootmgr.x86_64-uefi-parus-fixture`,
-`bootmgr.x86_64-uefi-parus-external`과 `bootmgr.x86_64-uefi-linux`는 서로 다른 product root,
+`bootmgr.x86_64-uefi-parus-fixture`, `bootmgr.x86_64-uefi-parus-external`,
+`bootmgr.x86_64-uefi-linux`와 `bootmgr.x86_64-uefi-freebsd`는 서로 다른 product root,
 registry, object, link map,
 ESP와 result를 사용한다. Fixture→external→fixture와 그 역순의 증분 빌드는 이미 생성된
 반대 product output을 변경해서는 안 된다. 동일 input을 독립 build root에서 조합한
@@ -129,6 +134,19 @@ Success는 managed transaction launch marker, Linux PID 1 marker
 `RIBON:LINUX:X86_64:PID1:v1:OK`, `reboot: Power down`과 QEMU status 0을 요구한다. Result는 external
 validation, kernel, initramfs, product manifest, ESP, firmware와 raw serial hash를 분리해 보존한다.
 이 증거는 runtime network, physical hardware, Secure Boot나 모든 EFI-stub kernel 지원을 뜻하지 않는다.
+
+## x86_64 FreeBSD official-loader 증거
+
+FreeBSD product는 15.1-RELEASE amd64 mini-memstick compressed/raw size와 SHA-256, 공식 signed checksum
+document identity를 고정한다. Build는 official raw cache를 변경하지 않고 별도 copy의 FAT32 ESP에
+Ribon application, `/RIBON/BOOT.CFG`와 exact official loader를 조합한다. Package provenance는 official
+source immutability, loader hash와 composed disk hash를 QEMU preflight에 결합한다.
+
+Harness는 official loader marker를 `freebsd-efi` observed class로 독립 분류하며 expected class가 이를
+덮어쓰지 못한다. Success는 ordered Ribon managed-launch marker, loader revision banner, FreeBSD
+15.1-RELEASE kernel banner와 single-user pathname prompt를 요구한다. 이 terminal evidence가 관측되면
+QEMU process group을 bounded cleanup하며 forced kill은 허용하지 않는다. 이는 clean guest shutdown,
+login, installer, runtime network, physical hardware 또는 PGP signature verification 증거가 아니다.
 
 ## RISC-V RPH1 contract fixture
 

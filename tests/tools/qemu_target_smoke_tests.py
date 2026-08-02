@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -14,6 +15,16 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = ROOT / "tools" / "qemu_target_smoke.py"
+
+
+def load_harness_module():
+    """Load the evidence harness for bounded classifier unit tests."""
+
+    spec = importlib.util.spec_from_file_location("qemu_target_smoke", HARNESS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 TRANSFER_MARKERS = (
     "RIBON-R4-RAW-FDT-ENTRY",
     "RIBON-R4-FDT-ACCEPTED",
@@ -26,6 +37,31 @@ TRANSFER_MARKERS = (
 
 class QemuTargetSmokeTests(unittest.TestCase):
     """Verify actual-kernel and fixture evidence cannot masquerade."""
+
+    def test_freebsd_loader_has_distinct_observed_class(self) -> None:
+        """An official-loader marker cannot be reported as a Linux EFI stub."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            loader = Path(temporary) / "loader.efi"
+            loader.write_bytes(
+                b"MZ" + bytes(62)
+                + b"FreeBSD/amd64 EFI loader, Revision 3.0"
+            )
+            self.assertEqual(
+                load_harness_module().observed_payload_class(loader),
+                "freebsd-efi",
+            )
+
+    def test_efi_without_freebsd_marker_remains_linux_class(self) -> None:
+        """Expected class declarations cannot relabel an arbitrary EFI image."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            loader = Path(temporary) / "other.efi"
+            loader.write_bytes(b"MZ" + bytes(128))
+            self.assertEqual(
+                load_harness_module().observed_payload_class(loader),
+                "linux-efi",
+            )
 
     def run_harness(
         self,

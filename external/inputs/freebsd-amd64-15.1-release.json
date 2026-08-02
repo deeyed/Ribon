@@ -1,0 +1,18 @@
+{
+  "artifact": {
+    "architecture": "x86_64",
+    "checksum_sha256": "801924b52ac5614686486a602055d1ec8d5034545d2572e4fd390fab782a2946",
+    "checksum_size": 2053,
+    "checksum_source": "https://www.freebsd.org/releases/15.1R/checksums/CHECKSUM.SHA256-FreeBSD-15.1-RELEASE-amd64.asc",
+    "class": "freebsd-amd64-mini-memstick",
+    "compressed_sha256": "25602a32253ed7cbbb50007d43c48e2f4342b92985465a79d8808a2156179b3f",
+    "compressed_size": 116377572,
+    "license": "BSD-2-Clause",
+    "maximum_compressed_size": 134217728,
+    "raw_sha256": "61c4a454eb799bc92fcef375d434c0d48721951c598e4cb91b5aa8faa30d7a40",
+    "raw_size": 678842880,
+    "source": "https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/15.1/FreeBSD-15.1-RELEASE-amd64-mini-memstick.img.xz",
+    "version": "FreeBSD-15.1-RELEASE"
+  },
+  "schema": "ribon-external-freebsd-v1"
+}

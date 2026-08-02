@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-08-02
 code_paths:
   - include/Ribon/storage/block.h
   - include/Ribon/filesystem/fat32.h
@@ -125,7 +125,7 @@ x86_64 UEFI boot manager의 ESP recipe는 application, configuration, external p
 Raw-FDT memory source는 별도 fixture/product 경계이며 UEFI file source의 compatibility alias가
 아니다.
 
-Fixture, external-kernel과 Linux EFI UEFI product는 각각 독립 product ID, generated registry,
+Fixture, external-kernel, Linux EFI와 FreeBSD UEFI product는 각각 독립 product ID, generated registry,
 object, link map, ESP, copied manifest와 result root를 가진다. External payload selector가 fixture
 product의 dependency나 output identity를 바꾸지 않으며 어떤 product도 공통 writable ESP를
 사용하지 않는다. External product는 payload copy 전에 manifest tuple, ELF class/window와
@@ -134,6 +134,12 @@ payload digest를 검증한다. Fixture marker를 포함한 input은 external pr
 Linux EFI product도 별도 registry와 launcher object를 소유한다. Selected source의 canonical path와
 loaded-image device identity로 full device path를 만들며, exact validated source buffer만 firmware
 `LoadImage()`에 전달한다. Direct-entry UEFI products에는 launcher symbol이 링크되지 않는다.
+
+FreeBSD product는 official raw disk cache를 writable media로 사용하지 않는다. 별도 product output에
+copy한 뒤 source-owned FAT32 writer가 fixed timestamp와 deterministic first-fit allocation으로 Ribon
+application, boot config와 exact official loader를 게시한다. Composer는 host mount나 privileged loop
+device를 사용하지 않으며 official input의 before/after hash를 검사한다. Composed disk, loader,
+external validation과 package provenance는 FreeBSD product result root에만 존재한다.
 
 Normal product manifest와 final object graph에는 inactive-slot writer 또는 network transport
 authority가 없어야 한다. Recovery/network/update writer product는 별도 mode graph가 명시적으로

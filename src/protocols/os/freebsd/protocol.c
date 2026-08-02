@@ -54,7 +54,9 @@ static int freebsd_prepare_terminal(
         (plan->kernel_image.execution_support &
          RIBON_IMAGE_EXECUTION_FIRMWARE_MANAGED) == 0u ||
         plan->kernel_image.machine != arch->pe_coff_machine ||
-        plan->kernel_direct_load_plan != 0) {
+        plan->kernel_direct_load_plan != 0 ||
+        (environment->command_line.length != 0u &&
+         environment->command_line.text == 0)) {
         if (out != 0) {
             *out = (struct RibonTerminalRequest){0};
         }
@@ -65,7 +67,12 @@ static int freebsd_prepare_terminal(
         .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
         .kind = RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE,
         .managed_image = {
-            .load_options_kind = RIBON_TERMINAL_LOAD_OPTIONS_NONE,
+            .load_options_kind = environment->command_line.length == 0u ?
+                RIBON_TERMINAL_LOAD_OPTIONS_NONE :
+                RIBON_TERMINAL_LOAD_OPTIONS_UTF8_COMMAND_LINE,
+            .load_options_size = environment->command_line.length,
+            .load_options = environment->command_line.length == 0u ?
+                0 : environment->command_line.text,
             .watchdog_timeout_ms = 30000u,
         },
     };
@@ -97,7 +104,7 @@ static const struct RibonBootProtocol freebsd_protocol = {
     .kernel_path = "freebsd/loader.efi",
     .terminal_execution = RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE,
     .expectations = 0u,
-    .supported_modes = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
+    .supported_modes = RIBON_MODE_MASK(RIBON_MODE_NORMAL),
     .handoff_format = 0,
     .handoff_major = 0u,
     .ops = &freebsd_ops,
@@ -117,7 +124,7 @@ const struct RibonPluginDescriptor ribon_freebsd_protocol_plugin_descriptor = {
     .requires = RIBON_CAP_IMAGE_PE_COFF | RIBON_CAP_TERMINAL_IMAGE_LAUNCH,
     .architecture_mask = RIBON_ARCH_MASK_X86_64 | RIBON_ARCH_MASK_AARCH64,
     .environment_mask = RIBON_ENV_MASK_UEFI,
-    .mode_mask = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
+    .mode_mask = RIBON_MODE_MASK(RIBON_MODE_NORMAL),
     .arena_budget = 4096u,
     .input_budget = 64ull * 1024ull * 1024ull,
     .output_budget = 4096u,

@@ -52,6 +52,14 @@ TARGET_MARKERS = {
         b"RIBON-R02-UEFI-MANAGED-IMAGE-VALIDATED",
         b"RIBON-R02-UEFI-MANAGED-LAUNCH-ATTEMPT",
     ),
+    "x86_64-uefi-freebsd": (
+        b"RIBON-R4-UEFI-ENTRY",
+        b"RIBON-R8-UEFI-CONFIG-OK",
+        b"RIBON-R4-UEFI-MEMORY-MAP",
+        b"RIBON-R4-UEFI-PRODUCT-GRAPH-OK",
+        b"RIBON-R02-UEFI-MANAGED-IMAGE-VALIDATED",
+        b"RIBON-R02-UEFI-MANAGED-LAUNCH-ATTEMPT",
+    ),
 }
 LEGACY_FIXTURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-OK",
@@ -62,6 +70,7 @@ TARGET_FIXTURE_SUCCESS_MARKERS = {
     "riscv64-virt-opensbi": b"RIBON-RPH1-RISCV64-FIXTURE-OK",
     "x86_64-uefi": b"PARUS-FIXTURE-ENTRY-OK",
     "x86_64-uefi-managed": b"PARUS-FIXTURE-ENTRY-OK",
+    "x86_64-uefi-freebsd": b"PARUS-FIXTURE-ENTRY-OK",
 }
 FIXTURE_FAILURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-ABI-FAIL",
@@ -320,7 +329,11 @@ def observed_payload_class(path: Path) -> str:
     if len(prefix) >= 64 and prefix[56:60] == b"ARMd":
         return "linux-image"
     if prefix.startswith(b"MZ"):
-        return "linux-efi"
+        return (
+            "freebsd-efi"
+            if b"FreeBSD/amd64 EFI loader, Revision 3.0" in prefix
+            else "linux-efi"
+        )
     if not prefix.startswith(b"\x7fELF"):
         return "invalid"
     if (
@@ -379,13 +392,13 @@ def command_for(args: argparse.Namespace) -> list[str]:
             "-bios", str(args.firmware),
             "-kernel", str(args.image),
         ]
-    if args.esp is None or args.firmware is None:
-        raise ValueError("--esp and --firmware are required")
+    if args.firmware is None or (args.esp is None and args.disk_image is None):
+        raise ValueError("--esp/--disk-image and --firmware are required")
     # Keep firmware NvVars writes in a transient overlay over the immutable ESP.
     command = [
         args.qemu,
         "-machine", "q35",
-        "-m", "256M",
+        "-m", "1024M" if args.target == "x86_64-uefi-freebsd" else "256M",
         "-display", "none",
         "-serial", "stdio",
         "-monitor", "none",
@@ -393,8 +406,14 @@ def command_for(args: argparse.Namespace) -> list[str]:
         "-no-reboot",
         "-snapshot",
         "-drive", f"if=pflash,format=raw,readonly=on,file={args.firmware}",
-        "-drive", f"format=raw,file=fat:{args.esp}",
     ]
+    if args.disk_image is not None:
+        command += [
+            "-drive",
+            f"if=virtio,format=raw,readonly=on,file={args.disk_image}",
+        ]
+    else:
+        command += ["-drive", f"format=raw,file=fat:{args.esp}"]
     if not args.expect_clean_exit:
         command.insert(command.index("-snapshot"), "-no-shutdown")
     return command
@@ -502,15 +521,17 @@ def main() -> int:
     parser.add_argument("--qemu", required=True)
     parser.add_argument("--image", type=Path)
     parser.add_argument("--esp", type=Path)
+    parser.add_argument("--disk-image", type=Path)
     parser.add_argument("--firmware", type=Path)
     parser.add_argument("--payload", type=Path, required=True)
     parser.add_argument("--init-image", type=Path)
     parser.add_argument("--product-manifest", type=Path)
     parser.add_argument("--module-provenance", type=Path)
     parser.add_argument("--external-payload-validation", type=Path)
+    parser.add_argument("--package-provenance", type=Path)
     parser.add_argument(
         "--expected-payload-class",
-        choices=("fixture", "kernel", "linux-image", "linux-efi"),
+        choices=("fixture", "kernel", "linux-image", "linux-efi", "freebsd-efi"),
         required=True,
     )
     parser.add_argument("--expected-payload-sha256")
@@ -528,7 +549,11 @@ def main() -> int:
     args = parser.parse_args()
 
     command = command_for(args)
-    composed_path = args.image if args.image is not None else args.esp
+    composed_path = (
+        args.image
+        if args.image is not None
+        else args.disk_image if args.disk_image is not None else args.esp
+    )
     assert composed_path is not None
     payload_hash = artifact_sha256(args.payload)
     init_image_hash = (
@@ -546,7 +571,13 @@ def main() -> int:
         if args.external_payload_validation is not None
         else None
     )
+    package_provenance_hash = (
+        artifact_sha256(args.package_provenance)
+        if args.package_provenance is not None
+        else None
+    )
     external_validation_report = None
+    package_provenance_report = None
     module_report = None
     module_image_bindings = None
     product_report = None
@@ -587,6 +618,13 @@ def main() -> int:
         or args.init_image is None
     ):
         preflight_error = "linux-efi-runtime-contract-incomplete"
+    elif args.expected_payload_class == "freebsd-efi" and (
+        args.external_payload_validation is None
+        or args.package_provenance is None
+        or args.disk_image is None
+        or args.expect_clean_exit
+    ):
+        preflight_error = "freebsd-efi-runtime-contract-incomplete"
     elif args.module_provenance is not None and args.product_manifest is None:
         preflight_error = "module-product-manifest-required"
     elif args.product_manifest is not None:
@@ -621,15 +659,55 @@ def main() -> int:
                 and external_validation_report.get("pe", {}).get("machine") == 0x8664
                 and external_validation_report.get("pe", {}).get("subsystem") == 10
             )
+            freebsd = (
+                isinstance(artifact, dict)
+                and external_validation_report.get("schema") ==
+                    "ribon-external-freebsd-validation-v1"
+                and artifact.get("class") == "freebsd-amd64-mini-memstick"
+                and artifact.get("raw_sha256") ==
+                    "61c4a454eb799bc92fcef375d434c0d48721951c598e4cb91b5aa8faa30d7a40"
+            )
             if (
                 not isinstance(artifact, dict)
-                or artifact.get("sha256") != payload_hash
-                or artifact.get("size") != args.payload.stat().st_size
-                or not (raw_linux or efi_linux)
+                or (
+                    not freebsd
+                    and (
+                        artifact.get("sha256") != payload_hash
+                        or artifact.get("size") != args.payload.stat().st_size
+                    )
+                )
+                or not (raw_linux or efi_linux or freebsd)
             ):
                 raise ValueError("external validation does not bind payload")
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
             preflight_error = "external-payload-validation-invalid"
+    if preflight_error is None and args.package_provenance is not None:
+        try:
+            package_provenance_report = json.loads(
+                args.package_provenance.read_text(encoding="utf-8")
+            )
+            loader = package_provenance_report.get("files", {}).get(
+                "/EFI/FREEBSD/LOADER.EFI"
+            )
+            composed = package_provenance_report.get("composed")
+            official = package_provenance_report.get("official_source")
+            if (
+                package_provenance_report.get("schema") !=
+                    "ribon-freebsd-uefi-package-v1"
+                or not isinstance(loader, dict)
+                or loader.get("sha256") != payload_hash
+                or loader.get("size") != args.payload.stat().st_size
+                or not isinstance(composed, dict)
+                or composed.get("sha256") != composed_hash
+                or composed.get("size") != composed_path.stat().st_size
+                or not isinstance(official, dict)
+                or official.get("immutable") is not True
+                or official.get("sha256") !=
+                    "61c4a454eb799bc92fcef375d434c0d48721951c598e4cb91b5aa8faa30d7a40"
+            ):
+                raise ValueError("FreeBSD package provenance does not bind the run")
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            preflight_error = "package-provenance-invalid"
     if (
         preflight_error is None
         and args.module_provenance is None
@@ -867,6 +945,8 @@ def main() -> int:
         "expected_product_class": (
             "fixture-smoke"
             if args.expected_payload_class == "fixture"
+            else "official-loader-chainload"
+            if args.expected_payload_class == "freebsd-efi"
             else "external-kernel-boot"
         ),
         "observed_payload_class": payload_class,
@@ -923,6 +1003,15 @@ def main() -> int:
                 "report": external_validation_report,
             }
             if args.external_payload_validation is not None
+            else None
+        ),
+        "package_provenance": (
+            {
+                "path": str(args.package_provenance),
+                "sha256": package_provenance_hash,
+                "report": package_provenance_report,
+            }
+            if args.package_provenance is not None
             else None
         ),
         "composed_artifact": {

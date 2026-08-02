@@ -15,6 +15,7 @@ tests:
   - make qemu-riscv64-virt-parus-smoke
   - make x86_64-uefi-parus-external-smoke
   - make x86_64-uefi-linux-smoke
+  - make x86_64-uefi-freebsd-smoke
 hardware:
   - RPi5 evidence is independent and requires fresh UART
 supersedes:
@@ -31,7 +32,7 @@ tuple만 실행 지원을 주장한다.
 | --- | --- | --- | --- |
 | Parus | RPH1 build/parse, AArch64·x86_64·RISC-V invocation | product별 QEMU 또는 hardware evidence가 있는 tuple | 모든 board, production firmware, feature parity |
 | Linux | AArch64 raw `Image` direct entry와 x86_64 EFI-stub managed image | pinned OpenWrt AArch64·x86_64 image의 product별 QEMU PID 1 boot | RISC-V Linux, bzImage direct loader, physical board와 production firmware |
-| FreeBSD | PE/COFF validation, managed terminal requirement와 UEFI provider binding | descriptor, validation, terminal contract only | 실제 `loader.efi`와 kernel runtime boot |
+| FreeBSD | pinned 15.1 amd64 mini-memstick, PE/COFF validation과 managed UEFI loader chain | QEMU q35에서 official loader, GENERIC kernel과 single-user terminal prompt | clean poweroff, multi-user, network, physical board와 production authenticity |
 | Zircon | bounded ZBI container validation과 AArch64 invocation | unit-level experimental protocol contract | complete ZBI item policy 또는 Zircon runtime boot |
 | Windows | 없음 | unsupported | placeholder, PE/COFF parser만으로 boot 가능하다는 주장 |
 | macOS | 없음 | unsupported | Apple firmware, licensing 또는 hardware compatibility |
@@ -50,9 +51,11 @@ tuple만 실행 지원을 주장한다.
 5. physical target 주장은 fresh hardware capture를 별도로 요구한다.
 
 FreeBSD UEFI protocol은 `FIRMWARE_MANAGED_IMAGE`를 선택하고 handoff 또는 register invocation을
-생성하지 않는다. UEFI product는 generic launcher를 선택할 수 있지만 실제 FreeBSD artifact, loader
-configuration과 kernel을 사용한 runtime evidence는 아직 없다. Provider 존재만으로 FreeBSD runtime
-support가 되지 않는다.
+생성하지 않는다. 별도 product는 pinned official raw image의 ESP를 mountless 방식으로 조합하고 generic
+launcher로 exact `loader.efi`를 실행한다. 현재 runtime evidence는 FreeBSD 15.1-RELEASE amd64 GENERIC
+kernel과 single-user shell pathname prompt까지다. Evidence 관측 뒤 harness가 QEMU를 종료하므로 clean
+guest poweroff는 주장하지 않는다. PGP-signed checksum 문서의 identity와 signature presence는
+보존하지만 signature 자체를 검증하지 않았으므로 production authenticity도 주장하지 않는다.
 
 현재 Linux 실행 증거는 AArch64 QEMU virt raw-FDT와 x86_64 QEMU q35 OVMF에서 각각 Ribon
 lifecycle, pinned image, `/init` unique marker와 clean poweroff까지 도달한다. x86_64 경로는

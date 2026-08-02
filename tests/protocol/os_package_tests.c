@@ -123,6 +123,13 @@ int main(void) {
         fputs("os_package_tests: OS package contract rejected\n", stderr);
         return 1;
     }
+    if (terminal.managed_image.load_options != uefi.command_line.text ||
+        terminal.managed_image.load_options_size != uefi.command_line.length ||
+        terminal.managed_image.load_options_kind !=
+            RIBON_TERMINAL_LOAD_OPTIONS_UTF8_COMMAND_LINE) {
+        fputs("os_package_tests: FreeBSD load options were not sealed\n", stderr);
+        return 1;
+    }
     terminal = (struct RibonTerminalRequest){0};
     if (linux_efi->terminal_execution !=
             RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE ||

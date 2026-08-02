@@ -6,8 +6,8 @@
 /**
  * @brief FreeBSD loader EFI chainload package descriptor다.
  *
- * Current direct-transfer transaction cannot preserve EFI Boot Services, so the package
- * fails closed until a typed firmware StartImage transport is selected.
+ * Generic terminal-image launcher가 검증된 loader.efi를 firmware-managed image로 실행하며,
+ * FreeBSD kernel/module staging과 ExitBootServices 권한은 loader에 남긴다.
  */
 extern const struct RibonPluginDescriptor ribon_freebsd_protocol_plugin_descriptor;
 

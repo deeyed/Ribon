@@ -135,6 +135,27 @@ int main(void) {
         fputs("pe_coff_loader_tests: zero-base direct image accepted\n", stderr);
         return 1;
     }
+    make_pe32_plus(bytes);
+    put_u16(bytes, 0x80u + 6u, 2u);
+    put_u32(bytes, 0x80u + 24u + 112u + 8u, 0x100u);
+    put_u32(bytes, 0x80u + 24u + 112u + 16u, 0x200u);
+    memcpy(bytes + 0x80u + 24u + 112u + 40u, ".data", 5u);
+    put_u32(bytes, 0x80u + 24u + 112u + 40u + 8u, 0x100u);
+    put_u32(bytes, 0x80u + 24u + 112u + 40u + 12u, 0x1100u);
+    put_u32(bytes, 0x80u + 24u + 112u + 40u + 36u, 0xc0000040u);
+    if (ops->analyze(&image, &validated, 0) != RIBON_LOADER_STATUS_OK) {
+        fputs("pe_coff_loader_tests: managed padded sections rejected\n", stderr);
+        return 1;
+    }
+    layout = (struct RibonDirectLoadPlan){
+        .segments = segments,
+        .segment_capacity = 2u,
+    };
+    if (ops->analyze(&image, &validated, &layout) !=
+        RIBON_LOADER_STATUS_BAD_FORMAT) {
+        fputs("pe_coff_loader_tests: unsafe direct padded sections accepted\n", stderr);
+        return 1;
+    }
     puts("RIBON-PE-COFF-LOADER-TESTS-OK");
     return 0;
 }

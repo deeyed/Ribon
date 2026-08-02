@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove UEFI fixture, external and Linux products have hermetic outputs."""
+"""Prove fixture, external, Linux and FreeBSD UEFI products are hermetic."""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ FIXTURE_PRODUCT_ID = "bootmgr.x86_64-uefi-parus-fixture"
 EXTERNAL_PRODUCT_ID = "bootmgr.x86_64-uefi-parus-external"
 LINUX_PRODUCT = "x86_64-uefi-linux"
 LINUX_PRODUCT_ID = "bootmgr.x86_64-uefi-linux"
+FREEBSD_PRODUCT = "x86_64-uefi-freebsd"
+FREEBSD_PRODUCT_ID = "bootmgr.x86_64-uefi-freebsd"
 CANONICAL_OUTPUTS = (
     "BOOTX64.EFI",
     "esp/EFI/BOOT/BOOTX64.EFI",
@@ -41,6 +43,17 @@ LINUX_CANONICAL_OUTPUTS = (
     "results/object-graph.json",
     "results/external-linux-efi.json",
     "results/initramfs-components.json",
+)
+FREEBSD_CANONICAL_OUTPUTS = (
+    "BOOTX64.EFI",
+    "FreeBSD-15.1-Ribon-amd64.img",
+    "overlay/BOOT.CFG",
+    "payload/loader.efi",
+    "generated/plugin_registry.c",
+    "manifests/product.json",
+    "results/object-graph.json",
+    "results/external-freebsd.json",
+    "results/package.json",
 )
 
 
@@ -109,6 +122,8 @@ def run_make(
     log: Path,
     payload: Path | None = None,
     linux_cache: Path | None = None,
+    freebsd_compressed_cache: Path | None = None,
+    freebsd_raw_cache: Path | None = None,
     expect_success: bool = True,
 ) -> None:
     """Run one isolated Make target and preserve its complete output."""
@@ -118,6 +133,12 @@ def run_make(
         command.append(f"UEFI_PARUS_PAYLOAD={payload}")
     if linux_cache is not None:
         command.append(f"UEFI_LINUX_CACHE={linux_cache}")
+    if freebsd_compressed_cache is not None:
+        command.append(
+            f"UEFI_FREEBSD_COMPRESSED_CACHE={freebsd_compressed_cache}"
+        )
+    if freebsd_raw_cache is not None:
+        command.append(f"UEFI_FREEBSD_RAW_CACHE={freebsd_raw_cache}")
     command.append(target)
     environment = os.environ.copy()
     environment.pop("MAKEFLAGS", None)
@@ -211,6 +232,47 @@ def snapshot(
     return outputs
 
 
+def validate_freebsd_snapshot(
+    build_root: Path,
+    outputs: dict[str, str],
+) -> None:
+    """Close the composed disk, official loader and source provenance identity."""
+
+    directory = product_root(build_root, FREEBSD_PRODUCT)
+    package = json.loads(
+        (directory / "results/package.json").read_text(encoding="utf-8")
+    )
+    external = json.loads(
+        (directory / "results/external-freebsd.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    checks = {
+        "package-schema": package.get("schema") == "ribon-freebsd-uefi-package-v1",
+        "composed-disk": package.get("composed", {}).get("sha256")
+            == outputs["FreeBSD-15.1-Ribon-amd64.img"],
+        "official-loader": package.get("files", {}).get(
+            "/EFI/FREEBSD/LOADER.EFI", {}
+        ).get("sha256")
+            == outputs["payload/loader.efi"],
+        "external-schema": external.get("schema")
+            == "ribon-external-freebsd-validation-v1",
+        "external-raw-source": external.get("artifact", {}).get("raw_sha256")
+            == package.get("official_source", {}).get("sha256"),
+        "external-pgp-presence": external.get("checksum_authority", {}).get(
+            "pgp_signed"
+        ) is True,
+        "external-signature-nonclaim": external.get(
+            "checksum_authority", {}
+        ).get("signature_verified") is False,
+    }
+    failed = [name for name, passed in checks.items() if not passed]
+    if failed:
+        raise HermeticityError(
+            "FreeBSD package provenance is not exact: " + ", ".join(failed)
+        )
+
+
 def require_equal(
     left: dict[str, str],
     right: dict[str, str],
@@ -225,7 +287,7 @@ def require_equal(
 
 
 def main(argv: list[str]) -> int:
-    """Exercise both product orders, payload changes and independent roots."""
+    """Exercise product orders, input changes and independent build roots."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--make", default="make")
@@ -236,6 +298,17 @@ def main(argv: list[str]) -> int:
     linux_cache = root / "build/external/linux/openwrt-24.10.0-x86_64/bzImage.efi"
     if not linux_cache.is_file():
         raise SystemExit("validated Linux EFI cache is absent; build the Linux product first")
+    freebsd_cache = root / "build/external/freebsd/15.1-amd64"
+    freebsd_compressed_cache = (
+        freebsd_cache / "FreeBSD-15.1-RELEASE-amd64-mini-memstick.img.xz"
+    )
+    freebsd_raw_cache = (
+        freebsd_cache / "FreeBSD-15.1-RELEASE-amd64-mini-memstick.img"
+    )
+    if not freebsd_compressed_cache.is_file() or not freebsd_raw_cache.is_file():
+        raise SystemExit(
+            "validated FreeBSD caches are absent; build the FreeBSD product first"
+        )
     work_root = args.work_root.resolve()
     work_root.mkdir(parents=True, exist_ok=True)
     log = work_root / "commands.log"
@@ -444,6 +517,55 @@ def main(argv: list[str]) -> int:
                 "Linux product across independent build roots",
             )
 
+            run_make(
+                args.make,
+                root,
+                build_a,
+                "x86_64-uefi-freebsd-product",
+                log,
+                freebsd_compressed_cache=freebsd_compressed_cache,
+                freebsd_raw_cache=freebsd_raw_cache,
+            )
+            freebsd_a = snapshot(
+                build_a,
+                FREEBSD_PRODUCT,
+                FREEBSD_PRODUCT_ID,
+                canonical_outputs=FREEBSD_CANONICAL_OUTPUTS,
+            )
+            validate_freebsd_snapshot(build_a, freebsd_a)
+            require_equal(
+                linux_a,
+                snapshot(
+                    build_a,
+                    LINUX_PRODUCT,
+                    LINUX_PRODUCT_ID,
+                    canonical_outputs=LINUX_CANONICAL_OUTPUTS,
+                ),
+                "Linux product after FreeBSD build",
+            )
+
+            run_make(
+                args.make,
+                root,
+                build_b,
+                "x86_64-uefi-freebsd-product",
+                log,
+                freebsd_compressed_cache=freebsd_compressed_cache,
+                freebsd_raw_cache=freebsd_raw_cache,
+            )
+            freebsd_b = snapshot(
+                build_b,
+                FREEBSD_PRODUCT,
+                FREEBSD_PRODUCT_ID,
+                canonical_outputs=FREEBSD_CANONICAL_OUTPUTS,
+            )
+            validate_freebsd_snapshot(build_b, freebsd_b)
+            require_equal(
+                freebsd_a,
+                freebsd_b,
+                "FreeBSD product across independent build roots",
+            )
+
             all_paths = [
                 {
                     str(product_root(build_a, FIXTURE_PRODUCT) / relative)
@@ -456,6 +578,10 @@ def main(argv: list[str]) -> int:
                 {
                     str(product_root(build_a, LINUX_PRODUCT) / relative)
                     for relative in LINUX_CANONICAL_OUTPUTS
+                },
+                {
+                    str(product_root(build_a, FREEBSD_PRODUCT) / relative)
+                    for relative in FREEBSD_CANONICAL_OUTPUTS
                 },
             ]
             if any(
@@ -470,10 +596,14 @@ def main(argv: list[str]) -> int:
                 "fixture_product": FIXTURE_PRODUCT_ID,
                 "external_product": EXTERNAL_PRODUCT_ID,
                 "linux_product": LINUX_PRODUCT_ID,
+                "freebsd_product": FREEBSD_PRODUCT_ID,
                 "fixture_digest": fixture_b["BOOTX64.EFI"],
                 "external_digest": external_b["BOOTX64.EFI"],
                 "external_payload_digest": sha256_file(probe_b),
                 "linux_payload_digest": linux_b["esp/RIBON/LINUX.EFI"],
+                "freebsd_loader_digest": freebsd_b["payload/loader.efi"],
+                "freebsd_disk_digest":
+                    freebsd_b["FreeBSD-15.1-Ribon-amd64.img"],
                 "build_orders": [
                     "fixture-external-fixture",
                     "external-fixture",
@@ -492,7 +622,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "RIBON-UEFI-PRODUCT-HERMETICITY-OK "
-        "products=3 orders=2 roots=2 shared-outputs=0"
+        "products=4 orders=2 roots=2 shared-outputs=0"
     )
     return 0
 

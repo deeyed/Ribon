@@ -672,6 +672,54 @@ UEFI_LINUX_SRCS := \
 UEFI_LINUX_OBJS := $(UEFI_LINUX_SRCS:%.c=$(UEFI_LINUX_DIR)/obj/%.o)
 UEFI_LINUX_OBJS += $(UEFI_LINUX_DIR)/obj/generated/plugin_registry.o
 
+UEFI_FREEBSD_PRODUCT := x86_64-uefi-freebsd
+UEFI_FREEBSD_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_FREEBSD_PRODUCT)
+UEFI_FREEBSD_MANIFEST := products/bootmgr/manifests/x86_64-uefi-freebsd.json
+UEFI_FREEBSD_INPUT_DESCRIPTOR := external/inputs/freebsd-amd64-15.1-release.json
+UEFI_FREEBSD_CACHE_DIR := $(BUILD_ROOT)/external/freebsd/15.1-amd64
+UEFI_FREEBSD_COMPRESSED_CACHE := \
+	$(UEFI_FREEBSD_CACHE_DIR)/FreeBSD-15.1-RELEASE-amd64-mini-memstick.img.xz
+UEFI_FREEBSD_RAW_CACHE := \
+	$(UEFI_FREEBSD_CACHE_DIR)/FreeBSD-15.1-RELEASE-amd64-mini-memstick.img
+UEFI_FREEBSD_EXTERNAL_VALIDATION := \
+	$(UEFI_FREEBSD_DIR)/results/external-freebsd.json
+UEFI_FREEBSD_EXTERNAL_STAMP := $(UEFI_FREEBSD_DIR)/external-freebsd.stamp
+UEFI_FREEBSD_REGISTRY_C := $(UEFI_FREEBSD_DIR)/generated/plugin_registry.c
+UEFI_FREEBSD_GRAPH := $(UEFI_FREEBSD_DIR)/results/object-graph.json
+UEFI_FREEBSD_INPUT_MANIFEST := $(UEFI_FREEBSD_DIR)/manifests/product.json
+UEFI_FREEBSD_APP := $(UEFI_FREEBSD_DIR)/BOOTX64.EFI
+UEFI_FREEBSD_CONFIG := $(UEFI_FREEBSD_DIR)/overlay/BOOT.CFG
+UEFI_FREEBSD_DISK := $(UEFI_FREEBSD_DIR)/FreeBSD-15.1-Ribon-amd64.img
+UEFI_FREEBSD_LOADER := $(UEFI_FREEBSD_DIR)/payload/loader.efi
+UEFI_FREEBSD_PACKAGE := $(UEFI_FREEBSD_DIR)/results/package.json
+UEFI_FREEBSD_PACKAGE_STAMP := $(UEFI_FREEBSD_DIR)/package.stamp
+UEFI_FREEBSD_SRCS := \
+	src/core/arena.c \
+	src/core/context.c \
+	src/core/plugin.c \
+	src/core/registry.c \
+	src/core/service_directory.c \
+	src/core/memory.c \
+	src/config/boot_config.c \
+	src/common/environment.c \
+	src/common/protocol.c \
+	src/common/boot.c \
+	src/common/image.c \
+	src/common/port.c \
+	src/common/freestanding/string.c \
+	src/arch/common.c \
+	src/arch/x86_64/arch.c \
+	src/arch/x86_64/io.c \
+	src/modes/normal.c \
+	src/image-formats/pe_coff.c \
+	src/protocols/os/freebsd/protocol.c \
+	src/environments/uefi-app/uefi_app.c \
+	src/environments/uefi-app/terminal_image.c \
+	ports/qemu/pc-x86_64/port.c \
+	targets/x86_64-uefi-app/entry.c
+UEFI_FREEBSD_OBJS := $(UEFI_FREEBSD_SRCS:%.c=$(UEFI_FREEBSD_DIR)/obj/%.o)
+UEFI_FREEBSD_OBJS += $(UEFI_FREEBSD_DIR)/obj/generated/plugin_registry.o
+
 UEFI_UPDATE_PRODUCT := x86_64-uefi-update-recovery
 UEFI_UPDATE_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_UPDATE_PRODUCT)
 UEFI_UPDATE_MANIFEST := \
@@ -996,6 +1044,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	x86_64-uefi-parus-fixture-smoke x86_64-uefi-parus-external-smoke \
 	x86_64-uefi-linux-product x86_64-uefi-linux-smoke \
 	check-terminal-image-launch check-uefi-managed-image check-linux-x86_64-efi \
+	x86_64-uefi-freebsd-product x86_64-uefi-freebsd-smoke \
+	check-freebsd-package check-freebsd-uefi \
 	uefi-external-input-force rpi5-external-input-force \
 	bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-parus-package rpi5-aarch64-modules-fixture-package \
@@ -2902,7 +2952,15 @@ $(UEFI_LINUX_REGISTRY_C): $(UEFI_LINUX_MANIFEST) tools/generate_plugin_registry.
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
 		--output $@ --report $(UEFI_LINUX_GRAPH)
 
+$(UEFI_FREEBSD_REGISTRY_C): $(UEFI_FREEBSD_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
+		--output $@ --report $(UEFI_FREEBSD_GRAPH)
+
 $(UEFI_LINUX_INPUT_MANIFEST): $(UEFI_LINUX_MANIFEST)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(UEFI_FREEBSD_INPUT_MANIFEST): $(UEFI_FREEBSD_MANIFEST)
 	@mkdir -p $(@D)
 	cp $< $@
 
@@ -2914,6 +2972,18 @@ $(UEFI_LINUX_EXTERNAL_STAMP): $(UEFI_LINUX_INPUT_DESCRIPTOR) \
 	@touch $@
 
 $(UEFI_LINUX_EXTERNAL_VALIDATION): $(UEFI_LINUX_EXTERNAL_STAMP)
+	@test -f $@
+
+$(UEFI_FREEBSD_EXTERNAL_STAMP): $(UEFI_FREEBSD_INPUT_DESCRIPTOR) \
+		tools/prepare_external_freebsd.py
+	$(PYTHON) tools/prepare_external_freebsd.py \
+		--descriptor $(UEFI_FREEBSD_INPUT_DESCRIPTOR) \
+		--compressed-cache $(UEFI_FREEBSD_COMPRESSED_CACHE) \
+		--raw-cache $(UEFI_FREEBSD_RAW_CACHE) \
+		--result $(UEFI_FREEBSD_EXTERNAL_VALIDATION) --allow-download
+	@touch $@
+
+$(UEFI_FREEBSD_EXTERNAL_VALIDATION): $(UEFI_FREEBSD_EXTERNAL_STAMP)
 	@test -f $@
 
 $(UEFI_FIXTURE_PAYLOAD_SOURCE): tools/make_elf64_fixture.py
@@ -2932,6 +3002,10 @@ $(UEFI_LINUX_DIR)/obj/%.o: %.c Makefile
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
+$(UEFI_FREEBSD_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
 $(UEFI_FIXTURE_DIR)/obj/generated/plugin_registry.o: \
 	$(UEFI_FIXTURE_REGISTRY_C)
 	@mkdir -p $(@D)
@@ -2943,6 +3017,10 @@ $(UEFI_EXTERNAL_DIR)/obj/generated/plugin_registry.o: \
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_LINUX_DIR)/obj/generated/plugin_registry.o: $(UEFI_LINUX_REGISTRY_C)
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_FREEBSD_DIR)/obj/generated/plugin_registry.o: $(UEFI_FREEBSD_REGISTRY_C)
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
@@ -2960,6 +3038,11 @@ $(UEFI_LINUX_APP): $(UEFI_LINUX_OBJS)
 	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
 		/machine:x64 /map:$(UEFI_LINUX_DIR)/ribon.map /out:$@ \
 		$(UEFI_LINUX_OBJS)
+
+$(UEFI_FREEBSD_APP): $(UEFI_FREEBSD_OBJS)
+	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/machine:x64 /map:$(UEFI_FREEBSD_DIR)/ribon.map /out:$@ \
+		$(UEFI_FREEBSD_OBJS)
 
 $(UEFI_FIXTURE_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_FIXTURE_APP)
 	@mkdir -p $(@D)
@@ -2992,6 +3075,12 @@ $(UEFI_LINUX_CONFIG): tools/make_boot_config.py Makefile
 		--kernel /RIBON/LINUX.EFI \
 		--cmdline 'console=ttyS0 rdinit=/init panic=-1 initrd=\RIBON\INITRD.CPIO'
 
+$(UEFI_FREEBSD_CONFIG): tools/make_boot_config.py Makefile
+	@mkdir -p $(@D)
+	$(PYTHON) $< --output $@ --entry primary --priority 100 \
+		--protocol protocol.freebsd --image image.pe-coff \
+		--kernel /EFI/FREEBSD/LOADER.EFI --cmdline='-h -s'
+
 $(UEFI_LINUX_PAYLOAD): $(UEFI_LINUX_EXTERNAL_STAMP)
 	@mkdir -p $(@D)
 	cp $(UEFI_LINUX_CACHE) $@
@@ -3012,6 +3101,20 @@ $(UEFI_LINUX_INITRAMFS_STAMP): $(UEFI_LINUX_INIT_ELF) tools/build_linux_initramf
 
 $(UEFI_LINUX_INITRAMFS) $(UEFI_LINUX_INITRAMFS_MANIFEST): \
 		$(UEFI_LINUX_INITRAMFS_STAMP)
+	@test -f $@
+
+$(UEFI_FREEBSD_PACKAGE_STAMP): $(UEFI_FREEBSD_EXTERNAL_STAMP) \
+		$(UEFI_FREEBSD_APP) $(UEFI_FREEBSD_CONFIG) \
+		tools/compose_freebsd_uefi.py
+	$(PYTHON) tools/compose_freebsd_uefi.py \
+		--source $(UEFI_FREEBSD_RAW_CACHE) --ribon-app $(UEFI_FREEBSD_APP) \
+		--config $(UEFI_FREEBSD_CONFIG) --output $(UEFI_FREEBSD_DISK) \
+		--loader-output $(UEFI_FREEBSD_LOADER) \
+		--result $(UEFI_FREEBSD_PACKAGE)
+	@touch $@
+
+$(UEFI_FREEBSD_DISK) $(UEFI_FREEBSD_LOADER) $(UEFI_FREEBSD_PACKAGE): \
+		$(UEFI_FREEBSD_PACKAGE_STAMP)
 	@test -f $@
 
 $(UEFI_FIXTURE_PAYLOAD): $(UEFI_FIXTURE_PAYLOAD_SOURCE)
@@ -3064,6 +3167,10 @@ x86_64-uefi-linux-product: \
 		$(UEFI_LINUX_CONFIG) $(UEFI_LINUX_PAYLOAD) \
 		$(UEFI_LINUX_INITRAMFS) $(UEFI_LINUX_INPUT_MANIFEST) \
 		$(UEFI_LINUX_EXTERNAL_VALIDATION)
+
+x86_64-uefi-freebsd-product: $(UEFI_FREEBSD_DISK) \
+		$(UEFI_FREEBSD_LOADER) $(UEFI_FREEBSD_PACKAGE) \
+		$(UEFI_FREEBSD_INPUT_MANIFEST) $(UEFI_FREEBSD_EXTERNAL_VALIDATION)
 
 $(UEFI_UPDATE_REGISTRY_C): \
 	$(UEFI_UPDATE_MANIFEST) tools/generate_plugin_registry.py
@@ -3361,19 +3468,49 @@ x86_64-uefi-linux-smoke: x86_64-uefi-linux-product
 		--log $(UEFI_LINUX_DIR)/results/qemu.log \
 		--result $(UEFI_LINUX_DIR)/results/qemu.json
 
+x86_64-uefi-freebsd-smoke: x86_64-uefi-freebsd-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target x86_64-uefi-freebsd --qemu $(QEMU_X86_64) \
+		--disk-image $(UEFI_FREEBSD_DISK) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--payload $(UEFI_FREEBSD_LOADER) --expected-payload-class freebsd-efi \
+		--product-manifest $(UEFI_FREEBSD_MANIFEST) \
+		--external-payload-validation $(UEFI_FREEBSD_EXTERNAL_VALIDATION) \
+		--package-provenance $(UEFI_FREEBSD_PACKAGE) --timeout 120 \
+		--required-marker-anywhere 'FreeBSD 15.1-RELEASE' \
+		--required-marker-anywhere 'Enter full pathname of shell or RETURN for /bin/sh:' \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(UEFI_FREEBSD_DIR)/results/qemu.log \
+		--result $(UEFI_FREEBSD_DIR)/results/qemu.json
+
 check-terminal-image-launch: check-boot-lifecycle check-core-service
 	@echo "RIBON-R02-TERMINAL-IMAGE-LAUNCH-OK"
 
-check-uefi-managed-image: x86_64-uefi-linux-product x86_64-uefi-parus-fixture
+check-uefi-managed-image: x86_64-uefi-linux-product \
+		x86_64-uefi-freebsd-product x86_64-uefi-parus-fixture
 	@! grep -q ribon_uefi_app_terminal_image_launch_service_descriptor \
 		$(UEFI_FIXTURE_DIR)/ribon.map
 	@grep -q ribon_uefi_app_terminal_image_launch_service_descriptor \
 		$(UEFI_LINUX_DIR)/ribon.map
+	@grep -q ribon_uefi_app_terminal_image_launch_service_descriptor \
+		$(UEFI_FREEBSD_DIR)/ribon.map
 	@echo "RIBON-R02-UEFI-MANAGED-IMAGE-OK"
 
 check-linux-x86_64-efi: x86_64-uefi-linux-smoke
 	$(PYTHON) tests/tools/external_linux_efi_tests.py
 	@echo "RIBON-R02-LINUX-X86_64-EFI-OK"
+
+check-freebsd-package: x86_64-uefi-freebsd-product
+	$(PYTHON) tests/tools/external_freebsd_tests.py \
+		--product $(UEFI_FREEBSD_DIR)
+	@echo "RIBON-R03-FREEBSD-PACKAGE-OK"
+
+check-freebsd-uefi: check-freebsd-package check-os-packages \
+		x86_64-uefi-freebsd-smoke
+	@grep -q ribon_uefi_app_terminal_image_launch_service_descriptor \
+		$(UEFI_FREEBSD_DIR)/ribon.map
+	@grep -q ribon_freebsd_protocol_plugin_descriptor \
+		$(UEFI_FREEBSD_DIR)/ribon.map
+	@echo "RIBON-R03-FREEBSD-UEFI-OK"
 
 $(BIOS_REGISTRY_C): $(BIOS_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
@@ -3691,7 +3828,8 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	qemu-aarch64-virt-raw-fdt qemu-aarch64-virt-modules-fixture-product \
 	qemu-aarch64-virt-linux-product \
 	qemu-riscv64-virt-rph1-fixture-product x86_64-uefi-parus-fixture \
-	x86_64-uefi-linux-product x86_64-uefi-network-update-recovery
+	x86_64-uefi-linux-product x86_64-uefi-freebsd-product \
+	x86_64-uefi-network-update-recovery
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
 check-uefi-product-hermeticity:
