@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -49,6 +50,7 @@ def main() -> int:
         "libribon-core.a",
         "libribon-boot.a",
         "libribon-sdk.a",
+        "libribon-update.a",
     }
     archives = {path.name for path in (root / "lib").glob("*.a")}
     if archives != required_archives:
@@ -77,12 +79,53 @@ def main() -> int:
 
     manifest_path = root / "share" / "ribon" / "sdk-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    required_tools = {
+        "ribosc": "compiler",
+        "ribos-verify": "independent-verifier",
+        "ribos-run": "host-runner",
+        "ribon-compose-product": "product-composer",
+        "ribon-update-manifest": "update-assembler-inspector",
+        "ribon-update-layout": "layout-composer-inspector",
+        "ribon-sign-policy": "offline-private-key-capable-signer",
+    }
+    host_tools = manifest.get("host_tools")
+    boundaries = manifest.get("boundaries")
     if (
-        manifest.get("sdk_abi") != 4
-        or manifest.get("core_abi") != 4
+        manifest.get("schema") != "ribon-sdk-install-v2"
+        or manifest.get("schema_version") != 2
+        or manifest.get("sdk_abi") != 4
+        or manifest.get("core_abi") != 5
+        or manifest.get("plugin_abi") != {"major": 4, "minor": 0}
         or manifest.get("source_version") != "0.4.0"
+        or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("source_revision", ""))
+        or not isinstance(host_tools, dict)
+        or {name: value.get("class") for name, value in host_tools.items()}
+            != required_tools
+        or any(value.get("target_linkable") is not False for value in host_tools.values())
+        or boundaries != {
+            "host_tools_target_linkable": False,
+            "private_key_material_included": False,
+            "target_libraries": sorted(required_archives),
+        }
     ):
         fail("installed SDK ABI manifest is inconsistent")
+    for name, metadata in host_tools.items():
+        tool = root / "bin" / name
+        if not tool.is_file() or metadata.get("sha256") != hashlib.sha256(
+            tool.read_bytes()
+        ).hexdigest():
+            fail(f"installed host tool identity mismatch: {name}")
+    signer_symbols = {
+        symbol
+        for archive in required_archives
+        for symbol in defined_symbols(root / "lib" / archive)
+        if re.search(
+            r"(?:^|_)(?:sign|private|secret|seed|keypair)(?:$|_)",
+            symbol.lower().lstrip("_"),
+        )
+    }
+    if signer_symbols:
+        fail(f"private signing surface leaked into target libraries: {sorted(signer_symbols)}")
 
     for path in sorted((ROOT / "examples").rglob("*")):
         if path.suffix not in {".c", ".h"}:
@@ -90,7 +133,7 @@ def main() -> int:
         text = path.read_text(encoding="utf-8")
         if PRIVATE_INCLUDE.search(text):
             fail(f"example crosses source-private include boundary: {path.relative_to(ROOT)}")
-    print("RIBON-R5-SDK-INSTALL-SURFACE-OK")
+    print("RIBON-D08-SDK-INSTALL-SURFACE-OK tools=7 target-libraries=4 signer=host-only")
     return 0
 
 

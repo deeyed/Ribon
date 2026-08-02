@@ -550,6 +550,33 @@ qstar.test_suite "ribos_production_policy_tests" {
   description = qstar.status("Signed policy authorization across three targets"),
 }
 
+qstar.run_target "deployment_closure" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-deployment-closure",
+    "check-ribon-deployment-closure",
+  },
+  timeout = 2400,
+  expect = {
+    contains = "RIBON-D08-DEPLOYMENT-CLOSURE-OK",
+  },
+  description = qstar.status("Closing SDK, update, QEMU OS and RPi5 prehardware evidence"),
+}
+
+qstar.test_suite "deployment_closure_tests" {
+  tests = {
+    "//tests:deployment_closure",
+  },
+  tags = {
+    "deployment",
+    "qemu-runtime",
+    "reproducible",
+    "rpi5-prehardware",
+  },
+  description = qstar.status("Deployment closure without physical hardware claims"),
+}
+
 qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
@@ -581,5 +608,6 @@ qstar.group "ribon_tests" {
     "//tests:recovery_network_contract",
     "//tests:qemu_recovery_network_update",
     "//tests:ribos_production_policy",
+    "//tests:deployment_closure",
   },
 }

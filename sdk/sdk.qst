@@ -38,9 +38,36 @@ qstar.custom_target "ribon_external_plugin_contract" {
   description = qstar.status("Building external Ribon plugin contract"),
 }
 
+qstar.custom_target "ribon_sdk_deployment_consumer" {
+  toolset = "//qstar/policies:host",
+  inputs = {
+    "Makefile",
+    "tools/install_sdk.py",
+    "tools/check_sdk_deployment_consumer.py",
+    "tools/update_manifest.py",
+    "sdk/templates/deployment-consumer/README.md",
+    "sdk/templates/deployment-consumer/main.c",
+    "sdk/templates/deployment-consumer/policy.rbs",
+    "sdk/templates/deployment-consumer/product.json",
+  },
+  outputs = {
+    qstar.output(
+      "build/qstar/generated/d08/sdk/examples/deployment-consumer/results/consumer.json"
+    ),
+  },
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar/generated/d08",
+    "check-sdk-deployment-consumer",
+  },
+  description = qstar.status("Building installed-only recovery/update SDK consumer"),
+}
+
 qstar.group "ribon_sdk_products" {
   deps = {
     ":ribon_sdk_install",
     ":ribon_external_plugin_contract",
+    ":ribon_sdk_deployment_consumer",
   },
 }

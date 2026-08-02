@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-08-02
 code_paths:
   - src/arch/
   - src/environments/
@@ -46,7 +46,7 @@ product + architecture + environment 또는 personality
 | --- | --- | --- |
 | x86_64 UEFI application boot manager | `PRIMARY` | UEFI consumer와 x86_64 transfer |
 | AArch64 UEFI application boot manager | `PRIMARY` | UEFI consumer와 AArch64 normalization |
-| AArch64 RPi5 raw-FDT boot manager | `PRIMARY` | RPi image recipe, FDT, live UART |
+| AArch64 RPi5 raw-FDT boot manager | `PRIMARY` | RPi image recipe, FDT, fresh live UART는 독립 acceptance |
 | AArch64 QEMU virt raw-FDT boot manager | `PRIMARY` | independent QEMU machine target |
 | RISC-V 64 SBI boot manager | `STRATEGIC` | S-mode, FDT, SBI |
 | RISC-V 64 UEFI application | `STRATEGIC` | UEFI consumer와 RISC-V transfer |
@@ -70,6 +70,11 @@ Linux, FreeBSD, Multiboot 지원을 의미하지 않는다.
 
 UEFI application QEMU 결과는 Ribon UEFI firmware provider, BIOS, RPi5, RISC-V physical
 board 결과를 대신하지 않는다.
+
+RPi5 `PRIMARY`는 유지 우선순위이며 live 성공을 뜻하지 않는다. 자동 acceptance에서 module-bearing
+raw-FDT image/package, exact file·module range/hash, canonical signed update manifest와 두 clean-root
+재현성은 `package/prehardware` 증거로만 분류한다. 실기기 UART, SD durability, power cycle,
+recovery network와 update 실행은 독립적인 live-hardware 증거를 요구한다.
 
 ## Firmware consumer와 provider evidence
 

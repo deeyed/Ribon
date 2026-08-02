@@ -2198,7 +2198,7 @@ def main() -> int:
                 if manifest.get("protected_state_provider") is not None else None
             ),
             "ribos_policy": manifest.get("ribos_policy"),
-            "source_manifest": str(args.manifest),
+            "source_manifest": args.manifest.name,
             "source_manifest_sha256": hashlib.sha256(
                 args.manifest.read_bytes()
             ).hexdigest(),

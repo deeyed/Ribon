@@ -21,7 +21,17 @@ QEMU_RISCV64 ?= /opt/homebrew/bin/qemu-system-riscv64
 RISCV64_OPENSBI_FIRMWARE ?= /opt/homebrew/Cellar/qemu/11.0.2/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin
 X86_64_UEFI_FIRMWARE ?= /opt/homebrew/Cellar/qemu/11.0.2/share/qemu/edk2-x86_64-code.fd
 
+# BSD ar records member timestamps. LLVM ar defaults to deterministic archives,
+# which keeps the installed SDK and the host tools linked from it path/time stable.
+ifeq ($(shell uname -s),Darwin)
+AR := $(LLVM_AR)
+endif
+
 CFLAGS ?= -std=c11 -O2 -g
+CFLAGS += -ffile-prefix-map=$(BUILD_ROOT)=build \
+	-ffile-prefix-map=$(ROOT)=. \
+	-fdebug-prefix-map=$(BUILD_ROOT)=build \
+	-fdebug-prefix-map=$(ROOT)=.
 WARNFLAGS := -Wall -Wextra -Werror
 DEPFLAGS := -MMD -MP
 CPPFLAGS += -I$(ROOT)/include
@@ -77,6 +87,7 @@ endif
 CORE_LIB := $(BUILD_DIR)/libribon-core.a
 BOOT_LIB := $(BUILD_DIR)/libribon-boot.a
 SDK_LIB := $(BUILD_DIR)/libribon-sdk.a
+SDK_UPDATE_LIB := $(BUILD_DIR)/libribon-update.a
 RIBOS_POLICY_LIB := $(BUILD_DIR)/libribon-policy-ribos.a
 RIBOS_POLICY_OBJ := $(BUILD_DIR)/obj/src/plugins/policy/ribos/adapter.o
 HOST_REFERENCE := $(BUILD_DIR)/ribon-host-reference
@@ -162,6 +173,17 @@ UPDATE_STORAGE_SRCS := \
 HOST_SECURITY_SRCS := $(SECURITY_KEY_POLICY_SRCS) \
 	$(SECURITY_PROTECTED_STATE_SRCS) $(SECURITY_PROVIDER_SRCS)
 HOST_SECURITY_OBJS := $(HOST_SECURITY_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
+SDK_UPDATE_SRCS := \
+	src/update/manifest.c \
+	src/update/storage.c \
+	src/update/installer.c \
+	src/update/transaction.c \
+	src/update/confirmation.c \
+	src/security/sha256.c \
+	src/security/key_policy.c \
+	src/security/protected_state.c \
+	src/security/signature.c
+SDK_UPDATE_OBJS := $(SDK_UPDATE_SRCS:%.c=$(BUILD_DIR)/obj/%.o)
 RIBOS_PEGEN_ROOT ?=
 RIBOS_BUILD_DIR := $(BUILD_ROOT)/ribos
 RIBOS_OBJECT_DIR := $(RIBOS_BUILD_DIR)/obj
@@ -328,6 +350,9 @@ SDK_INSTALL_ROOT := $(BUILD_ROOT)/sdk/install
 SDK_REPRO_FIRST := $(BUILD_ROOT)/sdk/reproducible-a
 SDK_REPRO_SECOND := $(BUILD_ROOT)/sdk/reproducible-b
 SDK_LIBRARY_EMBED_TEST := $(BUILD_ROOT)/sdk/examples/library-embed
+SDK_DEPLOYMENT_CONSUMER_DIR := $(BUILD_ROOT)/sdk/examples/deployment-consumer
+SDK_DEPLOYMENT_CONSUMER_REPORT := \
+	$(SDK_DEPLOYMENT_CONSUMER_DIR)/results/consumer.json
 EXTERNAL_PLUGIN_DIR := $(BUILD_ROOT)/sdk/examples/diagnostic-sink
 EXTERNAL_PLUGIN_REGISTRY_C := $(EXTERNAL_PLUGIN_DIR)/generated/plugin_registry.c
 EXTERNAL_PLUGIN_REPORT := $(EXTERNAL_PLUGIN_DIR)/results/object-graph.json
@@ -868,6 +893,9 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-qemu-evidence \
 	check-uefi-product-hermeticity \
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
+	check-sdk-deployment-consumer check-rpi5-prehardware \
+	deployment-release-artifacts check-deployment-release-reproducibility \
+	check-ribon-deployment-closure \
 	check-firmware-object-graphs firmware-provider-reference \
 	check-frontends check-normal-media-surface check-target-builds qemu-aarch64-virt-raw-fdt \
 	ribosc ribos-verify ribos-run ribos-parser-pilot \
@@ -929,7 +957,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 
 all: lib host-reference
 
-lib: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB) $(RIBOS_POLICY_LIB) \
+lib: $(CORE_LIB) $(BOOT_LIB) $(SDK_LIB) $(SDK_UPDATE_LIB) $(RIBOS_POLICY_LIB) \
 	$(RIBOS_TARGET_CORE_LIB)
 
 host-reference: $(HOST_REFERENCE)
@@ -976,6 +1004,7 @@ $(RIBOS_POLICY_OBJ): src/plugins/policy/ribos/adapter.c \
 		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
 
 $(HOST_SECURITY_OBJS): CPPFLAGS += $(SECURITY_INCLUDE_FLAGS)
+$(SDK_UPDATE_OBJS): CPPFLAGS += $(SECURITY_INCLUDE_FLAGS)
 
 $(BUILD_DIR)/obj/src/environments/host/ribos_policy.o: \
 		src/environments/host/ribos_policy.c \
@@ -1414,6 +1443,11 @@ $(SDK_LIB): $(SDK_LIB_OBJS) Makefile
 	@mkdir -p $(@D)
 	$(RM) $@
 	$(AR) rcs $@ $(SDK_LIB_OBJS)
+
+$(SDK_UPDATE_LIB): $(SDK_UPDATE_OBJS) Makefile
+	@mkdir -p $(@D)
+	$(RM) $@
+	$(AR) rcs $@ $(SDK_UPDATE_OBJS)
 
 $(HOST_REFERENCE): \
 	$(HOST_MAIN_OBJ) $(ARCH_OBJS) $(HOST_PRODUCT_OBJS) \
@@ -3296,15 +3330,27 @@ check-qemu-evidence:
 	$(PYTHON) tests/tools/external_parus_payload_tests.py
 	$(PYTHON) tests/tools/external_linux_image_tests.py
 
-sdk-install: lib
+sdk-install: lib ribosc ribos-verify ribos-run
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_INSTALL_ROOT) \
 		--public-include include/Ribon \
 		--library $(CORE_LIB) \
 		--library $(BOOT_LIB) \
 		--library $(SDK_LIB) \
+		--library $(SDK_UPDATE_LIB) \
+		--host-tool ribosc=$(RIBOS_PARSER_PILOT) \
+		--host-tool ribos-verify=$(RIBOS_VERIFIER) \
+		--host-tool ribos-run=$(RIBOS_RUNNER) \
+		--host-tool ribon-compose-product=tools/generate_plugin_registry.py \
+		--host-tool ribon-update-manifest=tools/update_manifest.py \
+		--host-tool ribon-update-layout=tools/update_layout.py \
+		--host-tool ribon-sign-policy=tools/sign_ribos_policy.py \
 		--schemas qstar/schemas \
-		--templates sdk/templates
+		--templates sdk/templates \
+		--source-revision $(shell git rev-parse HEAD) \
+		--sdk-abi 4 --core-abi 5 \
+		--plugin-abi-major 4 --plugin-abi-minor 0 \
+		--source-version 0.4.0
 
 check-sdk-surface: sdk-install
 	$(PYTHON) tools/lint/sdk_surface_lint.py \
@@ -3323,17 +3369,39 @@ $(SDK_LIBRARY_EMBED_TEST): sdk-install examples/library-embed/main.c
 check-sdk-embed: $(SDK_LIBRARY_EMBED_TEST)
 	$(SDK_LIBRARY_EMBED_TEST)
 
-check-sdk-reproducible: lib
+check-sdk-reproducible: lib ribosc ribos-verify ribos-run
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_REPRO_FIRST) \
 		--public-include include/Ribon \
 		--library $(CORE_LIB) --library $(BOOT_LIB) --library $(SDK_LIB) \
-		--schemas qstar/schemas --templates sdk/templates
+		--library $(SDK_UPDATE_LIB) \
+		--host-tool ribosc=$(RIBOS_PARSER_PILOT) \
+		--host-tool ribos-verify=$(RIBOS_VERIFIER) \
+		--host-tool ribos-run=$(RIBOS_RUNNER) \
+		--host-tool ribon-compose-product=tools/generate_plugin_registry.py \
+		--host-tool ribon-update-manifest=tools/update_manifest.py \
+		--host-tool ribon-update-layout=tools/update_layout.py \
+		--host-tool ribon-sign-policy=tools/sign_ribos_policy.py \
+		--schemas qstar/schemas --templates sdk/templates \
+		--source-revision $(shell git rev-parse HEAD) \
+		--sdk-abi 4 --core-abi 5 --plugin-abi-major 4 \
+		--plugin-abi-minor 0 --source-version 0.4.0
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_REPRO_SECOND) \
 		--public-include include/Ribon \
 		--library $(CORE_LIB) --library $(BOOT_LIB) --library $(SDK_LIB) \
-		--schemas qstar/schemas --templates sdk/templates
+		--library $(SDK_UPDATE_LIB) \
+		--host-tool ribosc=$(RIBOS_PARSER_PILOT) \
+		--host-tool ribos-verify=$(RIBOS_VERIFIER) \
+		--host-tool ribos-run=$(RIBOS_RUNNER) \
+		--host-tool ribon-compose-product=tools/generate_plugin_registry.py \
+		--host-tool ribon-update-manifest=tools/update_manifest.py \
+		--host-tool ribon-update-layout=tools/update_layout.py \
+		--host-tool ribon-sign-policy=tools/sign_ribos_policy.py \
+		--schemas qstar/schemas --templates sdk/templates \
+		--source-revision $(shell git rev-parse HEAD) \
+		--sdk-abi 4 --core-abi 5 --plugin-abi-major 4 \
+		--plugin-abi-minor 0 --source-version 0.4.0
 	$(PYTHON) tools/check_reproducible_trees.py \
 		$(SDK_REPRO_FIRST) $(SDK_REPRO_SECOND)
 
@@ -3362,6 +3430,43 @@ $(EXTERNAL_PLUGIN_TEST): sdk-install $(EXTERNAL_PLUGIN_REGISTRY_C) \
 
 check-external-plugin: $(EXTERNAL_PLUGIN_TEST)
 	$(EXTERNAL_PLUGIN_TEST)
+
+check-sdk-deployment-consumer: sdk-install
+	$(PYTHON) tools/check_sdk_deployment_consumer.py \
+		--install-root $(SDK_INSTALL_ROOT) \
+		--work-root $(SDK_DEPLOYMENT_CONSUMER_DIR) \
+		--cc $(CC)
+
+check-rpi5-prehardware: rpi5-aarch64-modules-fixture-package
+	$(PYTHON) tools/make_rpi5_prehardware_update.py \
+		--package $(RPI5_MODULE_FIXTURE_DIR)/package \
+		--private-seed tests/fixtures/security/rfc8032-test1-seed.hex \
+		--source-revision $(shell git rev-parse HEAD) \
+		--output-root $(BUILD_ROOT)/release/rpi5-prehardware
+
+deployment-release-artifacts: check-sdk-surface check-sdk-deployment-consumer \
+		check-rpi5-prehardware
+	$(PYTHON) tools/make_deployment_release_manifest.py \
+		--source-revision $(shell git rev-parse HEAD) \
+		--cc $(CC) --sdk-root $(SDK_INSTALL_ROOT) \
+		--consumer-report $(SDK_DEPLOYMENT_CONSUMER_REPORT) \
+		--rpi5-package $(RPI5_MODULE_FIXTURE_DIR)/package \
+		--rpi5-prehardware $(BUILD_ROOT)/release/rpi5-prehardware/prehardware.json \
+		--output $(BUILD_ROOT)/release/deployment-release.json
+
+check-deployment-release-reproducibility:
+	$(PYTHON) tools/check_deployment_release_reproducibility.py \
+		--make $(MAKE) --root $(ROOT) \
+		--work-root $(BUILD_ROOT)/tests/deployment-release-reproducibility
+
+check-ribon-deployment-closure: check-update-manifest check-update-storage \
+		check-qemu-update-install check-update-power-cut \
+		check-recovery-network-update check-boot-confirmation \
+		qemu-aarch64-virt-linux-smoke deployment-release-artifacts \
+		check-deployment-release-reproducibility
+	@echo "RIBON-D08-DEPLOYMENT-CLOSURE-OK sdk=installed update=transactional \
+network=recovery-only confirmation=os-neutral linux=aarch64-qemu \
+rpi5=prehardware hardware=not-run"
 
 $(UEFI_PROVIDER_REGISTRY_C): $(UEFI_PROVIDER_MANIFEST) \
 	tools/generate_plugin_registry.py

@@ -173,6 +173,7 @@ adr/0017-ribos-language-project-hierarchy
 :caption: 플랫폼
 
 platforms/rpi5/native-boot-boundary
+platforms/rpi5/deployment-prehardware-and-live-runbook
 platforms/ribos-signed-policy-operations
 ```
 
@@ -233,4 +234,5 @@ log/2026-08-01-d03-qemu-signed-bundle-install
 log/2026-08-01-d04-transactional-update-fault-closure
 log/2026-08-01-d05-bounded-recovery-network-update
 log/2026-08-02-d06-os-neutral-boot-confirmation
+log/2026-08-02-d08-deployment-closure
 ```
