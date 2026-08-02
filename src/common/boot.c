@@ -126,10 +126,14 @@ static int boot_deadline_end(
 static void boot_copy_image_plan(
     struct RibonBootPlan *out,
     const struct RibonPayloadImage *image,
-    const struct RibonLoadedPayload *layout) {
+    const struct RibonValidatedImage *validated,
+    const struct RibonDirectLoadPlan *layout) {
     out->kernel_source_name = image->source_name;
-    out->kernel_format = layout->format;
-    out->kernel_machine = layout->machine;
+    out->kernel_image = *validated;
+    out->kernel_direct_load_plan = layout;
+    if (layout == 0) {
+        return;
+    }
     out->kernel_load_segment_count = layout->segment_count;
     out->kernel_load_plan_flags = layout->load_plan_flags;
     out->kernel_entry_point = layout->entry_point;
@@ -152,7 +156,7 @@ static void boot_copy_image_plan(
 /** @brief Relative image plan을 selected physical placement window에 재배치한다. */
 static int boot_apply_relocatable_placement(
     const struct RibonBootTransaction *transaction,
-    struct RibonLoadedPayload *layout) {
+    struct RibonDirectLoadPlan *layout) {
     const struct RibonServiceDescriptor *service;
     const struct RibonPayloadPlacementServiceOperations *placement;
     uint64_t window_end;
@@ -262,46 +266,64 @@ static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) 
     candidate.handoff_format = transaction->protocol->handoff_format;
     candidate.handoff_major = transaction->protocol->handoff_major;
     candidate.expectations = transaction->protocol->expectations;
-    boot_copy_image_plan(&candidate, &transaction->payload, transaction->input.kernel_layout);
-    status = transaction->protocol->ops->prepare_handoff(
+    boot_copy_image_plan(
         &candidate,
-        &transaction->environment,
-        transaction->input.normalized_memory_map,
-        transaction->input.handoff_buffer,
-        transaction->input.handoff_buffer_capacity,
-        transaction->input.handoff_artifact);
-    if (status != RIBON_PROTOCOL_HANDOFF_STATUS_OK ||
-        transaction->input.handoff_artifact->size >
-            transaction->core->product->limits.max_handoff_bytes ||
-        transaction->input.handoff_artifact->size >
-            transaction->input.handoff_buffer_capacity ||
-        transaction->consumed_output_bytes >
-            transaction->core->product->limits.max_handoff_bytes -
-                transaction->input.handoff_artifact->size) {
-        return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
-                         RIBON_BOOT_FAILURE_BUDGET, transaction->protocol->id,
-                         RIBON_BOOT_STATUS_BUDGET_EXCEEDED);
+        &transaction->payload,
+        &transaction->validated_image,
+        transaction->input.direct_load_plan);
+    if (transaction->protocol->terminal_execution ==
+        RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY) {
+        status = transaction->protocol->ops->prepare_handoff(
+            &candidate,
+            &transaction->environment,
+            transaction->input.normalized_memory_map,
+            transaction->input.handoff_buffer,
+            transaction->input.handoff_buffer_capacity,
+            transaction->input.handoff_artifact);
+        if (status != RIBON_PROTOCOL_HANDOFF_STATUS_OK ||
+            transaction->input.handoff_artifact->size >
+                transaction->core->product->limits.max_handoff_bytes ||
+            transaction->input.handoff_artifact->size >
+                transaction->input.handoff_buffer_capacity ||
+            transaction->consumed_output_bytes >
+                transaction->core->product->limits.max_handoff_bytes -
+                    transaction->input.handoff_artifact->size) {
+            return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
+                             RIBON_BOOT_FAILURE_BUDGET, transaction->protocol->id,
+                             RIBON_BOOT_STATUS_BUDGET_EXCEEDED);
+        }
+        candidate.handoff_artifact_format = transaction->input.handoff_artifact->format;
+        candidate.handoff_artifact_size = transaction->input.handoff_artifact->size;
+        candidate.handoff_artifact_sections = transaction->input.handoff_artifact->section_count;
     }
     status = boot_deadline_end(transaction, &deadline);
     if (status != RIBON_BOOT_STATUS_OK) {
         return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
                          RIBON_BOOT_FAILURE_TIMEOUT, transaction->protocol->id, status);
     }
-    candidate.handoff_artifact_format = transaction->input.handoff_artifact->format;
-    candidate.handoff_artifact_size = transaction->input.handoff_artifact->size;
-    candidate.handoff_artifact_sections = transaction->input.handoff_artifact->section_count;
-    status = transaction->protocol->ops->prepare_entry_invocation(
+    status = transaction->protocol->ops->prepare_terminal(
         transaction->arch->descriptor,
         &candidate,
         &transaction->environment,
-        transaction->input.handoff_artifact,
-        &transaction->entry_invocation);
+        transaction->protocol->terminal_execution ==
+                RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ?
+            transaction->input.handoff_artifact : 0,
+        &transaction->terminal_request);
     if (status != RIBON_PROTOCOL_STATUS_OK ||
+        !ribon_terminal_request_is_valid(&transaction->terminal_request) ||
+        transaction->terminal_request.kind != transaction->protocol->terminal_execution) {
+        transaction->terminal_request = (struct RibonTerminalRequest){0};
+        transaction->prepared_entry = (struct RibonPreparedEntry){0};
+        return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
+                         RIBON_BOOT_FAILURE_PROTOCOL, transaction->protocol->id,
+                         RIBON_BOOT_STATUS_UNSUPPORTED);
+    }
+    if (transaction->terminal_request.kind == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
         transaction->arch->prepare_entry(
             transaction->arch->descriptor,
-            &transaction->entry_invocation,
+            &transaction->terminal_request.direct_entry,
             &transaction->prepared_entry) != RIBON_ARCH_OPERATION_OK) {
-        transaction->entry_invocation = (struct RibonEntryInvocation){0};
+        transaction->terminal_request = (struct RibonTerminalRequest){0};
         transaction->prepared_entry = (struct RibonPreparedEntry){0};
         return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
                          RIBON_BOOT_FAILURE_PROTOCOL, transaction->protocol->id,
@@ -328,7 +350,12 @@ int ribon_boot_transaction_initialize(
         !boot_registry_contains_operations(core->registry, RIBON_PLUGIN_KIND_BOOT_PROTOCOL, protocol) ||
         !boot_registry_contains_operations(core->registry, RIBON_PLUGIN_KIND_IMAGE_FORMAT, image_format) ||
         (protocol->ops->select_image_formats() &
-         RIBON_IMAGE_FORMAT_MASK(image_format->format)) == 0u) {
+         RIBON_IMAGE_FORMAT_MASK(image_format->format)) == 0u ||
+        (protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+         (image_format->execution_support & RIBON_IMAGE_EXECUTION_DIRECT_ENTRY) == 0u) ||
+        (protocol->terminal_execution ==
+             RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE &&
+         (image_format->execution_support & RIBON_IMAGE_EXECUTION_FIRMWARE_MANAGED) == 0u)) {
         if (out != 0) {
             *out = (struct RibonBootTransaction){0};
         }
@@ -370,8 +397,14 @@ int ribon_boot_transaction_prepare(
         input->environment == 0 || input->normalized_memory_map == 0 ||
         input->source == 0 || input->source_size == 0u || input->payload_buffer == 0 ||
         input->payload_buffer_capacity < input->source_size || input->source_name == 0 ||
-        input->kernel_layout == 0 || input->handoff_buffer == 0 ||
-        input->handoff_buffer_capacity == 0u || input->handoff_artifact == 0) {
+        input->validated_image == 0 ||
+        (transaction->protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+         (input->direct_load_plan == 0 || input->handoff_buffer == 0 ||
+          input->handoff_buffer_capacity == 0u || input->handoff_artifact == 0)) ||
+        (transaction->protocol->terminal_execution ==
+             RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE &&
+         (input->direct_load_plan != 0 || input->handoff_buffer != 0 ||
+          input->handoff_buffer_capacity != 0u || input->handoff_artifact != 0))) {
         return boot_fail(transaction, RIBON_BOOT_STAGE_CAPTURE, RIBON_BOOT_FAILURE_BAD_INPUT,
                          0, RIBON_BOOT_STATUS_BAD_ARGUMENT);
     }
@@ -464,32 +497,53 @@ int ribon_boot_transaction_prepare(
         .source_name = input->source_name,
     };
     if (transaction->image_format->analyze(
-            &transaction->payload, input->kernel_layout) !=
-            RIBON_LOADER_STATUS_OK ||
-        boot_apply_relocatable_placement(
-            transaction, input->kernel_layout) != RIBON_BOOT_STATUS_OK ||
-        transaction->arch->validate_payload(
-            transaction->arch->descriptor, input->kernel_layout) != RIBON_ARCH_OPERATION_OK) {
+            &transaction->payload,
+            input->validated_image,
+            input->direct_load_plan) != RIBON_LOADER_STATUS_OK ||
+        !ribon_validated_image_is_valid(input->validated_image) ||
+        input->validated_image->format != transaction->image_format->format ||
+        input->validated_image->image_size != transaction->payload.size ||
+        (input->validated_image->execution_support &
+         transaction->image_format->execution_support) !=
+            input->validated_image->execution_support ||
+        (transaction->protocol->terminal_execution ==
+             RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+         ((input->validated_image->execution_support &
+           RIBON_IMAGE_EXECUTION_DIRECT_ENTRY) == 0u ||
+          boot_apply_relocatable_placement(
+              transaction, input->direct_load_plan) != RIBON_BOOT_STATUS_OK ||
+          transaction->arch->validate_direct_load(
+              transaction->arch->descriptor,
+              input->validated_image,
+              input->direct_load_plan) != RIBON_ARCH_OPERATION_OK)) ||
+        (transaction->protocol->terminal_execution ==
+             RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE &&
+         ((input->validated_image->execution_support &
+           RIBON_IMAGE_EXECUTION_FIRMWARE_MANAGED) == 0u ||
+          input->validated_image->machine !=
+              transaction->arch->descriptor->pe_coff_machine))) {
         return boot_fail(transaction, RIBON_BOOT_STAGE_LOAD_IMAGE,
                          RIBON_BOOT_FAILURE_IMAGE,
                          ribon_executable_format_name(transaction->image_format->format),
                          RIBON_BOOT_STATUS_INVALID_PAYLOAD);
     }
-    if (input->kernel_layout->segment_count >
+    if (input->direct_load_plan != 0 &&
+        (input->direct_load_plan->segment_count >
             transaction->core->product->limits.max_load_segments ||
-        input->kernel_layout->segment_count >
+        input->direct_load_plan->segment_count >
             transaction->core->product->limits.max_components ||
         transaction->environment.boot_modules.module_count >
             transaction->core->product->limits.max_components -
-                input->kernel_layout->segment_count) {
+                input->direct_load_plan->segment_count)) {
         return boot_fail(transaction, RIBON_BOOT_STAGE_LOAD_IMAGE,
                          RIBON_BOOT_FAILURE_BUDGET,
                          ribon_executable_format_name(transaction->image_format->format),
                          RIBON_BOOT_STATUS_BUDGET_EXCEEDED);
     }
     transaction->consumed_components =
-        input->kernel_layout->segment_count +
+        (input->direct_load_plan != 0 ? input->direct_load_plan->segment_count : 1u) +
         transaction->environment.boot_modules.module_count;
+    transaction->validated_image = *input->validated_image;
     return boot_prepare_protocol_plan(transaction);
 }
 
@@ -529,8 +583,16 @@ int ribon_boot_transaction_commit_attempt(struct RibonBootTransaction *transacti
     record[5] = (unsigned char)transaction->protocol->handoff_major;
     boot_write_u64(record, 8u, transaction->consumed_input_bytes);
     boot_write_u64(record, 16u, transaction->plan.handoff_artifact_size);
-    boot_write_u64(record, 24u, transaction->plan.kernel_entry_load_address);
-    boot_write_u64(record, 32u, transaction->plan.kernel_runtime_entry_address);
+    boot_write_u64(
+        record,
+        24u,
+        transaction->plan.kernel_direct_load_plan != 0 ?
+            transaction->plan.kernel_entry_load_address : 0u);
+    boot_write_u64(
+        record,
+        32u,
+        transaction->plan.kernel_direct_load_plan != 0 ?
+            transaction->plan.kernel_runtime_entry_address : 0u);
     status = metadata->write(metadata->context, 0u, record, sizeof(record));
     if (status != RIBON_SERVICE_STATUS_OK ||
         flush->flush(flush->context, 0u, deadline.absolute_ticks) != RIBON_SERVICE_STATUS_OK ||
@@ -548,6 +610,7 @@ int ribon_boot_transaction_refresh_after_commit(
     struct RibonBootTransaction *transaction,
     const struct RibonBootEnvironment *environment) {
     if (transaction == 0 || transaction->stage != RIBON_BOOT_STAGE_COMMIT_ATTEMPT ||
+        transaction->terminal_request.kind != RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ||
         !ribon_boot_environment_is_valid(environment) ||
         environment->architecture != transaction->arch->descriptor->id ||
         ribon_memory_map_normalize(&environment->memory_map,
@@ -576,6 +639,11 @@ int ribon_boot_transaction_quiesce_environment(
     if (transaction == 0 || transaction->stage != RIBON_BOOT_STAGE_COMMIT_ATTEMPT) {
         return boot_fail(transaction, RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT,
                          RIBON_BOOT_FAILURE_BAD_INPUT, 0, RIBON_BOOT_STATUS_BAD_STATE);
+    }
+    if (transaction->terminal_request.kind != RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY) {
+        return boot_fail(transaction, RIBON_BOOT_STAGE_EXECUTE_TERMINAL,
+                         RIBON_BOOT_FAILURE_TERMINAL, transaction->protocol->id,
+                         RIBON_BOOT_STATUS_UNSUPPORTED);
     }
     operations = transaction->quiesce->operations;
     if (operations == 0 || operations->size != sizeof(*operations) ||
@@ -613,6 +681,7 @@ _Noreturn void ribon_boot_transaction_transfer(
     struct RibonBootTransaction *transaction) {
     if (transaction == 0 ||
         transaction->stage != RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT ||
+        transaction->terminal_request.kind != RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ||
         transaction->prepared_entry.invocation.size !=
             sizeof(transaction->prepared_entry.invocation)) {
         if (transaction != 0 && transaction->arch != 0 && transaction->arch->halt != 0) {

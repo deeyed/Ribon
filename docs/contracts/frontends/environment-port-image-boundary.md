@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-08-02
 code_paths:
   - src/environments/
   - src/image-formats/
@@ -89,15 +89,19 @@ port object, linker, artifact, package와 evidence marker를 공유하지 않는
 
 ## Image format
 
-ELF64와 PE/COFF parser는 `RibonImageFormatOps`를 구현한다. Parser는 caller-owned segment
-array에 bounds-checked load plan을 만들며 memory allocation, firmware page placement,
-register ABI를 수행하지 않는다. Parser는 machine field를 추출하지만 architecture
-descriptor를 소비하거나 ISA 이름을 비교하지 않는다. Machine 일치, canonical virtual
-address와 address-width 검증은 architecture backend만 소유한다.
+ELF64, PE/COFF와 raw Linux Image parser는 `RibonImageFormatOps`를 구현한다. 모든 parser는
+pointer-free `RibonValidatedImage`에 format, machine, exact image extent, validation receipt와 허용
+terminal model을 기록한다. Direct execution을 지원하는 parser는 별도 caller-owned
+`RibonDirectLoadPlan`에 bounds-checked segment plan을 만들 수 있다. Managed-only transaction은
+direct plan storage를 제공하지 않는다.
 
-PE/COFF consumer는 PE32+ 구조와 machine field를 추출하고 import 또는 relocation을
-해결하지 않는다. Preferred image base에 배치할 수 없는 product는 별도 relocation
-capability 없이는 해당 image를 거부한다.
+Parser는 memory allocation, firmware page placement와 register ABI를 수행하지 않는다. Machine
+일치, canonical virtual address와 address-width 검증은 direct path의 architecture backend가 소유한다.
+
+PE/COFF consumer는 PE32+ 구조와 machine field를 추출하고 import 또는 relocation을 해결하지 않는다.
+Direct product는 preferred image base에 배치할 수 없으면 거부한다. Firmware-managed product는
+validated bytes를 environment provider에 넘기며 Ribon의 partial direct loader 결과를 실행 근거로
+사용하지 않는다.
 
 ## Architecture
 
@@ -108,8 +112,8 @@ cache sync, privilege normalization, terminal transfer는 capability와 callback
 
 `RibonArchDescriptor.elf_machine`과 `pe_coff_machine`은 format별 ISA fact다.
 `pe_coff_machine` 0은 해당 ISA에서 그 format을 지원하지 않음을 뜻한다. Architecture
-validator는 parser가 추출한 machine, entry와 segment address를 이 fact 및 address width에
-대해 검증한다.
+validator는 `RibonValidatedImage.machine`과 direct plan의 entry/segment address를 이 fact 및 address
+width에 대해 검증한다. Managed request에는 architecture prepared entry를 만들지 않는다.
 
 ## Evidence
 

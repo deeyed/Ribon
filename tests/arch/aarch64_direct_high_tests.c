@@ -45,7 +45,7 @@ static int expect_u64(const char *name, uint64_t actual, uint64_t expected) {
     return 0;
 }
 
-static struct RibonLoadedPayload make_direct_payload(struct RibonLoadSegment *segments) {
+static struct RibonDirectLoadPlan make_direct_payload(struct RibonLoadSegment *segments) {
     segments[0] = (struct RibonLoadSegment){
         .file_size = TEST_HIGH_SIZE,
         .memory_size = TEST_HIGH_SIZE,
@@ -56,9 +56,9 @@ static struct RibonLoadedPayload make_direct_payload(struct RibonLoadSegment *se
         .alignment = TEST_PAGE_SIZE,
         .flags = RIBON_LOAD_SEGMENT_READ | RIBON_LOAD_SEGMENT_EXECUTE,
     };
-    return (struct RibonLoadedPayload){
-        .format = RIBON_EXECUTABLE_FORMAT_ELF64,
-        .machine = 183,
+    return (struct RibonDirectLoadPlan){
+        .size = sizeof(struct RibonDirectLoadPlan),
+        .abi_version = RIBON_DIRECT_LOAD_PLAN_ABI_VERSION,
         .segment_count = 1,
         .load_plan_flags =
             RIBON_LOAD_PLAN_HAS_HIGHER_HALF |
@@ -86,7 +86,7 @@ static struct RibonLoadedPayload make_direct_payload(struct RibonLoadSegment *se
 
 static int test_prepare_direct_high_tables(void) {
     struct RibonLoadSegment segments[1];
-    struct RibonLoadedPayload payload = make_direct_payload(segments);
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
     uint64_t tables[13u * TEST_ENTRIES];
     uint64_t *identity_l0 = tables;
@@ -154,7 +154,7 @@ static int test_prepare_direct_high_tables(void) {
 
 static int test_rejects_missing_direct_candidate(void) {
     struct RibonLoadSegment segments[1];
-    struct RibonLoadedPayload payload = make_direct_payload(segments);
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
     uint64_t tables[13u * TEST_ENTRIES];
     payload.load_plan_flags &= ~RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE;
@@ -177,7 +177,7 @@ static int test_rejects_missing_direct_candidate(void) {
 
 static int test_rejects_table_misalignment(void) {
     struct RibonLoadSegment segments[1];
-    struct RibonLoadedPayload payload = make_direct_payload(segments);
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
     uint64_t tables[13u * TEST_ENTRIES];
 
@@ -195,7 +195,7 @@ static int test_rejects_table_misalignment(void) {
 
 static int test_rejects_l3_capacity_overflow(void) {
     struct RibonLoadSegment segments[1];
-    struct RibonLoadedPayload payload = make_direct_payload(segments);
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
     uint64_t tables[13u * TEST_ENTRIES];
     payload.linked_virtual_end = TEST_HIGH_BASE + TEST_L2_BLOCK * 9u;

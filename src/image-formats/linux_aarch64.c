@@ -25,10 +25,12 @@ static uint64_t linux_image_read_le64(const unsigned char *bytes) {
 }
 
 /** @brief Caller-owned load plan을 fail-closed empty state로 초기화한다. */
-static void linux_image_reset(struct RibonLoadedPayload *out) {
+static void linux_image_reset(struct RibonDirectLoadPlan *out) {
     struct RibonLoadSegment *segments = out->segments;
     const uint32_t capacity = out->segment_capacity;
-    *out = (struct RibonLoadedPayload){
+    *out = (struct RibonDirectLoadPlan){
+        .size = sizeof(*out),
+        .abi_version = RIBON_DIRECT_LOAD_PLAN_ABI_VERSION,
         .segments = segments,
         .segment_capacity = capacity,
     };
@@ -43,7 +45,8 @@ static void linux_image_reset(struct RibonLoadedPayload *out) {
  */
 static int linux_aarch64_image_analyze(
     const struct RibonPayloadImage *image,
-    struct RibonLoadedPayload *out) {
+    struct RibonValidatedImage *validated_out,
+    struct RibonDirectLoadPlan *out) {
     const unsigned char *bytes;
     uint64_t text_offset;
     uint64_t image_size;
@@ -51,10 +54,11 @@ static int linux_aarch64_image_analyze(
     uint64_t image_end;
     struct RibonLoadSegment *segment;
 
-    if (image == 0 || image->data == 0 || out == 0 || out->segments == 0 ||
-        out->segment_capacity == 0u) {
+    if (image == 0 || image->data == 0 || validated_out == 0 ||
+        !ribon_direct_load_plan_has_storage(out)) {
         return RIBON_LOADER_STATUS_BAD_ARGUMENT;
     }
+    *validated_out = (struct RibonValidatedImage){0};
     linux_image_reset(out);
     if (image->size < RIBON_LINUX_AARCH64_HEADER_SIZE) {
         return RIBON_LOADER_STATUS_TRUNCATED;
@@ -96,8 +100,6 @@ static int linux_aarch64_image_analyze(
             RIBON_LOAD_SEGMENT_WRITE |
             RIBON_LOAD_SEGMENT_EXECUTE,
     };
-    out->format = RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64;
-    out->machine = RIBON_LINUX_AARCH64_MACHINE;
     out->segment_count = 1u;
     out->load_plan_flags =
         RIBON_LOAD_PLAN_ENTRY_LOAD_VALID |
@@ -115,6 +117,15 @@ static int linux_aarch64_image_analyze(
     out->linked_virtual_end = image_end;
     out->linked_physical_base = text_offset;
     out->linked_physical_end = image_end;
+    *validated_out = (struct RibonValidatedImage){
+        .size = sizeof(*validated_out),
+        .abi_version = RIBON_VALIDATED_IMAGE_ABI_VERSION,
+        .format = RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64,
+        .machine = RIBON_LINUX_AARCH64_MACHINE,
+        .execution_support = RIBON_IMAGE_EXECUTION_DIRECT_ENTRY,
+        .image_size = image->size,
+        .validation_receipt = flags,
+    };
     return RIBON_LOADER_STATUS_OK;
 }
 
@@ -122,6 +133,7 @@ static const struct RibonImageFormatOps linux_aarch64_image_ops = {
     .size = sizeof(linux_aarch64_image_ops),
     .abi_version = RIBON_IMAGE_FORMAT_OPS_ABI_VERSION,
     .format = RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64,
+    .execution_support = RIBON_IMAGE_EXECUTION_DIRECT_ENTRY,
     .analyze = linux_aarch64_image_analyze,
 };
 

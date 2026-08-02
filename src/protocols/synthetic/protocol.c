@@ -63,12 +63,13 @@ static uint64_t synthetic_select_image_formats(void) {
 }
 
 /** @brief Synthetic handoff를 architecture-neutral register invocation으로 봉인한다. */
-static int synthetic_prepare_entry_invocation(
+static int synthetic_prepare_terminal(
     const struct RibonArchDescriptor *arch,
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
     const struct RibonHandoffArtifact *handoff,
-    struct RibonEntryInvocation *out) {
+    struct RibonTerminalRequest *out) {
+    struct RibonEntryInvocation *entry;
     enum RibonRegisterAbi register_abi;
     (void)environment;
     if (arch == 0 || plan == 0 || handoff == 0 || handoff->data == 0 ||
@@ -76,6 +77,12 @@ static int synthetic_prepare_entry_invocation(
         plan->kernel_runtime_entry_address == 0u) {
         return RIBON_PROTOCOL_STATUS_BAD_ARGUMENT;
     }
+    *out = (struct RibonTerminalRequest){
+        .size = sizeof(*out),
+        .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
+        .kind = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
+    };
+    entry = &out->direct_entry;
     switch (arch->id) {
     case RIBON_ARCHITECTURE_X86_64:
         register_abi = RIBON_REGISTER_ABI_X86_64_RDI_RSI_RDX_RCX;
@@ -87,11 +94,11 @@ static int synthetic_prepare_entry_invocation(
         register_abi = RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3;
         break;
     default:
-        *out = (struct RibonEntryInvocation){0};
+        *out = (struct RibonTerminalRequest){0};
         return RIBON_PROTOCOL_STATUS_BAD_ENTRY_CONTRACT;
     }
-    *out = (struct RibonEntryInvocation){
-        .size = sizeof(*out),
+    *entry = (struct RibonEntryInvocation){
+        .size = sizeof(*entry),
         .abi_version = RIBON_ENTRY_INVOCATION_ABI_VERSION,
         .entry_address = plan->kernel_runtime_entry_address,
         .register_abi = register_abi,
@@ -174,7 +181,7 @@ static const struct RibonBootProtocolOps synthetic_ops = {
     .validate_components = synthetic_validate_components,
     .select_image_formats = synthetic_select_image_formats,
     .prepare_handoff = synthetic_prepare_handoff,
-    .prepare_entry_invocation = synthetic_prepare_entry_invocation,
+    .prepare_terminal = synthetic_prepare_terminal,
     .validate_boot_health = synthetic_validate_boot_health,
 };
 
@@ -183,6 +190,7 @@ static const struct RibonBootProtocol synthetic_protocol = {
     .abi_version = 1u,
     .id = "synthetic",
     .kernel_path = "kernel/kernel.elf",
+    .terminal_execution = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
     .expectations =
         RIBON_PROTOCOL_EXPECT_MEMORY_MAP |
         RIBON_PROTOCOL_EXPECT_KERNEL_IMAGE_LAYOUT,

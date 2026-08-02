@@ -35,8 +35,9 @@ enum RibonBootLifecycleStage {
     RIBON_BOOT_STAGE_PREPARE_PROTOCOL = 6,
     RIBON_BOOT_STAGE_COMMIT_ATTEMPT = 7,
     RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT = 8,
-    RIBON_BOOT_STAGE_TRANSFER = 9,
-    RIBON_BOOT_STAGE_FAILED = 10,
+    RIBON_BOOT_STAGE_EXECUTE_TERMINAL = 9,
+    RIBON_BOOT_STAGE_TRANSFER = 10,
+    RIBON_BOOT_STAGE_FAILED = 11,
 };
 
 /** @brief Terminal failure receipt의 stable reason이다. */
@@ -51,6 +52,7 @@ enum RibonBootFailureReason {
     RIBON_BOOT_FAILURE_PROTOCOL = 7,
     RIBON_BOOT_FAILURE_COMMIT = 8,
     RIBON_BOOT_FAILURE_QUIESCE = 9,
+    RIBON_BOOT_FAILURE_TERMINAL = 10,
 };
 
 /** @brief Failure 뒤에도 native pointer 없이 보존되는 deterministic receipt다. */
@@ -74,7 +76,8 @@ struct RibonBootTransactionInput {
     void *payload_buffer; /**< Source read 결과를 받을 caller-owned buffer다. */
     uint64_t payload_buffer_capacity; /**< Payload buffer byte 상한이다. */
     const char *source_name; /**< Stable candidate 이름이다. */
-    struct RibonLoadedPayload *kernel_layout; /**< Caller-owned image load plan이다. */
+    struct RibonValidatedImage *validated_image; /**< Caller-owned validation artifact다. */
+    struct RibonDirectLoadPlan *direct_load_plan; /**< Direct model에서만 제공하는 plan이다. */
     void *handoff_buffer; /**< Protocol handoff 출력 buffer다. */
     uint64_t handoff_buffer_capacity; /**< Handoff buffer byte 상한이다. */
     struct RibonHandoffArtifact *handoff_artifact; /**< Protocol handoff 결과다. */
@@ -97,13 +100,13 @@ struct RibonBootPlan {
     const char *protocol_id;
     const char *kernel_path;
     const char *kernel_source_name;
+    struct RibonValidatedImage kernel_image;
+    const struct RibonDirectLoadPlan *kernel_direct_load_plan;
     const char *handoff_format;
     uint32_t handoff_major;
     const char *handoff_artifact_format;
     uint64_t handoff_artifact_size;
     uint32_t handoff_artifact_sections;
-    enum RibonExecutableFormat kernel_format;
-    uint16_t kernel_machine;
     uint32_t kernel_load_segment_count;
     uint32_t kernel_load_plan_flags;
     uint64_t kernel_entry_point;
@@ -142,8 +145,9 @@ struct RibonBootTransaction {
     struct RibonBootSource source; /**< Frozen selected source descriptor다. */
     struct RibonBootTransactionInput input; /**< Borrowed caller-owned transaction buffers다. */
     struct RibonPayloadImage payload; /**< Source read 뒤 immutable payload view다. */
+    struct RibonValidatedImage validated_image; /**< Pointer-free image validation 결과다. */
     struct RibonBootPlan plan; /**< Prepared immutable boot plan이다. */
-    struct RibonEntryInvocation entry_invocation; /**< Protocol-owned sealed entry다. */
+    struct RibonTerminalRequest terminal_request; /**< Protocol-owned terminal requirement다. */
     struct RibonPreparedEntry prepared_entry; /**< Architecture-owned sealed entry다. */
     struct RibonBootFailureReceipt receipt; /**< Terminal failure receipt다. */
     uint64_t consumed_input_bytes; /**< Runtime source byte 소비량이다. */

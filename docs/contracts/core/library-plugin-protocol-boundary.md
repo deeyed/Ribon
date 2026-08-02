@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-27
+last_verified: 2026-08-02
 code_paths:
   - include/Ribon/core/
   - include/Ribon/boot/
@@ -108,9 +108,14 @@ Boot Protocol은 다음 operation을 제공한다.
 | `match` | protocol ID와 ABI 범위를 판별한다 |
 | `validate_components` | kernel, module, DTB, command line 역할을 검증한다 |
 | `select_image_formats` | 허용 image format plugin을 제한한다 |
-| `prepare_handoff` | caller-owned 고정 용량 buffer에 wire artifact를 생성한다 |
-| `prepare_entry_invocation` | OS 의미를 봉인한 argument와 architecture entry precondition을 반환한다 |
+| `prepare_handoff` | Direct protocol만 caller-owned 고정 용량 buffer에 wire artifact를 생성한다 |
+| `prepare_terminal` | Direct register invocation 또는 managed image requirement 중 하나를 봉인한다 |
 | `validate_confirmation` | OS-specific confirmation payload를 검증한다 |
+
+`RibonBootProtocol.terminal_execution`은 `DIRECT_ENTRY` 또는
+`FIRMWARE_MANAGED_IMAGE` 중 정확히 하나다. Direct protocol은 handoff capability와 callback을 가져야
+하고 managed protocol은 둘 다 가지면 안 된다. Managed request는 native provider handle을 포함하지
+않으며 direct entry storage가 전부 0이어야 한다.
 
 Protocol은 I/O, crypto, watchdog, update journal, firmware native service를 직접 호출하지
 않는다. 필요한 결과는 Boot Library가 검증한 immutable descriptor로 받는다.

@@ -71,12 +71,13 @@ static uint64_t parus_select_image_formats(void) {
 }
 
 /** @brief RPH1 artifact를 Parus entry register invocation으로 봉인한다. */
-static int parus_prepare_entry_invocation(
+static int parus_prepare_terminal(
     const struct RibonArchDescriptor *arch,
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
     const struct RibonHandoffArtifact *handoff,
-    struct RibonEntryInvocation *out) {
+    struct RibonTerminalRequest *out) {
+    struct RibonEntryInvocation *entry;
     enum RibonRegisterAbi register_abi;
     enum RibonEntryTranslationRequirement translation =
         RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE;
@@ -86,6 +87,12 @@ static int parus_prepare_entry_invocation(
         plan->kernel_runtime_entry_address == 0u) {
         return RIBON_PROTOCOL_STATUS_BAD_ARGUMENT;
     }
+    *out = (struct RibonTerminalRequest){
+        .size = sizeof(*out),
+        .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
+        .kind = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
+    };
+    entry = &out->direct_entry;
     switch (arch->id) {
     case RIBON_ARCHITECTURE_X86_64:
         register_abi = RIBON_REGISTER_ABI_X86_64_RDI_RSI_RDX_RCX;
@@ -98,11 +105,11 @@ static int parus_prepare_entry_invocation(
         translation = RIBON_ENTRY_TRANSLATION_DISABLED;
         break;
     default:
-        *out = (struct RibonEntryInvocation){0};
+        *out = (struct RibonTerminalRequest){0};
         return RIBON_PROTOCOL_STATUS_BAD_ENTRY_CONTRACT;
     }
-    *out = (struct RibonEntryInvocation){
-        .size = sizeof(*out),
+    *entry = (struct RibonEntryInvocation){
+        .size = sizeof(*entry),
         .abi_version = RIBON_ENTRY_INVOCATION_ABI_VERSION,
         .entry_address = plan->kernel_runtime_entry_address,
         .register_abi = register_abi,
@@ -132,7 +139,7 @@ static const struct RibonBootProtocolOps parus_ops = {
     .validate_components = parus_validate_components,
     .select_image_formats = parus_select_image_formats,
     .prepare_handoff = ribon_parus_build_rph1,
-    .prepare_entry_invocation = parus_prepare_entry_invocation,
+    .prepare_terminal = parus_prepare_terminal,
     .validate_boot_health = parus_validate_boot_health,
 };
 
@@ -141,6 +148,7 @@ static const struct RibonBootProtocol parus_protocol = {
     .abi_version = 1u,
     .id = "parus",
     .kernel_path = "kernel/kernel.elf",
+    .terminal_execution = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
     .expectations =
         RIBON_PROTOCOL_EXPECT_MEMORY_MAP |
         RIBON_PROTOCOL_EXPECT_KERNEL_IMAGE_LAYOUT |

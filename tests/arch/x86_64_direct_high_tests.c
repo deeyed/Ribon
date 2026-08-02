@@ -36,7 +36,7 @@ static int expect_u64(const char *name, uint64_t actual, uint64_t expected) {
     return 0;
 }
 
-static struct RibonLoadedPayload make_direct_payload(struct RibonLoadSegment *segments) {
+static struct RibonDirectLoadPlan make_direct_payload(struct RibonLoadSegment *segments) {
     segments[0] = (struct RibonLoadSegment){
         .file_size = 0x1000,
         .memory_size = 0x1000,
@@ -57,9 +57,9 @@ static struct RibonLoadedPayload make_direct_payload(struct RibonLoadSegment *se
         .alignment = TEST_LARGE_2M,
         .flags = RIBON_LOAD_SEGMENT_READ | RIBON_LOAD_SEGMENT_EXECUTE,
     };
-    return (struct RibonLoadedPayload){
-        .format = RIBON_EXECUTABLE_FORMAT_ELF64,
-        .machine = 62,
+    return (struct RibonDirectLoadPlan){
+        .size = sizeof(struct RibonDirectLoadPlan),
+        .abi_version = RIBON_DIRECT_LOAD_PLAN_ABI_VERSION,
         .segment_count = 2,
         .load_plan_flags =
             RIBON_LOAD_PLAN_HAS_HIGHER_HALF |
@@ -87,7 +87,7 @@ static struct RibonLoadedPayload make_direct_payload(struct RibonLoadSegment *se
 
 static int test_prepare_direct_high_tables(void) {
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload = make_direct_payload(segments);
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
     uint64_t tables[8u * TEST_ENTRIES];
     uint64_t *pml4 = tables;
@@ -145,7 +145,7 @@ static int test_prepare_direct_high_tables(void) {
 
 static int test_rejects_missing_direct_candidate(void) {
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload = make_direct_payload(segments);
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
     uint64_t tables[8u * TEST_ENTRIES];
     payload.load_plan_flags &= ~RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE;
@@ -168,7 +168,7 @@ static int test_rejects_missing_direct_candidate(void) {
 
 static int test_rejects_pdpt_crossing_range(void) {
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload = make_direct_payload(segments);
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
     uint64_t tables[8u * TEST_ENTRIES];
     payload.linked_virtual_end = TEST_HIGH_BASE + 0x40200000ull;

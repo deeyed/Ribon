@@ -5,11 +5,12 @@
 
 #include <Ribon/protocol/entry_contract.h>
 
-struct RibonLoadedPayload;
+struct RibonValidatedImage;
+struct RibonDirectLoadPlan;
 struct RibonPluginDescriptor;
 
 /** @brief Architecture operation table ABI다. */
-#define RIBON_ARCH_OPS_ABI_VERSION 3u
+#define RIBON_ARCH_OPS_ABI_VERSION 4u
 
 /** @brief Ribon architecture의 stable ID다. */
 enum RibonArchitectureId {
@@ -61,7 +62,7 @@ enum RibonArchDirectHighStatus {
 
 /** @brief Architecture operation capability다. */
 enum RibonArchCapability {
-    RIBON_ARCH_CAP_VALIDATE_PAYLOAD = 1ull << 0,
+    RIBON_ARCH_CAP_VALIDATE_DIRECT_LOAD = 1ull << 0,
     RIBON_ARCH_CAP_CACHE_SYNC = 1ull << 1,
     RIBON_ARCH_CAP_PRIVILEGE_NORMALIZE = 1ull << 2,
     RIBON_ARCH_CAP_DIRECT_HIGH_ENTRY = 1ull << 3,
@@ -94,9 +95,10 @@ struct RibonArchDirectHighHandoff {
 };
 
 /** @brief Loaded payload의 machine과 canonical address를 검증한다. */
-typedef int (*RibonArchValidatePayloadFn)(
+typedef int (*RibonArchValidateDirectLoadFn)(
     const struct RibonArchDescriptor *arch,
-    struct RibonLoadedPayload *payload);
+    const struct RibonValidatedImage *image,
+    struct RibonDirectLoadPlan *plan);
 
 /** @brief Data와 instruction view를 동기화한다. */
 typedef int (*RibonArchCacheSyncFn)(uint64_t address, uint64_t size);
@@ -105,11 +107,11 @@ typedef int (*RibonArchCacheSyncFn)(uint64_t address, uint64_t size);
 typedef int (*RibonArchNormalizePrivilegeFn)(void);
 
 /** @brief Direct-high page table page 상한을 계산한다. */
-typedef uint64_t (*RibonArchDirectHighPagesFn)(const struct RibonLoadedPayload *payload);
+typedef uint64_t (*RibonArchDirectHighPagesFn)(const struct RibonDirectLoadPlan *payload);
 
 /** @brief Caller-owned buffer에 direct-high entry state를 만든다. */
 typedef int (*RibonArchPrepareDirectHighFn)(
-    const struct RibonLoadedPayload *payload,
+    const struct RibonDirectLoadPlan *payload,
     uint64_t page_table_physical_address,
     void *page_table_buffer,
     uint64_t page_table_size,
@@ -140,7 +142,7 @@ struct RibonArchOps {
     uint32_t abi_version; /**< `RIBON_ARCH_OPS_ABI_VERSION`과 일치해야 한다. */
     uint64_t capabilities; /**< 제공 operation bitset이다. */
     const struct RibonArchDescriptor *descriptor; /**< Immutable architecture facts다. */
-    RibonArchValidatePayloadFn validate_payload; /**< Payload validator다. */
+    RibonArchValidateDirectLoadFn validate_direct_load; /**< Direct load validator다. */
     RibonArchCacheSyncFn cache_sync; /**< Cache synchronization callback이다. */
     RibonArchNormalizePrivilegeFn normalize_privilege; /**< Privilege callback이다. */
     RibonArchDirectHighPagesFn direct_high_page_table_pages; /**< Page budget callback이다. */
@@ -178,16 +180,17 @@ int ribon_arch_plugin_operations_are_valid(
     const struct RibonPluginDescriptor *descriptor);
 
 /** @brief Loaded payload의 공통 machine/canonical address 계약을 검사한다. */
-int ribon_arch_validate_loaded_payload(
+int ribon_arch_validate_direct_load(
     const struct RibonArchDescriptor *arch,
-    struct RibonLoadedPayload *payload);
+    const struct RibonValidatedImage *image,
+    struct RibonDirectLoadPlan *payload);
 
 /** @brief Direct-high page table에 필요한 page 수를 반환한다. */
-uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload *payload);
+uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonDirectLoadPlan *payload);
 
 /** @brief Caller-owned page table buffer에 direct-high entry state를 만든다. */
 int ribon_arch_prepare_direct_high_entry(
-    const struct RibonLoadedPayload *payload,
+    const struct RibonDirectLoadPlan *payload,
     uint64_t page_table_physical_address,
     void *page_table_buffer,
     uint64_t page_table_size,

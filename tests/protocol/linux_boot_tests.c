@@ -74,7 +74,9 @@ int main(void) {
     };
     struct RibonBootPlan plan = {
         .arch = &arch,
-        .kernel_format = RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64,
+        .kernel_image = {
+            .format = RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64,
+        },
         .kernel_runtime_entry_address = TEST_KERNEL_BASE,
         .kernel_runtime_load_base = TEST_KERNEL_BASE,
         .kernel_runtime_load_end = TEST_KERNEL_BASE + TEST_KERNEL_SIZE,
@@ -108,10 +110,11 @@ int main(void) {
     };
     struct RibonHandoffArtifact handoff;
     unsigned char output[512];
-    struct RibonEntryInvocation invocation;
+    struct RibonTerminalRequest terminal;
+    struct RibonValidatedImage validated;
     unsigned char image_bytes[128] = {0};
     struct RibonLoadSegment segment;
-    struct RibonLoadedPayload loaded = {
+    struct RibonDirectLoadPlan loaded = {
         .segments = &segment,
         .segment_capacity = 1u,
     };
@@ -128,19 +131,19 @@ int main(void) {
             &ribon_linux_protocol_plugin_descriptor) ||
         !ribon_image_plugin_operations_are_valid(
             &ribon_linux_aarch64_image_plugin_descriptor) ||
-        image->analyze(&payload, &loaded) != RIBON_LOADER_STATUS_OK ||
-        loaded.format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
+        image->analyze(&payload, &validated, &loaded) != RIBON_LOADER_STATUS_OK ||
+        validated.format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
         (loaded.load_plan_flags & RIBON_LOAD_PLAN_RELOCATABLE) == 0u ||
         protocol->ops->prepare_handoff(
             &plan, &environment, &memory_map,
             output, sizeof(output), &handoff) != RIBON_PROTOCOL_HANDOFF_STATUS_OK ||
         !contains(output, handoff.size, "linux,initrd-start") ||
         !contains(output, handoff.size, "linux,initrd-end") ||
-        protocol->ops->prepare_entry_invocation(
-            &arch, &plan, &environment, &handoff, &invocation) !=
+        protocol->ops->prepare_terminal(
+            &arch, &plan, &environment, &handoff, &terminal) !=
             RIBON_PROTOCOL_STATUS_OK ||
-        invocation.arguments[0] != (uint64_t)(uintptr_t)output ||
-        invocation.argument_count != 1u) {
+        terminal.direct_entry.arguments[0] != (uint64_t)(uintptr_t)output ||
+        terminal.direct_entry.argument_count != 1u) {
         fputs("linux_boot_tests: positive contract failed\n", stderr);
         return 1;
     }
@@ -183,7 +186,7 @@ int main(void) {
         return 1;
     }
     image_bytes[56] = 0u;
-    if (image->analyze(&payload, &loaded) == RIBON_LOADER_STATUS_OK) {
+    if (image->analyze(&payload, &validated, &loaded) == RIBON_LOADER_STATUS_OK) {
         fputs("linux_boot_tests: wrong image class accepted\n", stderr);
         return 1;
     }

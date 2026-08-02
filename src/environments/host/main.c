@@ -65,7 +65,7 @@ static void print_plan(
     printf("environment=%s\n", ribon_environment_name(plan->environment));
     printf("arch=%s\n", plan->arch->canonical_name);
     printf("protocol=%s\n", plan->protocol_id);
-    printf("image-format=%s\n", ribon_executable_format_name(plan->kernel_format));
+    printf("image-format=%s\n", ribon_executable_format_name(plan->kernel_image.format));
     printf("kernel=%s\n", plan->kernel_path);
     printf("kernel-source=%s\n", plan->kernel_source_name);
     printf("memory-regions=%u\n", plan->memory_region_count);
@@ -100,11 +100,12 @@ int main(int argc, char **argv) {
     struct RibonBootEnvironment environment;
     struct HostPayloadBuffer kernel_buffer;
     struct RibonLoadSegment kernel_segments[16];
-    struct RibonLoadedPayload kernel_layout = {
+    struct RibonDirectLoadPlan kernel_layout = {
         .segments = kernel_segments,
         .segment_capacity =
             (uint32_t)(sizeof(kernel_segments) / sizeof(kernel_segments[0])),
     };
+    struct RibonValidatedImage validated_image;
     struct RibonMemoryRegion normalized_regions[32];
     struct RibonMutableMemoryMap normalized_map = {
         .regions = normalized_regions,
@@ -200,7 +201,8 @@ int main(int argc, char **argv) {
             .payload_buffer = kernel_buffer.data,
             .payload_buffer_capacity = kernel_buffer.size,
             .source_name = kernel_path,
-            .kernel_layout = &kernel_layout,
+            .validated_image = &validated_image,
+            .direct_load_plan = &kernel_layout,
             .handoff_buffer = handoff_buffer,
             .handoff_buffer_capacity = sizeof(handoff_buffer),
             .handoff_artifact = &handoff,

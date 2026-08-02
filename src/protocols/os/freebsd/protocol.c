@@ -41,38 +41,31 @@ static uint64_t freebsd_select_image_formats(void) {
     return RIBON_IMAGE_FORMAT_MASK(RIBON_EXECUTABLE_FORMAT_PE_COFF);
 }
 
-/** @brief StartImage transport가 없으면 FreeBSD handoff를 fail-closed한다. */
-static int freebsd_prepare_handoff(
-    const struct RibonBootPlan *plan,
-    const struct RibonBootEnvironment *environment,
-    const struct RibonMutableMemoryMap *normalized_memory_map,
-    void *buffer,
-    uint64_t capacity,
-    struct RibonHandoffArtifact *out) {
-    (void)plan;
-    (void)environment;
-    (void)normalized_memory_map;
-    (void)buffer;
-    (void)capacity;
-    (void)out;
-    return RIBON_PROTOCOL_HANDOFF_STATUS_UNSUPPORTED;
-}
-
-/** @brief Direct transfer로 대체할 수 없는 EFI StartImage invocation을 거부한다. */
-static int freebsd_prepare_entry_invocation(
+/** @brief 검증된 PE/COFF를 firmware-managed terminal requirement로 봉인한다. */
+static int freebsd_prepare_terminal(
     const struct RibonArchDescriptor *arch,
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
     const struct RibonHandoffArtifact *handoff,
-    struct RibonEntryInvocation *out) {
-    (void)arch;
-    (void)plan;
-    (void)environment;
-    (void)handoff;
-    if (out != 0) {
-        *out = (struct RibonEntryInvocation){0};
+    struct RibonTerminalRequest *out) {
+    if (arch == 0 || plan == 0 || environment == 0 || out == 0 || handoff != 0 ||
+        environment->kind != RIBON_ENVIRONMENT_UEFI ||
+        plan->kernel_image.format != RIBON_EXECUTABLE_FORMAT_PE_COFF ||
+        (plan->kernel_image.execution_support &
+         RIBON_IMAGE_EXECUTION_FIRMWARE_MANAGED) == 0u ||
+        plan->kernel_image.machine != arch->pe_coff_machine ||
+        plan->kernel_direct_load_plan != 0) {
+        if (out != 0) {
+            *out = (struct RibonTerminalRequest){0};
+        }
+        return RIBON_PROTOCOL_STATUS_BAD_ENTRY_CONTRACT;
     }
-    return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
+    *out = (struct RibonTerminalRequest){
+        .size = sizeof(*out),
+        .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
+        .kind = RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE,
+    };
+    return RIBON_PROTOCOL_STATUS_OK;
 }
 
 /** @brief 미지원 FreeBSD runtime confirmation을 명시적으로 거부한다. */
@@ -88,8 +81,8 @@ static const struct RibonBootProtocolOps freebsd_ops = {
     .match = freebsd_match,
     .validate_components = freebsd_validate_components,
     .select_image_formats = freebsd_select_image_formats,
-    .prepare_handoff = freebsd_prepare_handoff,
-    .prepare_entry_invocation = freebsd_prepare_entry_invocation,
+    .prepare_handoff = 0,
+    .prepare_terminal = freebsd_prepare_terminal,
     .validate_boot_health = freebsd_validate_boot_health,
 };
 
@@ -98,10 +91,11 @@ static const struct RibonBootProtocol freebsd_protocol = {
     .abi_version = 1u,
     .id = "freebsd",
     .kernel_path = "freebsd/loader.efi",
+    .terminal_execution = RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE,
     .expectations = 0u,
     .supported_modes = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
-    .handoff_format = "efi-start-image-required",
-    .handoff_major = 1u,
+    .handoff_format = 0,
+    .handoff_major = 0u,
     .ops = &freebsd_ops,
 };
 
@@ -115,7 +109,6 @@ const struct RibonPluginDescriptor ribon_freebsd_protocol_plugin_descriptor = {
     .id = "protocol.freebsd",
     .provides =
         RIBON_CAP_BOOT_PROTOCOL |
-        RIBON_CAP_HANDOFF |
         RIBON_CAP_ENTRY_CONTRACT |
         RIBON_CAP_BOOT_CONFIRMATION,
     .requires = RIBON_CAP_IMAGE_PE_COFF,

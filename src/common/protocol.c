@@ -1,6 +1,38 @@
 #include <Ribon/protocol/protocol.h>
 #include <Ribon/plugin/descriptor.h>
 
+/** @brief Entry invocation이 비어 있는지 allocation 없이 검사한다. */
+static int terminal_direct_entry_is_zero(const struct RibonEntryInvocation *entry) {
+    if (entry->size != 0u || entry->abi_version != 0u || entry->entry_address != 0u ||
+        entry->register_abi != 0 || entry->argument_count != 0u ||
+        entry->interrupts != 0 || entry->privilege != 0 || entry->translation != 0) {
+        return 0;
+    }
+    for (uint32_t index = 0u; index < RIBON_ENTRY_ARGUMENT_LIMIT; ++index) {
+        if (entry->arguments[index] != 0u) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/** @brief Terminal request의 kind별 불변식을 검사한다. */
+int ribon_terminal_request_is_valid(const struct RibonTerminalRequest *request) {
+    if (request == 0 || request->size != sizeof(*request) ||
+        request->abi_version != RIBON_TERMINAL_REQUEST_ABI_VERSION ||
+        request->reserved != 0u) {
+        return 0;
+    }
+    if (request->kind == RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE) {
+        return terminal_direct_entry_is_zero(&request->direct_entry);
+    }
+    return request->kind == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+           request->direct_entry.size == sizeof(request->direct_entry) &&
+           request->direct_entry.abi_version == RIBON_ENTRY_INVOCATION_ABI_VERSION &&
+           request->direct_entry.entry_address != 0u &&
+           request->direct_entry.argument_count <= RIBON_ENTRY_ARGUMENT_LIMIT;
+}
+
 /** @brief Protocol descriptor와 callback 완전성을 검사한다. */
 int ribon_boot_protocol_is_valid(const struct RibonBootProtocol *protocol) {
     uint64_t formats;
@@ -12,17 +44,25 @@ int ribon_boot_protocol_is_valid(const struct RibonBootProtocol *protocol) {
         protocol->kernel_path == 0 ||
         protocol->supported_modes == 0u ||
         (protocol->supported_modes & ~RIBON_MODE_MASK_ALL) != 0u ||
-        protocol->handoff_format == 0 ||
-        protocol->handoff_major == 0u ||
+        (protocol->terminal_execution != RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+         protocol->terminal_execution != RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE) ||
         protocol->ops == 0 ||
         protocol->ops->size != sizeof(*protocol->ops) ||
         protocol->ops->abi_version != RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION ||
         protocol->ops->match == 0 ||
         protocol->ops->validate_components == 0 ||
         protocol->ops->select_image_formats == 0 ||
-        protocol->ops->prepare_handoff == 0 ||
-        protocol->ops->prepare_entry_invocation == 0 ||
+        protocol->ops->prepare_terminal == 0 ||
         protocol->ops->validate_boot_health == 0) {
+        return 0;
+    }
+    if (protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY) {
+        if (protocol->handoff_format == 0 || protocol->handoff_major == 0u ||
+            protocol->ops->prepare_handoff == 0) {
+            return 0;
+        }
+    } else if (protocol->handoff_format != 0 || protocol->handoff_major != 0u ||
+               protocol->ops->prepare_handoff != 0) {
         return 0;
     }
     formats = protocol->ops->select_image_formats();
@@ -52,20 +92,23 @@ int ribon_boot_protocol_validate_boot_health(
 int ribon_protocol_plugin_operations_are_valid(
     const struct RibonPluginDescriptor *descriptor) {
     const struct RibonBootProtocol *protocol;
-    const uint64_t required =
+    uint64_t required =
         RIBON_CAP_BOOT_PROTOCOL |
-        RIBON_CAP_HANDOFF |
         RIBON_CAP_ENTRY_CONTRACT |
         RIBON_CAP_BOOT_CONFIRMATION;
     if (descriptor == 0 ||
         descriptor->kind != RIBON_PLUGIN_KIND_BOOT_PROTOCOL ||
         descriptor->operations_size != sizeof(struct RibonBootProtocol) ||
         descriptor->operations_abi == 0u ||
-        descriptor->provides != required) {
+        descriptor->operations == 0) {
         return 0;
     }
     protocol = (const struct RibonBootProtocol *)descriptor->operations;
+    if (protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY) {
+        required |= RIBON_CAP_HANDOFF;
+    }
     return ribon_boot_protocol_is_valid(protocol) &&
+           descriptor->provides == required &&
            protocol->abi_version == descriptor->operations_abi &&
            protocol->supported_modes == descriptor->mode_mask;
 }

@@ -52,7 +52,24 @@ int ribon_image_format_ops_are_valid(const struct RibonImageFormatOps *ops) {
            ops->size == sizeof(*ops) &&
            ops->abi_version == RIBON_IMAGE_FORMAT_OPS_ABI_VERSION &&
            ops->format != RIBON_EXECUTABLE_FORMAT_UNKNOWN &&
+           ops->execution_support != 0u &&
+           (ops->execution_support & ~RIBON_IMAGE_EXECUTION_ALL) == 0u &&
            ops->analyze != 0;
+}
+
+/** @brief Pointer-free validation artifact의 shape와 known bit를 검사한다. */
+int ribon_validated_image_is_valid(const struct RibonValidatedImage *image) {
+    return image != 0 && image->size == sizeof(*image) &&
+           image->abi_version == RIBON_VALIDATED_IMAGE_ABI_VERSION &&
+           image->format != RIBON_EXECUTABLE_FORMAT_UNKNOWN && image->machine != 0u &&
+           image->reserved == 0u && image->execution_support != 0u &&
+           (image->execution_support & ~RIBON_IMAGE_EXECUTION_ALL) == 0u &&
+           image->image_size != 0u;
+}
+
+/** @brief Direct load plan의 ABI와 caller-owned storage shape를 검사한다. */
+int ribon_direct_load_plan_has_storage(const struct RibonDirectLoadPlan *plan) {
+    return plan != 0 && plan->segments != 0 && plan->segment_capacity != 0u;
 }
 
 /** @brief Image-format descriptor와 capability ownership을 검사한다. */

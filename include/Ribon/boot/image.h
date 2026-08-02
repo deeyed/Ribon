@@ -6,7 +6,13 @@
 struct RibonPluginDescriptor;
 
 /** @brief Image-format operation table ABI다. */
-#define RIBON_IMAGE_FORMAT_OPS_ABI_VERSION 2u
+#define RIBON_IMAGE_FORMAT_OPS_ABI_VERSION 3u
+
+/** @brief Validated image artifact ABI다. */
+#define RIBON_VALIDATED_IMAGE_ABI_VERSION 1u
+
+/** @brief Direct load plan ABI다. */
+#define RIBON_DIRECT_LOAD_PLAN_ABI_VERSION 1u
 
 /** @brief Ribon image format의 stable ID다. */
 enum RibonExecutableFormat {
@@ -15,6 +21,15 @@ enum RibonExecutableFormat {
     RIBON_EXECUTABLE_FORMAT_PE_COFF = 2,
     RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 = 3,
 };
+
+/** @brief Image validation이 허용하는 terminal execution model bit다. */
+enum RibonImageExecutionSupport {
+    RIBON_IMAGE_EXECUTION_DIRECT_ENTRY = 1u << 0,
+    RIBON_IMAGE_EXECUTION_FIRMWARE_MANAGED = 1u << 1,
+};
+
+/** @brief 알려진 image execution support bit 전체다. */
+#define RIBON_IMAGE_EXECUTION_ALL ((1u << 2) - 1u)
 
 /** @brief Image format을 protocol allowlist bit로 변환한다. */
 #define RIBON_IMAGE_FORMAT_MASK(format) (1ull << (uint32_t)(format))
@@ -75,10 +90,22 @@ struct RibonLoadSegment {
     uint32_t flags;
 };
 
-/** @brief Image-format plugin이 caller-owned segment array에 만든 load plan이다. */
-struct RibonLoadedPayload {
-    enum RibonExecutableFormat format;
-    uint16_t machine;
+/** @brief Parser가 image bytes 자체에서 독립적으로 검증한 pointer-free artifact다. */
+struct RibonValidatedImage {
+    uint32_t size; /**< Descriptor byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_VALIDATED_IMAGE_ABI_VERSION`이다. */
+    enum RibonExecutableFormat format; /**< 검증된 executable format이다. */
+    uint16_t machine; /**< 검증된 architecture machine 값이다. */
+    uint16_t reserved; /**< 반드시 0이다. */
+    uint32_t execution_support; /**< 허용 terminal execution model bitset이다. */
+    uint64_t image_size; /**< 검증한 exact candidate byte 수다. */
+    uint64_t validation_receipt; /**< Format-owned deterministic validation class다. */
+};
+
+/** @brief Image-format plugin이 caller-owned segment array에 만든 direct load plan이다. */
+struct RibonDirectLoadPlan {
+    uint32_t size; /**< Descriptor byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_DIRECT_LOAD_PLAN_ABI_VERSION`이다. */
     uint32_t segment_count;
     uint32_t load_plan_flags;
     uint64_t entry_point;
@@ -99,18 +126,26 @@ struct RibonLoadedPayload {
     uint32_t segment_capacity;
 };
 
-/** @brief Image bytes를 architecture-neutral load plan으로 분석한다. */
+/** @brief Image bytes를 validation artifact와 optional direct load plan으로 분석한다. */
 typedef int (*RibonImageAnalyzeFn)(
     const struct RibonPayloadImage *image,
-    struct RibonLoadedPayload *out);
+    struct RibonValidatedImage *validated_out,
+    struct RibonDirectLoadPlan *direct_plan_out);
 
 /** @brief 한 image-format plugin의 typed operation table이다. */
 struct RibonImageFormatOps {
     uint32_t size; /**< Operation table byte 크기다. */
     uint32_t abi_version; /**< `RIBON_IMAGE_FORMAT_OPS_ABI_VERSION`과 일치해야 한다. */
     enum RibonExecutableFormat format; /**< 이 parser가 소유하는 format이다. */
+    uint32_t execution_support; /**< Parser가 검증할 수 있는 terminal model이다. */
     RibonImageAnalyzeFn analyze; /**< Bounds-checked analyzer다. */
 };
+
+/** @brief Pointer-free validation artifact의 shape와 known bit를 검사한다. */
+int ribon_validated_image_is_valid(const struct RibonValidatedImage *image);
+
+/** @brief Direct load plan의 ABI와 caller-owned storage shape를 검사한다. */
+int ribon_direct_load_plan_has_storage(const struct RibonDirectLoadPlan *plan);
 
 /** @brief Executable format의 안정적인 이름을 반환한다. */
 const char *ribon_executable_format_name(enum RibonExecutableFormat format);

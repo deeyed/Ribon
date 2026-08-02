@@ -36,7 +36,7 @@ int main(void) {
         .version_major = 1u,
         .section_count = 1u,
     };
-    struct RibonEntryInvocation invocation;
+    struct RibonTerminalRequest terminal;
     struct RibonBootProtocol invalid;
     struct RibonBootProtocolOps invalid_ops;
     struct RibonPluginDescriptor invalid_plugin;
@@ -45,15 +45,17 @@ int main(void) {
         protocol->ops->match(&manifest) != RIBON_PROTOCOL_STATUS_OK ||
         protocol->ops->validate_components(&manifest) !=
             RIBON_PROTOCOL_STATUS_OK ||
-        protocol->ops->prepare_entry_invocation(
+        protocol->ops->prepare_terminal(
             ribon_arch_selected(),
             &plan,
             &environment,
             &handoff,
-            &invocation) != RIBON_PROTOCOL_STATUS_OK ||
-        invocation.entry_address != plan.kernel_runtime_entry_address ||
-        invocation.argument_count != 1u ||
-        invocation.arguments[0] != (uint64_t)(uintptr_t)handoff.data) {
+            &terminal) != RIBON_PROTOCOL_STATUS_OK ||
+        !ribon_terminal_request_is_valid(&terminal) ||
+        terminal.kind != RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ||
+        terminal.direct_entry.entry_address != plan.kernel_runtime_entry_address ||
+        terminal.direct_entry.argument_count != 1u ||
+        terminal.direct_entry.arguments[0] != (uint64_t)(uintptr_t)handoff.data) {
         fputs("contract_tests: valid synthetic protocol failed\n", stderr);
         return 1;
     }

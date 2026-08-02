@@ -116,7 +116,7 @@ static int bootmgr_module_authority_is_exact(
 static int bootmgr_place_payload(
     const struct RibonPayloadPlacementServiceOperations *placement,
     const struct RibonPayloadImage *payload,
-    struct RibonLoadedPayload *layout) {
+    struct RibonDirectLoadPlan *layout) {
     const uint64_t window_end =
         placement->physical_base + placement->physical_size;
     for (uint32_t index = 0u; index < layout->segment_count; ++index) {
@@ -193,7 +193,8 @@ _Noreturn void ribon_raw_fdt_boot_main(
     struct RibonCoreContext core;
     struct RibonBootTransaction transaction;
     struct RibonBootSource source;
-    struct RibonLoadedPayload layout;
+    struct RibonDirectLoadPlan layout;
+    struct RibonValidatedImage validated_image;
     struct RibonMutableMemoryMap normalized;
     struct RibonHandoffArtifact handoff;
     struct RibonBootEnvironmentPersistentInputs persistent_inputs;
@@ -366,7 +367,7 @@ _Noreturn void ribon_raw_fdt_boot_main(
         .source_id = 0u,
         .size = ribon_embedded_payload_size,
     };
-    layout = (struct RibonLoadedPayload){
+    layout = (struct RibonDirectLoadPlan){
         .segments = load_segments,
         .segment_capacity = RIBON_BOOTMGR_MAX_LOAD_SEGMENTS,
     };
@@ -384,7 +385,8 @@ _Noreturn void ribon_raw_fdt_boot_main(
         .payload_buffer = (void *)ribon_embedded_payload,
         .payload_buffer_capacity = ribon_embedded_payload_size,
         .source_name = "boot/payload",
-        .kernel_layout = &layout,
+        .validated_image = &validated_image,
+        .direct_load_plan = &layout,
         .handoff_buffer = handoff_buffer,
         .handoff_buffer_capacity = sizeof(handoff_buffer),
         .handoff_artifact = &handoff,

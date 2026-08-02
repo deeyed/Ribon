@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 /** @brief Ribon Core와 plugin descriptor ABI major다. */
-#define RIBON_CORE_ABI_VERSION 5u
+#define RIBON_CORE_ABI_VERSION 6u
 
 /** @brief 한 product registry가 허용하는 plugin 수의 고정 상한이다. */
 #define RIBON_PLUGIN_REGISTRY_LIMIT 64u

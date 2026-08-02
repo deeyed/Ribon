@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-08-02
 code_paths:
   - src/arch/
   - src/protocols/
@@ -23,6 +23,10 @@ supersedes:
 
 Permanent OS address space는 booted OS가 소유한다. Ribon은 payload layout을 검증하고
 entry까지 실행 연속성을 유지하는 최소 architecture bridge만 소유한다.
+
+이 계약의 register bridge는 `DIRECT_ENTRY`에만 적용된다. `FIRMWARE_MANAGED_IMAGE`는 firmware image
+service가 native entry contract를 소유하며 Ribon architecture backend가 fake register invocation을
+만들지 않는다.
 
 ## Ribon 책임
 

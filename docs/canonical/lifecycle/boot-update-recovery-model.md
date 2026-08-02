@@ -2,7 +2,7 @@
 doc_type: canonical
 status: accepted
 authority: normative
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 code_paths:
   - include/Ribon/boot/plan.h
   - include/Ribon/policy/ribos.h
@@ -42,8 +42,13 @@ CAPTURE
   -> LOAD_IMAGE
   -> PREPARE_PROTOCOL
   -> COMMIT_ATTEMPT
-  -> QUIESCE_ENVIRONMENT
-  -> TRANSFER
+  -> terminal suffix
+
+DIRECT_ENTRY suffix:
+  COMMIT_ATTEMPT -> final handoff refresh -> QUIESCE_ENVIRONMENT -> TRANSFER
+
+FIRMWARE_MANAGED_IMAGE suffix:
+  COMMIT_ATTEMPT -> EXECUTE_TERMINAL(provider) -> child exit or no return
 ```
 
 `RibonBootTransaction`은 caller-owned object이며, `CAPTURE`에서만 초기화할 수 있다.
@@ -61,7 +66,8 @@ CAPTURE
 | `LOAD_IMAGE` | 선택 source의 bounded read | `FAILED` |
 | `PREPARE_PROTOCOL` | caller-owned handoff buffer write | `FAILED` |
 | `COMMIT_ATTEMPT` | metadata write와 flush | `FAILED` |
-| `QUIESCE_ENVIRONMENT` | 선택된 environment closure | `FAILED` |
+| `QUIESCE_ENVIRONMENT` | Direct path의 선택된 environment closure | `FAILED` |
+| `EXECUTE_TERMINAL` | Managed path의 environment-owned image service | `FAILED` 또는 반환하지 않음 |
 | `TRANSFER` | terminal architecture entry | 반환하지 않음 |
 
 ### Capture
@@ -124,8 +130,12 @@ action 재사용은 허용하지 않는다.
 
 ### Prepare protocol
 
-Boot Protocol은 검증된 component plan으로 handoff와 entry contract를 생성한다. Protocol
-실패를 다른 protocol의 입력으로 재해석하지 않는다.
+Boot Protocol은 검증된 component plan으로 terminal request를 생성한다. Direct protocol만
+handoff와 register entry contract를 만들며 managed protocol은 direct plan, handoff와 register
+invocation을 만들지 않는다. Protocol 실패를 다른 protocol의 입력으로 재해석하지 않는다.
+
+Image validation artifact는 format, machine, exact byte extent와 허용 execution model을 소유한다.
+Direct placement plan은 별도 caller-owned object이며 managed path에는 존재하지 않는다.
 
 ### Commit
 
@@ -133,6 +143,13 @@ Boot Protocol은 검증된 component plan으로 handoff와 entry contract를 생
 storage-flush authority의 durability barrier가 성공한 뒤에만 완료된다. Partial write,
 write failure, flush failure, deadline expiry는 모두 terminal receipt를 남기고 transfer를
 금지한다. Commit 뒤 source 선택을 바꾸려면 명시적인 failure transition을 수행한다.
+
+### Terminal suffix
+
+`DIRECT_ENTRY`는 architecture backend가 준비한 entry만 사용한다. `FIRMWARE_MANAGED_IMAGE`는
+environment-owned typed provider가 살아 있는 동안 실행하며 native provider pointer를 Core나 Protocol에
+노출하지 않는다. Managed request를 direct quiesce/transfer로 변환하지 않는다. Provider 부재와 child의
+예상 밖 반환은 `EXECUTE_TERMINAL` failure receipt를 남긴다.
 
 ### Quiesce
 
@@ -148,7 +165,7 @@ Closure callback은 bounded non-blocking operation이어야 한다. Closure는 t
 ### Transfer
 
 Architecture backend는 cache와 privilege state를 정규화하고 protocol entry ABI를
-적용한다. Transfer는 반환하지 않는다.
+적용한다. 이 단계는 `DIRECT_ENTRY`에만 존재하며 반환하지 않는다.
 
 ## Mode product
 

@@ -29,13 +29,13 @@ const struct RibonArchDescriptor *ribon_arch_selected(void) {
 }
 
 /** @brief 미지원 RISC-V direct-high bridge에 대해 0 page를 반환한다. */
-uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload *payload) {
+uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonDirectLoadPlan *payload) {
     (void)payload;
     return 0;
 }
 
 int ribon_arch_prepare_direct_high_entry(
-    const struct RibonLoadedPayload *payload,
+    const struct RibonDirectLoadPlan *payload,
     uint64_t page_table_physical_address,
     void *page_table_buffer,
     uint64_t page_table_size,
@@ -130,13 +130,13 @@ static const struct RibonArchOps riscv64_ops = {
     .size = sizeof(riscv64_ops),
     .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
     .capabilities =
-        RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
+        RIBON_ARCH_CAP_VALIDATE_DIRECT_LOAD |
         RIBON_ARCH_CAP_CACHE_SYNC |
         RIBON_ARCH_CAP_ENTRY_BRIDGE |
         RIBON_ARCH_CAP_HALT |
         RIBON_ARCH_CAP_MONOTONIC_COUNTER,
     .descriptor = &riscv64_arch,
-    .validate_payload = ribon_arch_validate_loaded_payload,
+    .validate_direct_load = ribon_arch_validate_direct_load,
     .cache_sync = riscv64_cache_sync,
     .normalize_privilege = 0,
     .direct_high_page_table_pages = 0,

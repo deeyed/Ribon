@@ -133,10 +133,12 @@ static uint64_t build_elf64(
     return image_size;
 }
 
+static struct RibonValidatedImage analyzed_image;
+
 static int analyze_image(
     const unsigned char *image,
     uint64_t image_size,
-    struct RibonLoadedPayload *out,
+    struct RibonDirectLoadPlan *out,
     struct RibonLoadSegment *segments,
     uint32_t segment_capacity) {
     const struct RibonPayloadImage payload = {
@@ -151,7 +153,8 @@ static int analyze_image(
     const struct RibonImageFormatOps *ops =
         (const struct RibonImageFormatOps *)
             ribon_elf64_image_plugin_descriptor.operations;
-    return ops->analyze(&payload, out);
+    analyzed_image = (struct RibonValidatedImage){0};
+    return ops->analyze(&payload, &analyzed_image, out);
 }
 
 static int expect_status(const char *name, int actual, int expected) {
@@ -184,7 +187,7 @@ static int expect_u32(const char *name, uint32_t actual, uint32_t expected) {
 static int test_higher_half_load_plan(void) {
     unsigned char image[ELF_TEST_BUFFER_SIZE];
     struct RibonLoadSegment segments[4];
-    struct RibonLoadedPayload payload;
+    struct RibonDirectLoadPlan payload;
     const struct TestElfSegment fixture[] = {
         {
             .type = 1,
@@ -201,7 +204,7 @@ static int test_higher_half_load_plan(void) {
         build_elf64(image, sizeof(image), ELF_TEST_MACHINE_X86_64, ELF_TEST_HIGH_BASE + 0x78, fixture, 1);
     int status = analyze_image(image, image_size, &payload, segments, 4);
     if (status == RIBON_LOADER_STATUS_OK &&
-        ribon_arch_validate_loaded_payload(&kX86_64Arch, &payload) !=
+        ribon_arch_validate_direct_load(&kX86_64Arch, &analyzed_image, &payload) !=
             RIBON_ARCH_OPERATION_OK) {
         status = RIBON_LOADER_STATUS_UNSUPPORTED;
     }
@@ -238,7 +241,7 @@ static int test_higher_half_load_plan(void) {
 static int test_aarch64_machine_success(void) {
     unsigned char image[ELF_TEST_BUFFER_SIZE];
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload;
+    struct RibonDirectLoadPlan payload;
     const struct TestElfSegment fixture[] = {
         {
             .type = 1,
@@ -255,12 +258,12 @@ static int test_aarch64_machine_success(void) {
         build_elf64(image, sizeof(image), ELF_TEST_MACHINE_AARCH64, 0x400078, fixture, 1);
     int status = analyze_image(image, image_size, &payload, segments, 2);
     if (status == RIBON_LOADER_STATUS_OK &&
-        ribon_arch_validate_loaded_payload(&kAArch64Arch, &payload) !=
+        ribon_arch_validate_direct_load(&kAArch64Arch, &analyzed_image, &payload) !=
             RIBON_ARCH_OPERATION_OK) {
         status = RIBON_LOADER_STATUS_UNSUPPORTED;
     }
     int failures = expect_status("aarch64 status", status, RIBON_LOADER_STATUS_OK);
-    failures += expect_u32("aarch64 machine", payload.machine, ELF_TEST_MACHINE_AARCH64);
+    failures += expect_u32("aarch64 machine", analyzed_image.machine, ELF_TEST_MACHINE_AARCH64);
     failures += expect_u64("aarch64 entry load", payload.entry_load_address, 0x400078);
     return failures;
 }
@@ -268,7 +271,7 @@ static int test_aarch64_machine_success(void) {
 static int test_machine_mismatch(void) {
     unsigned char image[ELF_TEST_BUFFER_SIZE];
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload;
+    struct RibonDirectLoadPlan payload;
     const struct TestElfSegment fixture[] = {
         {
             .type = 1,
@@ -287,7 +290,7 @@ static int test_machine_mismatch(void) {
     int failures = expect_status("foreign machine parses", status, RIBON_LOADER_STATUS_OK);
     failures += expect_status(
         "machine mismatch validator",
-        ribon_arch_validate_loaded_payload(&kX86_64Arch, &payload),
+        ribon_arch_validate_direct_load(&kX86_64Arch, &analyzed_image, &payload),
         RIBON_ARCH_OPERATION_INVALID_PAYLOAD);
     return failures;
 }
@@ -295,7 +298,7 @@ static int test_machine_mismatch(void) {
 static int test_non_canonical_entry(void) {
     unsigned char image[ELF_TEST_BUFFER_SIZE];
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload;
+    struct RibonDirectLoadPlan payload;
     const struct TestElfSegment fixture[] = {
         {
             .type = 1,
@@ -314,7 +317,7 @@ static int test_non_canonical_entry(void) {
     int failures = expect_status("non-canonical parses", status, RIBON_LOADER_STATUS_OK);
     failures += expect_status(
         "non-canonical validator",
-        ribon_arch_validate_loaded_payload(&kX86_64Arch, &payload),
+        ribon_arch_validate_direct_load(&kX86_64Arch, &analyzed_image, &payload),
         RIBON_ARCH_OPERATION_INVALID_PAYLOAD);
     return failures;
 }
@@ -322,7 +325,7 @@ static int test_non_canonical_entry(void) {
 static int test_overlapping_segments(void) {
     unsigned char image[ELF_TEST_BUFFER_SIZE];
     struct RibonLoadSegment segments[4];
-    struct RibonLoadedPayload payload;
+    struct RibonDirectLoadPlan payload;
     const struct TestElfSegment fixture[] = {
         {
             .type = 1,
@@ -353,7 +356,7 @@ static int test_overlapping_segments(void) {
 static int test_malformed_segment(void) {
     unsigned char image[ELF_TEST_BUFFER_SIZE];
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload;
+    struct RibonDirectLoadPlan payload;
     const struct TestElfSegment fixture[] = {
         {
             .type = 1,
@@ -374,7 +377,7 @@ static int test_malformed_segment(void) {
 static int test_misaligned_segment(void) {
     unsigned char image[ELF_TEST_BUFFER_SIZE];
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload payload;
+    struct RibonDirectLoadPlan payload;
     const struct TestElfSegment fixture[] = {
         {
             .type = 1,

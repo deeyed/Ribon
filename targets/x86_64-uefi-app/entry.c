@@ -103,7 +103,8 @@ EFI_STATUS EFIAPI efi_main(
     struct RibonCoreContext core;
     struct RibonBootTransaction transaction;
     struct RibonBootSource source;
-    struct RibonLoadedPayload layout = {
+    struct RibonValidatedImage validated_image;
+    struct RibonDirectLoadPlan layout = {
         .segments = load_segments,
         .segment_capacity = RIBON_UEFI_SEGMENT_CAPACITY,
     };
@@ -257,7 +258,8 @@ EFI_STATUS EFIAPI efi_main(
             .payload_buffer = payload_bytes,
             .payload_buffer_capacity = sizeof(payload_bytes),
             .source_name = selected_config->kernel_path,
-            .kernel_layout = &layout,
+            .validated_image = &validated_image,
+            .direct_load_plan = &layout,
             .handoff_buffer = handoff_buffer,
             .handoff_buffer_capacity = sizeof(handoff_buffer),
             .handoff_artifact = &handoff,

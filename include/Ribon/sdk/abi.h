@@ -7,7 +7,7 @@
 #define RIBON_SDK_ABI_MAGIC 0x52425341u
 
 /** @brief External package contract와 host harness ABI version이다. */
-#define RIBON_SDK_ABI_VERSION 4u
+#define RIBON_SDK_ABI_VERSION 5u
 
 /** @brief 설치된 header와 세 library가 공유하는 ABI tuple이다. */
 struct RibonSdkAbiDescriptor {

@@ -83,30 +83,21 @@ static int ribon_ranges_overlap(uint64_t lhs_base, uint64_t lhs_end, uint64_t rh
 }
 
 /** @brief Caller-owned load plan을 실패 안전한 empty state로 초기화한다. */
-static void ribon_loaded_payload_reset(struct RibonLoadedPayload *out) {
-    out->format = RIBON_EXECUTABLE_FORMAT_UNKNOWN;
-    out->machine = 0;
-    out->segment_count = 0;
-    out->load_plan_flags = 0;
-    out->entry_point = 0;
-    out->entry_load_address = 0;
-    out->runtime_entry_address = 0;
-    out->load_base = 0;
-    out->load_end = 0;
-    out->runtime_load_base = 0;
-    out->runtime_load_end = 0;
-    out->memory_size = 0;
-    out->linked_virtual_base = 0;
-    out->linked_virtual_end = 0;
-    out->linked_physical_base = 0;
-    out->linked_physical_end = 0;
-    out->high_entry_virtual_address = 0;
-    out->high_entry_load_address = 0;
+static void ribon_direct_load_plan_reset(struct RibonDirectLoadPlan *out) {
+    struct RibonLoadSegment *segments = out->segments;
+    const uint32_t capacity = out->segment_capacity;
+    *out = (struct RibonDirectLoadPlan){
+        .size = sizeof(*out),
+        .abi_version = RIBON_DIRECT_LOAD_PLAN_ABI_VERSION,
+        .segments = segments,
+        .segment_capacity = capacity,
+    };
 }
 
 static int elf64_analyze(
     const struct RibonPayloadImage *image,
-    struct RibonLoadedPayload *out) {
+    struct RibonValidatedImage *validated_out,
+    struct RibonDirectLoadPlan *out) {
     const unsigned char *data;
     uint16_t e_type;
     uint16_t e_machine;
@@ -129,11 +120,12 @@ static int elf64_analyze(
     int entry_is_loadable = 0;
     uint16_t index;
 
-    if (image == 0 || image->data == 0 || out == 0 || out->segments == 0 ||
-        out->segment_capacity == 0u) {
+    if (image == 0 || image->data == 0 || validated_out == 0 ||
+        !ribon_direct_load_plan_has_storage(out)) {
         return RIBON_LOADER_STATUS_BAD_ARGUMENT;
     }
-    ribon_loaded_payload_reset(out);
+    *validated_out = (struct RibonValidatedImage){0};
+    ribon_direct_load_plan_reset(out);
     data = (const unsigned char *)image->data;
     if (image->size < RIBON_ELF64_HEADER_SIZE) {
         return RIBON_LOADER_STATUS_TRUNCATED;
@@ -283,8 +275,6 @@ static int elf64_analyze(
         return RIBON_LOADER_STATUS_OVERFLOW;
     }
 
-    out->format = RIBON_EXECUTABLE_FORMAT_ELF64;
-    out->machine = e_machine;
     out->load_plan_flags =
         load_plan_flags |
         RIBON_LOAD_PLAN_ENTRY_LOAD_VALID |
@@ -303,6 +293,15 @@ static int elf64_analyze(
     out->linked_physical_end = linked_physical_end;
     out->high_entry_virtual_address = 0u;
     out->high_entry_load_address = 0u;
+    *validated_out = (struct RibonValidatedImage){
+        .size = sizeof(*validated_out),
+        .abi_version = RIBON_VALIDATED_IMAGE_ABI_VERSION,
+        .format = RIBON_EXECUTABLE_FORMAT_ELF64,
+        .machine = e_machine,
+        .execution_support = RIBON_IMAGE_EXECUTION_DIRECT_ENTRY,
+        .image_size = image->size,
+        .validation_receipt = (uint64_t)e_type,
+    };
     return RIBON_LOADER_STATUS_OK;
 }
 
@@ -310,6 +309,7 @@ static const struct RibonImageFormatOps elf64_ops = {
     .size = sizeof(elf64_ops),
     .abi_version = RIBON_IMAGE_FORMAT_OPS_ABI_VERSION,
     .format = RIBON_EXECUTABLE_FORMAT_ELF64,
+    .execution_support = RIBON_IMAGE_EXECUTION_DIRECT_ENTRY,
     .analyze = elf64_analyze,
 };
 

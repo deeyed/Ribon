@@ -11,7 +11,7 @@ static int expected_arch(
     enum RibonRegisterAbi *register_abi_out,
     enum RibonEntryTranslationRequirement *translation_out) {
     *capabilities_out =
-        RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
+        RIBON_ARCH_CAP_VALIDATE_DIRECT_LOAD |
         RIBON_ARCH_CAP_CACHE_SYNC |
         RIBON_ARCH_CAP_HALT |
         RIBON_ARCH_CAP_MONOTONIC_COUNTER;
@@ -57,12 +57,20 @@ int main(void) {
         .virtual_address = 0x200000u,
         .flags = RIBON_LOAD_SEGMENT_EXECUTE,
     };
-    struct RibonLoadedPayload payload = {
-        .format = RIBON_EXECUTABLE_FORMAT_ELF64,
+    struct RibonDirectLoadPlan payload = {
+        .size = sizeof(payload),
+        .abi_version = RIBON_DIRECT_LOAD_PLAN_ABI_VERSION,
         .segment_count = 1u,
         .entry_point = 0x200078u,
         .segments = &segment,
         .segment_capacity = 1u,
+    };
+    struct RibonValidatedImage validated = {
+        .size = sizeof(validated),
+        .abi_version = RIBON_VALIDATED_IMAGE_ABI_VERSION,
+        .format = RIBON_EXECUTABLE_FORMAT_ELF64,
+        .execution_support = RIBON_IMAGE_EXECUTION_DIRECT_ENTRY,
+        .image_size = 4096u,
     };
     struct RibonEntryInvocation invocation = {
         .size = sizeof(invocation),
@@ -88,14 +96,14 @@ int main(void) {
         fputs("arch_ops_tests: operation table mismatch\n", stderr);
         return 1;
     }
-    payload.machine = expected_machine;
-    if (ops->validate_payload(ops->descriptor, &payload) !=
+    validated.machine = expected_machine;
+    if (ops->validate_direct_load(ops->descriptor, &validated, &payload) !=
         RIBON_ARCH_OPERATION_OK) {
         fputs("arch_ops_tests: valid payload rejected\n", stderr);
         return 1;
     }
-    ++payload.machine;
-    if (ops->validate_payload(ops->descriptor, &payload) !=
+    ++validated.machine;
+    if (ops->validate_direct_load(ops->descriptor, &validated, &payload) !=
         RIBON_ARCH_OPERATION_INVALID_PAYLOAD) {
         fputs("arch_ops_tests: wrong machine accepted\n", stderr);
         return 1;

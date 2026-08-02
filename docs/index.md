@@ -151,6 +151,7 @@ adr/0049-crash-consistent-update-transaction-journal
 adr/0050-recovery-only-bounded-network-update
 adr/0051-os-neutral-boot-confirmation
 adr/0052-linux-aarch64-raw-image-product
+adr/0053-dual-terminal-execution-model
 ```
 
 ```{toctree}

@@ -50,10 +50,11 @@ static void make_pe32_plus(unsigned char image[1024]) {
 int main(void) {
     unsigned char bytes[1024];
     struct RibonLoadSegment segments[2];
-    struct RibonLoadedPayload layout = {
+    struct RibonDirectLoadPlan layout = {
         .segments = segments,
         .segment_capacity = 2u,
     };
+    struct RibonValidatedImage validated;
     const struct RibonArchDescriptor arch = {
         .size = sizeof(arch),
         .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
@@ -79,11 +80,13 @@ int main(void) {
     };
     if (!ribon_image_plugin_operations_are_valid(
             &ribon_pe_coff_image_plugin_descriptor) ||
-        ops->analyze(&image, &layout) != RIBON_LOADER_STATUS_OK ||
-        ribon_arch_validate_loaded_payload(&arch, &layout) !=
+        ops->analyze(&image, &validated, &layout) != RIBON_LOADER_STATUS_OK ||
+        ribon_arch_validate_direct_load(&arch, &validated, &layout) !=
             RIBON_ARCH_OPERATION_OK ||
-        layout.format != RIBON_EXECUTABLE_FORMAT_PE_COFF ||
-        layout.machine != 0x8664u ||
+        validated.format != RIBON_EXECUTABLE_FORMAT_PE_COFF ||
+        validated.machine != 0x8664u ||
+        validated.image_size != sizeof(bytes) ||
+        (validated.execution_support & RIBON_IMAGE_EXECUTION_FIRMWARE_MANAGED) == 0u ||
         layout.segment_count != 1u ||
         layout.entry_load_address != 0x00401000u ||
         layout.load_base != 0x00401000u ||
@@ -97,21 +100,21 @@ int main(void) {
     }
 
     bytes[0] = 0u;
-    layout = (struct RibonLoadedPayload){
+    layout = (struct RibonDirectLoadPlan){
         .segments = segments,
         .segment_capacity = 2u,
     };
-    if (ops->analyze(&image, &layout) != RIBON_LOADER_STATUS_BAD_FORMAT) {
+    if (ops->analyze(&image, &validated, &layout) != RIBON_LOADER_STATUS_BAD_FORMAT) {
         fputs("pe_coff_loader_tests: bad DOS header accepted\n", stderr);
         return 1;
     }
     make_pe32_plus(bytes);
     put_u32(bytes, 0x80u + 24u + 16u, 0x3000u);
-    layout = (struct RibonLoadedPayload){
+    layout = (struct RibonDirectLoadPlan){
         .segments = segments,
         .segment_capacity = 2u,
     };
-    if (ops->analyze(&image, &layout) !=
+    if (ops->analyze(&image, &validated, &layout) !=
         RIBON_LOADER_STATUS_NO_LOAD_SEGMENTS) {
         fputs("pe_coff_loader_tests: uncovered entry accepted\n", stderr);
         return 1;

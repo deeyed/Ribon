@@ -15,7 +15,25 @@ struct RibonMutableMemoryMap;
 struct RibonPluginDescriptor;
 
 /** @brief Boot Protocol operation table ABI다. */
-#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 3u
+#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 4u
+
+/** @brief Protocol terminal request ABI다. */
+#define RIBON_TERMINAL_REQUEST_ABI_VERSION 1u
+
+/** @brief OS-neutral terminal execution kind다. */
+enum RibonTerminalExecutionKind {
+    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY = 0,
+    RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE = 1,
+};
+
+/** @brief Protocol이 Core에 반환하는 sealed terminal requirement다. */
+struct RibonTerminalRequest {
+    uint32_t size; /**< Descriptor byte 크기다. */
+    uint32_t abi_version; /**< `RIBON_TERMINAL_REQUEST_ABI_VERSION`이다. */
+    enum RibonTerminalExecutionKind kind; /**< 요청한 terminal model이다. */
+    uint32_t reserved; /**< 반드시 0이다. */
+    struct RibonEntryInvocation direct_entry; /**< Direct model에서만 유효하다. */
+};
 
 /** @brief Protocol이 environment에서 요구하거나 허용하는 input bit다. */
 enum RibonProtocolExpectation {
@@ -93,13 +111,13 @@ typedef int (*RibonProtocolValidateComponentsFn)(const struct RibonManifestView 
 /** @brief Protocol이 허용하는 image-format bitset을 반환한다. */
 typedef uint64_t (*RibonProtocolSelectImageFormatsFn)(void);
 
-/** @brief Handoff artifact와 image plan에서 protocol-owned entry invocation을 완성한다. */
-typedef int (*RibonProtocolPrepareEntryInvocationFn)(
+/** @brief Validated plan에서 protocol-owned terminal requirement를 완성한다. */
+typedef int (*RibonProtocolPrepareTerminalFn)(
     const struct RibonArchDescriptor *arch,
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
     const struct RibonHandoffArtifact *handoff,
-    struct RibonEntryInvocation *out);
+    struct RibonTerminalRequest *out);
 
 /** @brief Caller-owned buffer에 protocol handoff artifact를 생성한다. */
 typedef int (*RibonProtocolPrepareHandoffFn)(
@@ -122,7 +140,7 @@ struct RibonBootProtocolOps {
     RibonProtocolValidateComponentsFn validate_components; /**< Component validator다. */
     RibonProtocolSelectImageFormatsFn select_image_formats; /**< Image allowlist callback이다. */
     RibonProtocolPrepareHandoffFn prepare_handoff; /**< Handoff serializer다. */
-    RibonProtocolPrepareEntryInvocationFn prepare_entry_invocation; /**< Entry invocation callback이다. */
+    RibonProtocolPrepareTerminalFn prepare_terminal; /**< Terminal requirement callback이다. */
     RibonProtocolValidateBootHealthFn validate_boot_health; /**< Health 의미 검증 callback이다. */
 };
 
@@ -132,6 +150,7 @@ struct RibonBootProtocol {
     uint32_t abi_version; /**< Protocol semantic ABI다. */
     const char *id; /**< Stable protocol ID다. */
     const char *kernel_path; /**< Product-relative 기본 kernel source다. */
+    enum RibonTerminalExecutionKind terminal_execution; /**< 요구 terminal model이다. */
     uint32_t expectations; /**< Environment input 요구와 허용 bit다. */
     uint32_t supported_modes; /**< 허용 mode bitset이다. */
     const char *handoff_format; /**< Handoff wire format ID다. */
@@ -141,6 +160,9 @@ struct RibonBootProtocol {
 
 /** @brief Protocol descriptor와 callback 완전성을 검사한다. */
 int ribon_boot_protocol_is_valid(const struct RibonBootProtocol *protocol);
+
+/** @brief Terminal request의 kind별 불변식을 검사한다. */
+int ribon_terminal_request_is_valid(const struct RibonTerminalRequest *request);
 
 /** @brief Protocol expectation bit를 모두 가지는지 검사한다. */
 int ribon_boot_protocol_has_expectation(

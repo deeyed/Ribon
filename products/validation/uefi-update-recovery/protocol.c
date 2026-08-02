@@ -36,7 +36,7 @@ static int validation_entry(
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
     const struct RibonHandoffArtifact *handoff,
-    struct RibonEntryInvocation *out)
+    struct RibonTerminalRequest *out)
 {
     (void)arch; (void)plan; (void)environment; (void)handoff; (void)out;
     return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
@@ -67,7 +67,7 @@ static const struct RibonBootProtocolOps validation_operations = {
     .validate_components = validation_components,
     .select_image_formats = validation_formats,
     .prepare_handoff = validation_handoff,
-    .prepare_entry_invocation = validation_entry,
+    .prepare_terminal = validation_entry,
     .validate_boot_health = validation_boot_health,
 };
 
@@ -76,6 +76,7 @@ static const struct RibonBootProtocol validation_protocol = {
     .abi_version = 1u,
     .id = "validation-update",
     .kernel_path = "/RIBON/UNUSED.ELF",
+    .terminal_execution = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
     .supported_modes = RIBON_MODE_MASK(RIBON_MODE_RECOVERY),
     .handoff_format = "none-validation-only",
     .handoff_major = 1u,

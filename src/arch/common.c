@@ -78,7 +78,7 @@ uint32_t ribon_architecture_mask(enum RibonArchitectureId architecture) {
 /** @brief Architecture operation table ABI와 필수 callback을 검사한다. */
 int ribon_arch_ops_are_valid(const struct RibonArchOps *ops) {
     const uint64_t required =
-        RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
+        RIBON_ARCH_CAP_VALIDATE_DIRECT_LOAD |
         RIBON_ARCH_CAP_HALT;
 
     if (ops == 0 ||
@@ -90,7 +90,7 @@ int ribon_arch_ops_are_valid(const struct RibonArchOps *ops) {
         ops->descriptor->size != sizeof(*ops->descriptor) ||
         ops->descriptor->abi_version != RIBON_ARCH_OPS_ABI_VERSION ||
         ops->descriptor->canonical_name == 0 ||
-        ops->validate_payload == 0 ||
+        ops->validate_direct_load == 0 ||
         ops->halt == 0) {
         return 0;
     }
@@ -140,26 +140,35 @@ int ribon_arch_plugin_operations_are_valid(
 }
 
 /** @brief Loaded payload의 공통 machine/canonical address 계약을 검사한다. */
-int ribon_arch_validate_loaded_payload(
+int ribon_arch_validate_direct_load(
     const struct RibonArchDescriptor *arch,
-    struct RibonLoadedPayload *payload) {
+    const struct RibonValidatedImage *image,
+    struct RibonDirectLoadPlan *payload) {
     uint16_t machine;
     int entry_covered = 0;
 
-    if (arch == 0 || payload == 0 ||
+    if (arch == 0 || image == 0 || image->size != sizeof(*image) ||
+        image->abi_version != RIBON_VALIDATED_IMAGE_ABI_VERSION ||
+        image->format == RIBON_EXECUTABLE_FORMAT_UNKNOWN || image->machine == 0u ||
+        image->reserved != 0u || image->image_size == 0u ||
+        image->execution_support == 0u ||
+        (image->execution_support & ~RIBON_IMAGE_EXECUTION_ALL) != 0u || payload == 0 ||
+        payload->size != sizeof(*payload) ||
+        payload->abi_version != RIBON_DIRECT_LOAD_PLAN_ABI_VERSION ||
         arch->canonical_name == 0 ||
         arch->word_bits != 64u ||
         arch->page_size == 0u ||
-        (payload->format != RIBON_EXECUTABLE_FORMAT_ELF64 &&
-         payload->format != RIBON_EXECUTABLE_FORMAT_PE_COFF &&
-         payload->format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64) ||
+        (image->execution_support & RIBON_IMAGE_EXECUTION_DIRECT_ENTRY) == 0u ||
+        (image->format != RIBON_EXECUTABLE_FORMAT_ELF64 &&
+         image->format != RIBON_EXECUTABLE_FORMAT_PE_COFF &&
+         image->format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64) ||
         payload->segments == 0 ||
         payload->segment_count == 0u ||
         payload->segment_count > payload->segment_capacity) {
         return RIBON_ARCH_OPERATION_BAD_ARGUMENT;
     }
-    machine = expected_machine(arch, payload->format);
-    if (machine == 0u || payload->machine != machine ||
+    machine = expected_machine(arch, image->format);
+    if (machine == 0u || image->machine != machine ||
         !address_is_canonical(payload->entry_point, arch->virtual_address_bits)) {
         return RIBON_ARCH_OPERATION_INVALID_PAYLOAD;
     }

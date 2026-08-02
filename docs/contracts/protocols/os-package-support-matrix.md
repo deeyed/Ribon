@@ -30,7 +30,7 @@ tuple만 실행 지원을 주장한다.
 | --- | --- | --- | --- |
 | Parus | RPH1 build/parse, AArch64·x86_64·RISC-V invocation | product별 QEMU 또는 hardware evidence가 있는 tuple | 모든 board, production firmware, feature parity |
 | Linux | AArch64 raw `Image`, compact FDT, typed initramfs와 native entry | pinned OpenWrt AArch64 Image의 QEMU PID 1 boot | RISC-V Linux, bzImage, EFI stub, physical board와 production firmware |
-| FreeBSD | UEFI loader image tuple와 fail-closed transport requirement | descriptor/manifest contract only | `StartImage` 없이 FreeBSD가 실행된다는 주장 |
+| FreeBSD | PE/COFF validation과 firmware-managed terminal requirement | descriptor, validation, terminal contract only | provider 없는 R01에서 FreeBSD가 실행된다는 주장 |
 | Zircon | bounded ZBI container validation과 AArch64 invocation | unit-level experimental protocol contract | complete ZBI item policy 또는 Zircon runtime boot |
 | Windows | 없음 | unsupported | placeholder, PE/COFF parser만으로 boot 가능하다는 주장 |
 | macOS | 없음 | unsupported | Apple firmware, licensing 또는 hardware compatibility |
@@ -48,10 +48,9 @@ tuple만 실행 지원을 주장한다.
    timeout과 process-group cleanup을 보존한다.
 5. physical target 주장은 fresh hardware capture를 별도로 요구한다.
 
-FreeBSD UEFI `StartImage`처럼 firmware service가 OS entry까지 살아 있어야 하는
-protocol은 current direct-transfer lifecycle에 억지로 맞추지 않는다. Environment
-quiesce 전에 실행하는 typed chainload transport가 별도 계약으로 승인될 때까지
-fail-closed한다.
+FreeBSD UEFI protocol은 `FIRMWARE_MANAGED_IMAGE`를 선택하고 handoff 또는 register invocation을
+생성하지 않는다. R01 Core는 direct/managed lifecycle을 구분하지만 실제 managed provider를 포함하지
+않으므로 commit 뒤 `EXECUTE_TERMINAL`에서 fail-closed한다. 이는 FreeBSD runtime support가 아니다.
 
 현재 Linux 실행 증거는 AArch64 QEMU virt에서 Ribon raw-FDT lifecycle, pinned raw Image,
 typed initramfs, `/init`의 unique marker와 clean poweroff까지 도달한다. 이는 OpenWrt

@@ -35,7 +35,8 @@ struct ValidationTransaction {
     uint8_t payload[VALIDATION_IMAGE_CAPACITY];
     uint8_t handoff_bytes[VALIDATION_HANDOFF_CAPACITY];
     struct RibonLoadSegment segments[4];
-    struct RibonLoadedPayload layout;
+    struct RibonDirectLoadPlan layout;
+    struct RibonValidatedImage validated_image;
     struct RibonMemoryRegion normalized_regions[16];
     struct RibonMutableMemoryMap normalized;
     struct RibonHandoffArtifact handoff;
@@ -369,7 +370,7 @@ initialize_transaction(
             &environment) != RIBON_SERVICE_STATUS_OK) {
         return 0;
     }
-    test->layout = (struct RibonLoadedPayload){
+    test->layout = (struct RibonDirectLoadPlan){
         .segments = test->segments,
         .segment_capacity =
             (uint32_t)(sizeof(test->segments) / sizeof(test->segments[0])),
@@ -390,7 +391,8 @@ initialize_transaction(
                    .payload_buffer = test->payload,
                    .payload_buffer_capacity = sizeof(test->payload),
                    .source_name = "r18-validation.elf",
-                   .kernel_layout = &test->layout,
+                   .validated_image = &test->validated_image,
+                   .direct_load_plan = &test->layout,
                    .handoff_buffer = test->handoff_bytes,
                    .handoff_buffer_capacity = sizeof(test->handoff_bytes),
                    .handoff_artifact = &test->handoff,

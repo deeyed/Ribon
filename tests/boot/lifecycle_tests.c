@@ -164,13 +164,14 @@ static int prepare_transaction_with_modules(
     struct RibonBootTransaction *transaction,
     unsigned char *source_bytes,
     unsigned char *payload_bytes,
-    struct RibonLoadedPayload *layout,
+    struct RibonDirectLoadPlan *layout,
     struct RibonMutableMemoryMap *normalized,
     unsigned char *handoff_bytes,
     struct RibonHandoffArtifact *handoff,
     const struct RibonBootModule *modules,
     uint32_t module_count) {
     struct RibonBootEnvironment environment;
+    struct RibonValidatedImage validated_image;
     const struct RibonBootSource source = {
         .kind = RIBON_BOOT_MEDIA_MEMORY,
         .source_id = 0u,
@@ -206,7 +207,8 @@ static int prepare_transaction_with_modules(
         .payload_buffer = payload_bytes,
         .payload_buffer_capacity = LIFECYCLE_IMAGE_CAPACITY,
         .source_name = "fixture.elf",
-        .kernel_layout = layout,
+        .validated_image = &validated_image,
+        .direct_load_plan = layout,
         .handoff_buffer = handoff_bytes,
         .handoff_buffer_capacity = LIFECYCLE_HANDOFF_CAPACITY,
         .handoff_artifact = handoff,
@@ -218,7 +220,7 @@ static int prepare_transaction(
     struct RibonBootTransaction *transaction,
     unsigned char *source_bytes,
     unsigned char *payload_bytes,
-    struct RibonLoadedPayload *layout,
+    struct RibonDirectLoadPlan *layout,
     struct RibonMutableMemoryMap *normalized,
     unsigned char *handoff_bytes,
     struct RibonHandoffArtifact *handoff) {
@@ -257,7 +259,7 @@ static void test_success_path(void) {
     unsigned char handoff_bytes[LIFECYCLE_HANDOFF_CAPACITY];
     struct RibonLoadSegment segments[LIFECYCLE_SEGMENT_CAPACITY];
     struct RibonMemoryRegion normalized_regions[16];
-    struct RibonLoadedPayload layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
+    struct RibonDirectLoadPlan layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
     struct RibonMutableMemoryMap normalized = { .regions = normalized_regions, .capacity = 16u };
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
@@ -290,7 +292,7 @@ static void test_source_retry_and_exhaustion(void) {
     unsigned char handoff_bytes[LIFECYCLE_HANDOFF_CAPACITY];
     struct RibonLoadSegment segments[LIFECYCLE_SEGMENT_CAPACITY];
     struct RibonMemoryRegion normalized_regions[16];
-    struct RibonLoadedPayload layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
+    struct RibonDirectLoadPlan layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
     struct RibonMutableMemoryMap normalized = { .regions = normalized_regions, .capacity = 16u };
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
@@ -326,7 +328,7 @@ static void test_timeout_and_partial_commit_failure(void) {
     unsigned char handoff_bytes[LIFECYCLE_HANDOFF_CAPACITY];
     struct RibonLoadSegment segments[LIFECYCLE_SEGMENT_CAPACITY];
     struct RibonMemoryRegion normalized_regions[16];
-    struct RibonLoadedPayload layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
+    struct RibonDirectLoadPlan layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
     struct RibonMutableMemoryMap normalized = { .regions = normalized_regions, .capacity = 16u };
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
@@ -365,7 +367,7 @@ static void test_quiesce_failure(void) {
     unsigned char handoff_bytes[LIFECYCLE_HANDOFF_CAPACITY];
     struct RibonLoadSegment segments[LIFECYCLE_SEGMENT_CAPACITY];
     struct RibonMemoryRegion normalized_regions[16];
-    struct RibonLoadedPayload layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
+    struct RibonDirectLoadPlan layout = { .segments = segments, .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY };
     struct RibonMutableMemoryMap normalized = { .regions = normalized_regions, .capacity = 16u };
     struct RibonHandoffArtifact handoff = {0};
     struct RibonBootTransaction transaction;
@@ -393,7 +395,7 @@ static void test_boot_module_protocol_and_component_budget(void) {
     unsigned char handoff_bytes[LIFECYCLE_HANDOFF_CAPACITY];
     struct RibonLoadSegment segments[LIFECYCLE_SEGMENT_CAPACITY];
     struct RibonMemoryRegion normalized_regions[16];
-    struct RibonLoadedPayload layout = {
+    struct RibonDirectLoadPlan layout = {
         .segments = segments,
         .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY,
     };
@@ -448,7 +450,7 @@ static void test_boot_module_protocol_and_component_budget(void) {
     module_protocol.ops = &module_ops;
     module_protocol.expectations |= RIBON_PROTOCOL_ALLOW_BOOT_MODULES;
     transaction.protocol = &module_protocol;
-    layout = (struct RibonLoadedPayload){
+    layout = (struct RibonDirectLoadPlan){
         .segments = segments,
         .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY,
     };
@@ -487,7 +489,7 @@ static void test_boot_module_protocol_and_component_budget(void) {
     bounded_product.limits.max_load_segments = 1u;
     bounded_product.limits.max_components = 1u;
     core.product = &bounded_product;
-    layout = (struct RibonLoadedPayload){
+    layout = (struct RibonDirectLoadPlan){
         .segments = segments,
         .segment_capacity = LIFECYCLE_SEGMENT_CAPACITY,
     };
@@ -512,12 +514,36 @@ static void test_boot_module_protocol_and_component_budget(void) {
     CHECK(receipt != 0 && receipt->reason == RIBON_BOOT_FAILURE_BUDGET);
 }
 
+/** @brief R01에서 managed terminal provider 부재는 direct quiesce로 위조되지 않는다. */
+static void test_managed_terminal_provider_absence(void) {
+    struct RibonBootTransaction transaction;
+    struct RibonCoreContext core;
+    struct RibonArena arena;
+    const struct RibonBootFailureReceipt *receipt;
+    ribon_host_lifecycle_fixture_reset();
+    CHECK(initialize_transaction(&transaction, &core, &arena) ==
+          RIBON_BOOT_STATUS_OK);
+    transaction.stage = RIBON_BOOT_STAGE_COMMIT_ATTEMPT;
+    transaction.terminal_request = (struct RibonTerminalRequest){
+        .size = sizeof(transaction.terminal_request),
+        .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
+        .kind = RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE,
+    };
+    CHECK(ribon_boot_transaction_quiesce_environment(&transaction) ==
+          RIBON_BOOT_STATUS_UNSUPPORTED);
+    receipt = ribon_boot_transaction_failure_receipt(&transaction);
+    CHECK(receipt != 0 && receipt->stage == RIBON_BOOT_STAGE_EXECUTE_TERMINAL);
+    CHECK(receipt != 0 && receipt->reason == RIBON_BOOT_FAILURE_TERMINAL);
+    CHECK(ribon_host_lifecycle_fixture_quiesce_count() == 0u);
+}
+
 int main(void) {
     test_success_path();
     test_source_retry_and_exhaustion();
     test_timeout_and_partial_commit_failure();
     test_quiesce_failure();
     test_boot_module_protocol_and_component_budget();
+    test_managed_terminal_provider_absence();
     if (failures != 0) {
         fprintf(stderr, "lifecycle_tests: %d failure(s)\n", failures);
         return 1;

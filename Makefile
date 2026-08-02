@@ -3348,8 +3348,8 @@ sdk-install: lib ribosc ribos-verify ribos-run
 		--schemas qstar/schemas \
 		--templates sdk/templates \
 		--source-revision $(shell git rev-parse HEAD) \
-		--sdk-abi 4 --core-abi 5 \
-		--plugin-abi-major 4 --plugin-abi-minor 0 \
+		--sdk-abi 5 --core-abi 6 \
+		--plugin-abi-major 5 --plugin-abi-minor 0 \
 		--source-version 0.4.0
 
 check-sdk-surface: sdk-install
@@ -3384,7 +3384,7 @@ check-sdk-reproducible: lib ribosc ribos-verify ribos-run
 		--host-tool ribon-sign-policy=tools/sign_ribos_policy.py \
 		--schemas qstar/schemas --templates sdk/templates \
 		--source-revision $(shell git rev-parse HEAD) \
-		--sdk-abi 4 --core-abi 5 --plugin-abi-major 4 \
+		--sdk-abi 5 --core-abi 6 --plugin-abi-major 5 \
 		--plugin-abi-minor 0 --source-version 0.4.0
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_REPRO_SECOND) \
@@ -3400,7 +3400,7 @@ check-sdk-reproducible: lib ribosc ribos-verify ribos-run
 		--host-tool ribon-sign-policy=tools/sign_ribos_policy.py \
 		--schemas qstar/schemas --templates sdk/templates \
 		--source-revision $(shell git rev-parse HEAD) \
-		--sdk-abi 4 --core-abi 5 --plugin-abi-major 4 \
+		--sdk-abi 5 --core-abi 6 --plugin-abi-major 5 \
 		--plugin-abi-minor 0 --source-version 0.4.0
 	$(PYTHON) tools/check_reproducible_trees.py \
 		$(SDK_REPRO_FIRST) $(SDK_REPRO_SECOND)

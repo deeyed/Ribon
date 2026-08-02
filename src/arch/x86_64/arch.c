@@ -75,7 +75,7 @@ static void zero_u64_table(uint64_t *table, uint64_t entries) {
 }
 
 static int find_runtime_for_virtual_entry(
-    const struct RibonLoadedPayload *payload,
+    const struct RibonDirectLoadPlan *payload,
     uint64_t virtual_entry,
     uint64_t *runtime_entry_out) {
     if (payload == 0 || payload->segments == 0 || runtime_entry_out == 0) {
@@ -102,7 +102,7 @@ static int find_runtime_for_virtual_entry(
 }
 
 /** @brief x86_64 direct-high bridge가 요구하는 고정 table page 수를 반환한다. */
-uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload *payload) {
+uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonDirectLoadPlan *payload) {
     if (payload == 0 ||
         (payload->load_plan_flags & RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE) == 0u ||
         payload->high_entry_virtual_address == 0u ||
@@ -115,7 +115,7 @@ uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonLoadedPayload
 }
 
 int ribon_arch_prepare_direct_high_entry(
-    const struct RibonLoadedPayload *payload,
+    const struct RibonDirectLoadPlan *payload,
     uint64_t page_table_physical_address,
     void *page_table_buffer,
     uint64_t page_table_size,
@@ -293,14 +293,14 @@ static const struct RibonArchOps x86_64_ops = {
     .size = sizeof(x86_64_ops),
     .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
     .capabilities =
-        RIBON_ARCH_CAP_VALIDATE_PAYLOAD |
+        RIBON_ARCH_CAP_VALIDATE_DIRECT_LOAD |
         RIBON_ARCH_CAP_CACHE_SYNC |
         RIBON_ARCH_CAP_DIRECT_HIGH_ENTRY |
         RIBON_ARCH_CAP_ENTRY_BRIDGE |
         RIBON_ARCH_CAP_HALT |
         RIBON_ARCH_CAP_MONOTONIC_COUNTER,
     .descriptor = &x86_64_arch,
-    .validate_payload = ribon_arch_validate_loaded_payload,
+    .validate_direct_load = ribon_arch_validate_direct_load,
     .cache_sync = x86_64_cache_sync,
     .normalize_privilege = 0,
     .direct_high_page_table_pages = ribon_arch_direct_high_page_table_pages,

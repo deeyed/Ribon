@@ -763,7 +763,7 @@ int ribon_uefi_app_capture_environment(
 int ribon_uefi_app_place_payload(
     struct RibonUefiAppContext *context,
     const struct RibonPayloadImage *payload,
-    struct RibonLoadedPayload *layout) {
+    struct RibonDirectLoadPlan *layout) {
     uint64_t runtime_base = UINT64_MAX;
     uint64_t runtime_end = 0u;
     int entry_seen = 0;

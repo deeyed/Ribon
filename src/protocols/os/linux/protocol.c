@@ -117,7 +117,7 @@ static int linux_prepare_handoff(
     uint64_t output_size;
     if (plan == 0 || environment == 0 || buffer == 0 || out == 0 ||
         plan->arch == 0 || plan->arch->id != RIBON_ARCHITECTURE_AARCH64 ||
-        plan->kernel_format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
+        plan->kernel_image.format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
         plan->kernel_runtime_entry_address == 0u ||
         plan->kernel_runtime_load_end <= plan->kernel_runtime_load_base ||
         (environment->flags & RIBON_BOOT_ENV_HAS_DEVICE_TREE) == 0u ||
@@ -171,21 +171,25 @@ static int linux_prepare_handoff(
 }
 
 /** @brief Linux AArch64 entry의 x0=FDT, x1..x3=0 계약을 봉인한다. */
-static int linux_prepare_entry_invocation(
+static int linux_prepare_terminal(
     const struct RibonArchDescriptor *arch,
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
     const struct RibonHandoffArtifact *handoff,
-    struct RibonEntryInvocation *out) {
+    struct RibonTerminalRequest *out) {
     (void)environment;
     if (arch == 0 || plan == 0 || handoff == 0 || handoff->data == 0 || out == 0 ||
         arch->id != RIBON_ARCHITECTURE_AARCH64 ||
-        plan->kernel_format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
+        plan->kernel_image.format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
         plan->kernel_runtime_entry_address == 0u || handoff->size == 0u) {
         return RIBON_PROTOCOL_STATUS_BAD_ARGUMENT;
     }
-    *out = (struct RibonEntryInvocation){
+    *out = (struct RibonTerminalRequest){
         .size = sizeof(*out),
+        .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
+        .kind = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
+        .direct_entry = {
+        .size = sizeof(out->direct_entry),
         .abi_version = RIBON_ENTRY_INVOCATION_ABI_VERSION,
         .entry_address = plan->kernel_runtime_entry_address,
         .register_abi = RIBON_REGISTER_ABI_AARCH64_X0_X1_X2_X3,
@@ -194,6 +198,7 @@ static int linux_prepare_entry_invocation(
         .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
         .privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR,
         .translation = RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE,
+        },
     };
     return RIBON_PROTOCOL_STATUS_OK;
 }
@@ -211,7 +216,7 @@ static const struct RibonBootProtocolOps linux_ops = {
     .validate_components = linux_validate_components,
     .select_image_formats = linux_select_image_formats,
     .prepare_handoff = linux_prepare_handoff,
-    .prepare_entry_invocation = linux_prepare_entry_invocation,
+    .prepare_terminal = linux_prepare_terminal,
     .validate_boot_health = linux_validate_boot_health,
 };
 
@@ -220,6 +225,7 @@ static const struct RibonBootProtocol linux_protocol = {
     .abi_version = 1u,
     .id = "linux",
     .kernel_path = "linux/Image",
+    .terminal_execution = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
     .expectations =
         RIBON_PROTOCOL_EXPECT_MEMORY_MAP |
         RIBON_PROTOCOL_EXPECT_KERNEL_IMAGE_LAYOUT |
