@@ -129,17 +129,10 @@ static int linux_prepare_entry_invocation(
     return RIBON_PROTOCOL_STATUS_OK;
 }
 
-/** @brief Linux boot confirmation의 generation과 result를 검증한다. */
-static int linux_validate_confirmation(
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected) {
-    if (confirmation == 0 || expected == 0 ||
-        !linux_streq(confirmation->protocol_id, "linux") ||
-        confirmation->result != RIBON_BOOT_CONFIRMATION_HEALTHY ||
-        confirmation->generation != expected->generation) {
-        return RIBON_PROTOCOL_STATUS_BAD_CONFIRMATION;
-    }
-    return RIBON_PROTOCOL_STATUS_OK;
+/** @brief Linux companion이 정의할 health payload를 아직 거부한다. */
+static int linux_validate_boot_health(const struct RibonBootHealthPayload *payload) {
+    (void)payload;
+    return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
 }
 
 static const struct RibonBootProtocolOps linux_ops = {
@@ -150,7 +143,7 @@ static const struct RibonBootProtocolOps linux_ops = {
     .select_image_formats = linux_select_image_formats,
     .prepare_handoff = linux_prepare_handoff,
     .prepare_entry_invocation = linux_prepare_entry_invocation,
-    .validate_confirmation = linux_validate_confirmation,
+    .validate_boot_health = linux_validate_boot_health,
 };
 
 static const struct RibonBootProtocol linux_protocol = {

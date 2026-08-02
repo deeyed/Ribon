@@ -132,6 +132,9 @@ UPDATE_INSTALLER_TEST := $(TEST_BUILD_DIR)/update_installer_tests
 UPDATE_POWER_CUT_TEST := $(TEST_BUILD_DIR)/update_power_cut_tests
 UPDATE_POWER_CUT_SANITIZER_TEST := \
 	$(TEST_BUILD_DIR)/update_power_cut_sanitizer_tests
+BOOT_CONFIRMATION_TEST := $(TEST_BUILD_DIR)/boot_confirmation_tests
+BOOT_CONFIRMATION_SANITIZER_TEST := \
+	$(TEST_BUILD_DIR)/boot_confirmation_sanitizer_tests
 UPDATE_POWER_CUT_DIR := $(BUILD_ROOT)/update-power-cut
 UPDATE_POWER_CUT_CASES := $(UPDATE_POWER_CUT_DIR)/cases
 UPDATE_POWER_CUT_COVERAGE := $(UPDATE_POWER_CUT_DIR)/coverage.json
@@ -608,6 +611,7 @@ UEFI_UPDATE_SRCS := \
 	src/update/storage.c \
 	src/update/installer.c \
 	src/update/transaction.c \
+	src/update/confirmation.c \
 	src/security/sha256.c \
 	src/security/key_policy.c \
 	src/security/protected_state.c \
@@ -866,7 +870,10 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-update-installer check-uefi-update-storage check-qemu-update-install \
 	check-update-power-cut check-update-power-cut-host \
 	check-update-power-cut-sanitizer check-update-transaction-cross-compile \
-	check-qemu-update-power-cut check-recovery-network-host \
+	check-qemu-update-power-cut check-boot-confirmation \
+	check-boot-confirmation-host check-boot-confirmation-sanitizer \
+	check-boot-confirmation-cross-compile check-boot-confirmation-graphs \
+	check-qemu-boot-confirmation check-recovery-network-host \
 	check-recovery-network-sanitizer check-recovery-network-cross-compile \
 	check-recovery-network-graphs check-qemu-recovery-network-update \
 	check-recovery-network-update x86_64-uefi-network-update-recovery \
@@ -2797,7 +2804,8 @@ $(UEFI_UPDATE_REGISTRY_C): \
 
 $(UEFI_UPDATE_FIXTURE_STAMP): \
 	$(UEFI_UPDATE_MANIFEST) tests/fixtures/update/update-layout-source-v1.json \
-	tools/make_qemu_update_fixture.py tools/update_manifest.py tools/update_layout.py
+	tools/make_qemu_update_fixture.py tools/update_manifest.py tools/update_layout.py \
+	tools/boot_confirmation.py
 	$(PYTHON) tools/make_qemu_update_fixture.py \
 		--product-manifest $(UEFI_UPDATE_MANIFEST) \
 		--layout-source tests/fixtures/update/update-layout-source-v1.json \
@@ -2833,11 +2841,16 @@ $(UEFI_UPDATE_ESP)/RIBON/UPDATE.BIN: $(UEFI_UPDATE_FIXTURE_STAMP)
 	@mkdir -p $(@D)
 	cp $(UEFI_UPDATE_FIXTURE_DIR)/update.bin $@
 
+$(UEFI_UPDATE_ESP)/RIBON/CONFIRM.BIN: $(UEFI_UPDATE_FIXTURE_STAMP)
+	@mkdir -p $(@D)
+	cp $(UEFI_UPDATE_FIXTURE_DIR)/confirmation.bin $@
+
 x86_64-uefi-update-recovery: \
 	$(UEFI_UPDATE_ESP)/EFI/BOOT/BOOTX64.EFI \
 	$(UEFI_UPDATE_ESP)/RIBON/UPDATE.MAN \
 	$(UEFI_UPDATE_ESP)/RIBON/UPDATE.SIG \
 	$(UEFI_UPDATE_ESP)/RIBON/UPDATE.BIN \
+	$(UEFI_UPDATE_ESP)/RIBON/CONFIRM.BIN \
 	$(UEFI_UPDATE_FIXTURE_STAMP)
 
 x86_64-uefi-update-recovery-smoke: x86_64-uefi-update-recovery
@@ -2882,6 +2895,96 @@ check-qemu-update-power-cut: check-update-power-cut-host \
 check-update-power-cut: check-update-power-cut-host \
 		check-update-power-cut-sanitizer \
 		check-update-transaction-cross-compile check-qemu-update-power-cut
+
+$(BOOT_CONFIRMATION_TEST): tests/update/confirmation_tests.c \
+		tests/update/reference_storage.c tests/update/reference_storage.h \
+		src/update/confirmation.c src/update/transaction.c src/update/installer.c \
+		$(UPDATE_STORAGE_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		src/security/protected_state.c $(SECURITY_PROVIDER_SRCS) \
+		src/common/protocol.c products/validation/uefi-update-recovery/protocol.c \
+		include/Ribon/update/confirmation.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(SECURITY_INCLUDE_FLAGS) \
+		tests/update/confirmation_tests.c tests/update/reference_storage.c \
+		src/update/confirmation.c src/update/transaction.c src/update/installer.c \
+		$(UPDATE_STORAGE_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		src/security/protected_state.c $(SECURITY_PROVIDER_SRCS) \
+		src/common/protocol.c products/validation/uefi-update-recovery/protocol.c \
+		-o $@
+
+$(BOOT_CONFIRMATION_SANITIZER_TEST): tests/update/confirmation_tests.c \
+		tests/update/reference_storage.c tests/update/reference_storage.h \
+		src/update/confirmation.c src/update/transaction.c src/update/installer.c \
+		$(UPDATE_STORAGE_SRCS) $(SECURITY_KEY_POLICY_SRCS) \
+		$(SECURITY_PROTECTED_STATE_SRCS) $(SECURITY_PROVIDER_SRCS) \
+		src/common/protocol.c products/validation/uefi-update-recovery/protocol.c \
+		include/Ribon/update/confirmation.h Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -std=c11 -O1 -g $(WARNFLAGS) \
+		-fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(SECURITY_INCLUDE_FLAGS) tests/update/confirmation_tests.c \
+		tests/update/reference_storage.c src/update/confirmation.c \
+		src/update/transaction.c src/update/installer.c $(UPDATE_STORAGE_SRCS) \
+		$(SECURITY_KEY_POLICY_SRCS) src/security/protected_state.c \
+		$(SECURITY_PROVIDER_SRCS) src/common/protocol.c \
+		products/validation/uefi-update-recovery/protocol.c -o $@
+
+check-boot-confirmation-host: check-update-power-cut-host $(BOOT_CONFIRMATION_TEST)
+	$(BOOT_CONFIRMATION_TEST) \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		$(UEFI_UPDATE_FIXTURE_DIR)/layout.bin \
+		$(UPDATE_POWER_CUT_CASES)/clean-pending.raw \
+		$(UEFI_UPDATE_FIXTURE_DIR)/confirmation.bin \
+		$(UEFI_UPDATE_MANIFEST)
+
+check-boot-confirmation-sanitizer: check-update-power-cut-host \
+		$(BOOT_CONFIRMATION_SANITIZER_TEST)
+	$(BOOT_CONFIRMATION_SANITIZER_TEST) \
+		$(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		$(UEFI_UPDATE_FIXTURE_DIR)/layout.bin \
+		$(UPDATE_POWER_CUT_CASES)/clean-pending.raw \
+		$(UEFI_UPDATE_FIXTURE_DIR)/confirmation.bin \
+		$(UEFI_UPDATE_MANIFEST)
+
+check-boot-confirmation-cross-compile:
+	@set -e; \
+	for target in x86_64 aarch64 riscv64; do \
+		case "$$target" in \
+		x86_64) compiler=/usr/bin/clang; triple=x86_64-none-elf;; \
+		aarch64) compiler=$(AARCH64_CC); triple=aarch64-none-elf;; \
+		riscv64) compiler=$(RISCV64_CC); triple=riscv64-none-elf;; \
+		esac; \
+		object=$(BUILD_ROOT)/boot-confirmation/$$target/confirmation.o; \
+		mkdir -p "$$(dirname "$$object")"; \
+		"$$compiler" --target="$$triple" $(FREESTANDING_FLAGS) \
+			-c src/update/confirmation.c -o "$$object"; \
+	done
+	@echo "RIBON-D06-BOOT-CONFIRMATION-CROSS-COMPILE-OK targets=x86_64,aarch64,riscv64"
+
+check-qemu-boot-confirmation: x86_64-uefi-update-recovery
+	$(PYTHON) tools/qemu_boot_confirmation.py \
+		--qemu $(QEMU_X86_64) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--esp-template $(UEFI_UPDATE_ESP) \
+		--disk-fixture $(UEFI_UPDATE_DISK) --boot-app $(UEFI_UPDATE_APP) \
+		--manifest $(UEFI_UPDATE_FIXTURE_DIR)/update.man \
+		--confirmation $(UEFI_UPDATE_FIXTURE_DIR)/confirmation.bin \
+		--product-manifest $(UEFI_UPDATE_MANIFEST) \
+		--fixture-provenance $(UEFI_UPDATE_FIXTURE_PROVENANCE) \
+		--pending-inspector tools/inspect_qemu_update_transaction.py \
+		--confirmed-inspector tools/inspect_qemu_boot_confirmation.py \
+		--source-revision $(shell git rev-parse HEAD) \
+		--results $(UEFI_UPDATE_RESULTS)/boot-confirmation
+
+check-boot-confirmation-graphs: x86_64-uefi-update-recovery \
+		x86_64-uefi-network-update-recovery
+	$(PYTHON) tools/lint/boot_confirmation_core_lint.py --root $(ROOT) \
+		--confirmation-graph $(UEFI_UPDATE_GRAPH) \
+		--network-graph $(UEFI_NETWORK_UPDATE_GRAPH)
+
+check-boot-confirmation: check-boot-confirmation-host \
+		check-boot-confirmation-sanitizer \
+		check-boot-confirmation-cross-compile \
+		check-boot-confirmation-graphs check-qemu-boot-confirmation
 
 $(UEFI_NETWORK_UPDATE_REGISTRY_C): \
 	$(UEFI_NETWORK_UPDATE_MANIFEST) tools/generate_plugin_registry.py
@@ -3244,7 +3347,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-update-storage check-update-storage-sanitizer \
 	check-update-storage-cross-compile check-update-storage-graphs \
 	check-update-installer check-uefi-update-storage \
-	check-update-power-cut check-recovery-network-update \
+	check-update-power-cut check-boot-confirmation check-recovery-network-update \
 	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \

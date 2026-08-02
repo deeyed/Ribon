@@ -107,9 +107,15 @@ authority로 재사용하지 않는다.
 
 ## Protocol confirmation
 
-Boot Protocol은 OS-specific health payload를 생성하고 검증할 수 있다. Update policy는
-protocol ID, slot, generation, nonce, manifest sequence가 candidate와 일치할 때만
-confirmation을 승인한다.
+OS companion은 선택된 Boot Protocol이 소유하는 health payload를 생성한다. Protocol callback은
+인증된 bounded payload의 의미만 검증하며 slot, key, journal을 변경하지 않는다. Generic
+confirmation engine은 product/protocol/version, slot, image generation, policy version, manifest
+digest/sequence, nonce와 attempt sequence를 독립 검증하고 `BOOT_CONFIRMATION` 전용 key usage를
+요구한다.
+
+승격 authority는 {doc}`boot-confirmation-v1`의 순서대로 protected-state binding과 update
+transaction을 모두 닫는다. Exact duplicate는 idempotent success지만 stale attempt와 다른 identity는
+실패한다. OS 이름, 서비스 이름과 OS 내부 success marker는 generic update ABI에 들어가지 않는다.
 
 ## 비목표
 

@@ -48,6 +48,7 @@ enum RibonKeyPolicyUsage {
     RIBON_KEY_POLICY_USAGE_POLICY_DIAGNOSTIC = 4,
     RIBON_KEY_POLICY_USAGE_UPDATE_MANIFEST = 5,
     RIBON_KEY_POLICY_USAGE_BOOT_IMAGE = 6,
+    RIBON_KEY_POLICY_USAGE_BOOT_CONFIRMATION = 7,
 };
 
 /** @brief Wall clock 없이 sequence 범위로 해석하는 key lifecycle이다. */

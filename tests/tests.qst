@@ -420,6 +420,51 @@ qstar.test_suite "update_power_cut_tests" {
   description = qstar.status("Transactional install replay and confirmed predecessor safety"),
 }
 
+qstar.run_target "boot_confirmation_contract" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-boot-confirmation",
+    "check-boot-confirmation-host",
+    "check-boot-confirmation-sanitizer",
+    "check-boot-confirmation-cross-compile",
+    "check-boot-confirmation-graphs",
+  },
+  timeout = 900,
+  expect = {
+    contains = "RIBON-BOOT-CONFIRMATION-OK",
+  },
+  description = qstar.status("Verifying OS-neutral authenticated boot confirmation"),
+}
+
+qstar.run_target "qemu_boot_confirmation" {
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar-qemu-boot-confirmation",
+    "check-qemu-boot-confirmation",
+  },
+  timeout = 900,
+  expect = {
+    contains = "RIBON-D06-QEMU-BOOT-CONFIRMATION-OK",
+  },
+  description = qstar.status("Reopening one bound confirmation across three q35 boots"),
+}
+
+qstar.test_suite "boot_confirmation_tests" {
+  tests = {
+    "//tests:boot_confirmation_contract",
+    "//tests:qemu_boot_confirmation",
+  },
+  tags = {
+    "update",
+    "confirmation",
+    "security",
+    "host",
+  },
+  description = qstar.status("Boot-attempt binding, replay rejection, and idempotent confirmation"),
+}
+
 qstar.test "recovery_network_unit" {
   sources = {
     "tests/network/recovery_network_tests.c",
@@ -530,6 +575,8 @@ qstar.group "ribon_tests" {
     "//tests:qemu_update_install",
     "//tests:update_power_cut_contract",
     "//tests:qemu_update_power_cut",
+    "//tests:boot_confirmation_contract",
+    "//tests:qemu_boot_confirmation",
     "//tests:recovery_network_unit",
     "//tests:recovery_network_contract",
     "//tests:qemu_recovery_network_update",

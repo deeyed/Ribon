@@ -142,16 +142,11 @@ static int zircon_prepare_entry_invocation(
     return RIBON_PROTOCOL_STATUS_OK;
 }
 
-/** @brief Zircon boot confirmation의 generation과 result를 검증한다. */
-static int zircon_validate_confirmation(
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected) {
-    return confirmation != 0 && expected != 0 &&
-           zircon_streq(confirmation->protocol_id, "zircon") &&
-           confirmation->result == RIBON_BOOT_CONFIRMATION_HEALTHY &&
-           confirmation->generation == expected->generation ?
-        RIBON_PROTOCOL_STATUS_OK :
-        RIBON_PROTOCOL_STATUS_BAD_CONFIRMATION;
+/** @brief Zircon companion이 정의할 health payload를 아직 거부한다. */
+static int zircon_validate_boot_health(
+    const struct RibonBootHealthPayload *payload) {
+    (void)payload;
+    return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
 }
 
 static const struct RibonBootProtocolOps zircon_ops = {
@@ -162,7 +157,7 @@ static const struct RibonBootProtocolOps zircon_ops = {
     .select_image_formats = zircon_select_image_formats,
     .prepare_handoff = zircon_prepare_handoff,
     .prepare_entry_invocation = zircon_prepare_entry_invocation,
-    .validate_confirmation = zircon_validate_confirmation,
+    .validate_boot_health = zircon_validate_boot_health,
 };
 
 static const struct RibonBootProtocol zircon_protocol = {

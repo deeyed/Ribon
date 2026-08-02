@@ -10,6 +10,8 @@
 #define TEST_DOMAINS 2u
 #define TEST_OBJECTS 2u
 #define TEST_SLOTS 2u
+#define RECORD_CHECKSUM_OFFSET 144u
+#define SELECTOR_CHECKSUM_OFFSET 144u
 
 struct TestDomainStorage {
     uint8_t domain[RIBON_PROTECTED_STATE_DIGEST_BYTES];
@@ -366,7 +368,7 @@ test_power_cut_closure(void)
             expect(ribon_protected_state_open(&journal, &state) ==
                    RIBON_PROTECTED_STATE_STATUS_OK,
                    "powercut reboot finds authority");
-            if (flush == 2u && prefix >= 116u) {
+            if (flush == 2u && prefix >= SELECTOR_CHECKSUM_OFFSET + 4u) {
                 expect(state.kind == RIBON_PROTECTED_STATE_KIND_TRIAL &&
                        state.pending_sequence == 21u,
                        "complete selector meaning commits despite error receipt");
@@ -412,7 +414,8 @@ test_corruption_conflict_and_wrap(void)
            RIBON_PROTECTED_STATE_SELECTOR_BYTES);
     selector = provider.domains[0].durable[1][0];
     selector[72] ^= 1u;
-    store_u32(selector + 112u, crc32c(selector, 112u));
+    store_u32(selector + SELECTOR_CHECKSUM_OFFSET,
+              crc32c(selector, SELECTOR_CHECKSUM_OFFSET));
     expect(ribon_protected_state_open(&journal, &state) ==
            RIBON_PROTECTED_STATE_STATUS_CONFLICT,
            "conflicting valid generation rejected");
@@ -424,11 +427,13 @@ test_corruption_conflict_and_wrap(void)
     record = provider.domains[0].durable[0][0];
     selector = provider.domains[0].durable[1][0];
     store_u64(record + 32u, UINT64_MAX);
-    store_u32(record + 112u, crc32c(record, 112u));
+    store_u32(record + RECORD_CHECKSUM_OFFSET,
+              crc32c(record, RECORD_CHECKSUM_OFFSET));
     ribon_security_sha256(record, RIBON_PROTECTED_STATE_RECORD_BYTES, digest);
     store_u64(selector + 32u, UINT64_MAX);
     memcpy(selector + 72u, digest, sizeof(digest));
-    store_u32(selector + 112u, crc32c(selector, 112u));
+    store_u32(selector + SELECTOR_CHECKSUM_OFFSET,
+              crc32c(selector, SELECTOR_CHECKSUM_OFFSET));
     expect(ribon_protected_state_open(&journal, &state) ==
            RIBON_PROTECTED_STATE_STATUS_OK && state.generation == UINT64_MAX,
            "maximum generation decodes");
@@ -470,6 +475,46 @@ test_domains_and_unavailable(void)
            "provider unavailable fails closed");
 }
 
+static void
+test_bound_attempt_history(void)
+{
+    struct TestProvider provider;
+    struct RibonProtectedStateJournal journal;
+    struct RibonProtectedStateSnapshot state;
+    uint8_t first_binding[RIBON_PROTECTED_STATE_DIGEST_BYTES] = {1u};
+    uint8_t second_binding[RIBON_PROTECTED_STATE_DIGEST_BYTES] = {2u};
+
+    provider_initialize(&provider);
+    journal = journal_for(&provider, normal_domain);
+    expect(ribon_protected_state_initialize(&journal, 50u, &state) ==
+           RIBON_PROTECTED_STATE_STATUS_OK, "bound history initialize");
+    expect(ribon_protected_state_begin_bound_trial(
+               &journal, 51u, 2u, first_binding, 9u, &state) ==
+           RIBON_PROTECTED_STATE_STATUS_OK,
+           "bound history begins first attempt");
+    expect(ribon_protected_state_consume_trial_attempt(&journal, 51u, &state) ==
+           RIBON_PROTECTED_STATE_STATUS_OK,
+           "bound history consumes first attempt");
+    expect(ribon_protected_state_fail_trial(&journal, &state) ==
+               RIBON_PROTECTED_STATE_STATUS_OK &&
+           state.kind == RIBON_PROTECTED_STATE_KIND_CONFIRMED &&
+           state.confirmed_floor == 50u && state.attempt_sequence == 9u &&
+           memcmp(state.trial_binding_digest, first_binding,
+                  sizeof(first_binding)) == 0,
+           "failed bound trial preserves monotonic history");
+    expect(ribon_protected_state_begin_bound_trial(
+               &journal, 51u, 2u, second_binding, 10u, &state) ==
+               RIBON_PROTECTED_STATE_STATUS_OK &&
+           state.attempt_sequence == 10u &&
+           memcmp(state.trial_binding_digest, second_binding,
+                  sizeof(second_binding)) == 0,
+           "retry uses strictly newer bound attempt");
+    expect(ribon_protected_state_confirm_bound(
+               &journal, 51u, first_binding, 9u, &state) ==
+           RIBON_PROTECTED_STATE_STATUS_BINDING_MISMATCH,
+           "failed attempt receipt stays stale after retry");
+}
+
 int
 main(void)
 {
@@ -478,6 +523,7 @@ main(void)
     test_power_cut_closure();
     test_corruption_conflict_and_wrap();
     test_domains_and_unavailable();
+    test_bound_attempt_history();
     if (failures != 0) {
         fprintf(stderr, "%d protected-state test(s) failed\n", failures);
         return 1;

@@ -176,6 +176,19 @@ slot metadata codec, inactive `STAGING` slot semantic handle 및 bounded read/wr
 Ribos VM handle representation은 이 ABI에 포함하지 않는다. Product graph는 recovery/provisioning
 binding에서만 provider를 inactive-slot service로 선택한다.
 
+## Update transaction과 confirmation API
+
+```text
+Ribon/update/transaction.h
+Ribon/update/confirmation.h
+```
+
+Transaction API는 redundant journal의 exact pending/confirmed slot identity와 idempotent commit을
+제공한다. Confirmation API는 explicit little-endian signed envelope, product/protocol/version,
+slot/image/manifest/policy/nonce/attempt binding, protected attempt 선차감과 dedicated key authorization을
+제공한다. OS health payload는 선택된 Boot Protocol callback만 해석하며 generic API에는 OS marker,
+filesystem path, native firmware handle와 raw storage address가 없다.
+
 ## Architecture API
 
 ```text

@@ -50,3 +50,19 @@ qstar.staticlib "libribon_update_transaction" {
     "//qstar/policies:ribon_host_c",
   },
 }
+
+qstar.staticlib "libribon_update_confirmation" {
+  artifact_name = "libribon-update-confirmation.a",
+  sources = {
+    "src/update/confirmation.c",
+  },
+  deps = {
+    "//src/common:libribon_boot",
+    "//src/security:libribon_security_key_policy",
+    "//src/security:libribon_security_protected_state",
+    "//src/update:libribon_update_transaction",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}

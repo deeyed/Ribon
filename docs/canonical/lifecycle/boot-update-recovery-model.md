@@ -197,9 +197,17 @@ commit한 뒤에만 candidate transfer가 가능하다. 두 journal 사이 crash
 
 ## Confirmation
 
-Boot Protocol은 OS-specific confirmation payload를 정의할 수 있다. Generic update
-policy는 slot ID, metadata generation, boot nonce, manifest sequence, integrity result를
-검증한다. 이전 boot의 confirmation replay와 torn write는 성공으로 처리하지 않는다.
+Generic confirmation engine은 product와 Boot Protocol ID/version, slot, image generation,
+manifest digest/sequence, policy version, fresh boot nonce와 단조 attempt sequence를 하나의
+canonical attempt binding으로 묶는다. Pending payload로 제어를 넘기기 전에 protected journal에
+binding을 commit하고 attempt를 선차감한다.
+
+OS가 생성한 health payload의 의미는 선택된 Boot Protocol만 판정한다. Generic engine은 payload를
+해석하지 않고 bounded byte view와 SHA-256을 protocol callback에 넘긴다. Callback 성공, dedicated
+confirmation key authorization, Ed25519 검증, exact binding과 두 journal identity가 모두 일치해야
+protected floor와 update active slot을 승격한다. 동일 envelope 재전달은 generation을 늘리지 않는
+성공이며, 이전 attempt·nonce, 다른 slot/image/manifest/product/protocol은 fail-closed한다. Wire와
+전이 계약은 {doc}`../../contracts/update/boot-confirmation-v1`이 소유한다.
 
 ## Recovery
 

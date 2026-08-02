@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-08-02
 code_paths:
   - include/Ribon/protocols/os/
   - src/protocols/os/
@@ -55,3 +55,11 @@ fail-closed한다.
 도달한다. RISC-V QEMU virt는 OpenSBI→Ribon→Parus transfer와 EB2까지의 evidence만
 있고 EB3 Sv39 authority에서 fail-closed한다. 이 결과는 RISC-V runtime boot support로
 승격되지 않는다.
+
+## Boot health confirmation 지원
+
+Generic {doc}`../update/boot-confirmation-v1`은 OS-independent envelope, attempt freshness, signature와
+journal commit을 제공한다. 그러나 각 OS package의 health payload는 companion producer와 protocol
+codec이 함께 있어야 한다. 현재 Parus, Linux, FreeBSD와 Zircon callback은 모두 fail-closed
+`UNSUPPORTED`이며, D06 QEMU evidence는 validation protocol receipt만 사용한다. 따라서 generic
+confirmation 구현을 각 OS의 실제 health confirmation 지원으로 해석하지 않는다.

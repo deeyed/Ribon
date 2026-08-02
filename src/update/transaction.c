@@ -729,6 +729,86 @@ int ribon_update_install_transactionally(
     return RIBON_UPDATE_TRANSACTION_STATUS_OK;
 }
 
+/** @brief Exact current pending identity를 CONFIRMED record로 commit한다. */
+int
+ribon_update_transaction_confirm_pending(
+    const struct RibonUpdateConfirmPendingRequest *request,
+    struct RibonUpdateConfirmPendingResult *result)
+{
+    struct RibonUpdateTransactionSnapshot current;
+    struct RibonUpdateTransactionSnapshot confirmed;
+    struct RibonUpdateSlotMetadata next;
+    struct RibonUpdateSlotTransition transition = {0};
+    const struct RibonUpdateSlotEntry *entry;
+    int status;
+
+    if (result != NULL) {
+        memset(result, 0, sizeof(*result));
+    }
+    if (request == NULL || result == NULL ||
+        request->size != sizeof(*request) ||
+        request->abi_version != RIBON_UPDATE_TRANSACTION_ABI_VERSION ||
+        request->flags != 0u || request->target_slot >= RIBON_UPDATE_SLOT_COUNT ||
+        request->image_generation == 0u ||
+        bytes_zero(request->manifest_digest, sizeof(request->manifest_digest)) ||
+        request->journal == NULL ||
+        !bytes_zero(request->reserved, sizeof(request->reserved)) ||
+        (request->observer != NULL &&
+         !ribon_update_transaction_observer_is_valid(request->observer))) {
+        return RIBON_UPDATE_TRANSACTION_STATUS_INVALID_ARGUMENT;
+    }
+    status = ribon_update_transaction_open(request->journal, &current);
+    if (status != RIBON_UPDATE_TRANSACTION_STATUS_OK) {
+        return status;
+    }
+    entry = &current.metadata.slots[request->target_slot];
+    if (current.metadata.active_slot == request->target_slot &&
+        current.metadata.pending_slot == RIBON_UPDATE_SLOT_NONE &&
+        entry->state == RIBON_UPDATE_SLOT_CONFIRMED &&
+        entry->image_generation == request->image_generation &&
+        bytes_equal(entry->manifest_digest, request->manifest_digest, 32u)) {
+        *result = (struct RibonUpdateConfirmPendingResult){
+            .size = sizeof(*result),
+            .abi_version = RIBON_UPDATE_TRANSACTION_ABI_VERSION,
+            .duplicate = 1u,
+            .snapshot = current,
+        };
+        return RIBON_UPDATE_TRANSACTION_STATUS_OK;
+    }
+    if (current.target_slot != request->target_slot ||
+        current.target_state != RIBON_UPDATE_SLOT_PENDING ||
+        current.metadata.pending_slot != request->target_slot ||
+        entry->state != RIBON_UPDATE_SLOT_PENDING ||
+        entry->image_generation != request->image_generation ||
+        !bytes_equal(entry->manifest_digest, request->manifest_digest, 32u)) {
+        return RIBON_UPDATE_TRANSACTION_STATUS_IDENTITY;
+    }
+    transition.size = sizeof(transition);
+    transition.abi_version = RIBON_UPDATE_STORAGE_ABI_VERSION;
+    transition.slot_id = request->target_slot;
+    transition.next_state = RIBON_UPDATE_SLOT_CONFIRMED;
+    transition.image_generation = entry->image_generation;
+    memcpy(transition.manifest_digest, entry->manifest_digest, 32u);
+    memcpy(transition.image_set_digest, entry->image_set_digest, 32u);
+    memcpy(transition.layout_digest, entry->layout_digest, 32u);
+    if (ribon_update_slot_metadata_transition(
+            &current.metadata, &transition, &next) !=
+            RIBON_UPDATE_STORAGE_STATUS_OK) {
+        return RIBON_UPDATE_TRANSACTION_STATUS_STATE;
+    }
+    status = commit_record(request->journal, &current, &next,
+        request->target_slot, request->observer, &confirmed);
+    if (status != RIBON_UPDATE_TRANSACTION_STATUS_OK) {
+        return status;
+    }
+    *result = (struct RibonUpdateConfirmPendingResult){
+        .size = sizeof(*result),
+        .abi_version = RIBON_UPDATE_TRANSACTION_ABI_VERSION,
+        .snapshot = confirmed,
+    };
+    return RIBON_UPDATE_TRANSACTION_STATUS_OK;
+}
+
 /** @brief Transaction status의 stable diagnostic name을 반환한다. */
 const char *ribon_update_transaction_status_name(
     enum RibonUpdateTransactionStatus status)

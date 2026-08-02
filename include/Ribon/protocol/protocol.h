@@ -15,7 +15,7 @@ struct RibonMutableMemoryMap;
 struct RibonPluginDescriptor;
 
 /** @brief Boot Protocol operation table ABI다. */
-#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 2u
+#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 3u
 
 /** @brief Protocol이 environment에서 요구하거나 허용하는 input bit다. */
 enum RibonProtocolExpectation {
@@ -110,10 +110,9 @@ typedef int (*RibonProtocolPrepareHandoffFn)(
     uint64_t capacity,
     struct RibonHandoffArtifact *out);
 
-/** @brief Generation과 nonce에 묶인 confirmation을 검증한다. */
-typedef int (*RibonProtocolValidateConfirmationFn)(
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected);
+/** @brief Authenticated OS-specific health payload 의미를 검증한다. */
+typedef int (*RibonProtocolValidateBootHealthFn)(
+    const struct RibonBootHealthPayload *payload);
 
 /** @brief 한 Boot Protocol의 immutable operation table이다. */
 struct RibonBootProtocolOps {
@@ -124,7 +123,7 @@ struct RibonBootProtocolOps {
     RibonProtocolSelectImageFormatsFn select_image_formats; /**< Image allowlist callback이다. */
     RibonProtocolPrepareHandoffFn prepare_handoff; /**< Handoff serializer다. */
     RibonProtocolPrepareEntryInvocationFn prepare_entry_invocation; /**< Entry invocation callback이다. */
-    RibonProtocolValidateConfirmationFn validate_confirmation; /**< Confirmation callback이다. */
+    RibonProtocolValidateBootHealthFn validate_boot_health; /**< Health 의미 검증 callback이다. */
 };
 
 /** @brief OS 의미론을 Boot Library에서 분리하는 protocol descriptor다. */
@@ -149,10 +148,9 @@ int ribon_boot_protocol_has_expectation(
     uint32_t expectation);
 
 /** @brief Protocol confirmation callback을 fail-closed로 호출한다. */
-int ribon_boot_protocol_validate_confirmation(
+int ribon_boot_protocol_validate_boot_health(
     const struct RibonBootProtocol *protocol,
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected);
+    const struct RibonBootHealthPayload *payload);
 
 /** @brief Boot Protocol plugin descriptor와 operation table을 함께 검사한다. */
 int ribon_protocol_plugin_operations_are_valid(

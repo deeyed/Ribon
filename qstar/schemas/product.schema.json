@@ -217,10 +217,11 @@
               "usages": {
                 "type": "array",
                 "minItems": 1,
-                "maxItems": 6,
+                "maxItems": 7,
                 "uniqueItems": true,
                 "items": {
                   "enum": [
+                    "boot-confirmation",
                     "boot-image",
                     "policy-diagnostic",
                     "policy-normal",

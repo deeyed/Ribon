@@ -335,6 +335,33 @@ def main() -> int:
         signature = sign_message(message, root)
         envelope = update_tool.encode_envelope(manifest, KEY_ID.encode("utf-8"), signature)
         write(root / "update.sig", envelope)
+        confirmation_tool = load_tool("boot_confirmation.py")
+        confirmation_nonce = hashlib.sha256(
+            b"ribon.qemu.boot-confirmation.reference.nonce.v1"
+        ).digest()
+        confirmation = confirmation_tool.encode(
+            product_id=product_id.encode("utf-8"),
+            protocol_id=b"validation-update",
+            key_id=KEY_ID.encode("utf-8"),
+            health_payload=b"REFH\x01\x01\x00\x00",
+            slot_id=1,
+            protocol_major=1,
+            protocol_minor=0,
+            policy_version=1,
+            image_generation=2,
+            manifest_sequence=2,
+            attempt_sequence=1,
+            manifest_digest=hashlib.sha256(manifest).digest(),
+            nonce=confirmation_nonce,
+            signature=bytes(64),
+        )
+        confirmation_signature = sign_message(
+            confirmation_tool.authenticated_message(confirmation), root
+        )
+        confirmation = confirmation_tool.attach_signature(
+            confirmation, confirmation_signature
+        )
+        write(root / "confirmation.bin", confirmation)
         layout_model = layout_tool.parse_source(args.layout_source)
         regions = layout_tool.calculate_layout(layout_model)
         identity = layout_tool.encode_identity(layout_model, regions)
@@ -345,7 +372,8 @@ def main() -> int:
         artifacts = {}
         for name in (
             "kernel.bin", "policy.bin", "update.bin", "update-source.json",
-            "update.man", "update.sig", "layout.bin", "layout.json", "update-disk.raw",
+            "update.man", "update.sig", "confirmation.bin", "layout.bin",
+            "layout.json", "update-disk.raw",
         ):
             path = root / name
             artifacts[name] = {"bytes": path.stat().st_size,
@@ -358,6 +386,15 @@ def main() -> int:
             "product_manifest_sha256": hashlib.sha256(
                 args.product_manifest.read_bytes()
             ).hexdigest(),
+            "boot_confirmation": {
+                "attempt_sequence": 1,
+                "health_payload_sha256": hashlib.sha256(
+                    b"REFH\x01\x01\x00\x00"
+                ).hexdigest(),
+                "nonce_sha256": hashlib.sha256(confirmation_nonce).hexdigest(),
+                "protocol_id": "validation-update",
+                "slot_id": 1,
+            },
             **disk_report,
         })
         print("RIBON-D03-QEMU-UPDATE-FIXTURE-OK")

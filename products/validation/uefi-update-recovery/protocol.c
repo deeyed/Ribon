@@ -42,12 +42,22 @@ static int validation_entry(
     return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
 }
 
-static int validation_confirmation(
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expectation)
+static int validation_boot_health(
+    const struct RibonBootHealthPayload *payload)
 {
-    (void)confirmation; (void)expectation;
-    return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
+    static const uint8_t healthy[8] = {'R','E','F','H',1u,1u,0u,0u};
+    uint8_t difference = 0u;
+    uint32_t index;
+    if (payload == NULL || payload->size != sizeof(*payload) ||
+        payload->abi_version != 1u || payload->bytes == NULL ||
+        payload->byte_size != sizeof(healthy)) {
+        return RIBON_PROTOCOL_STATUS_BAD_CONFIRMATION;
+    }
+    for (index = 0u; index < sizeof(healthy); ++index) {
+        difference |= payload->bytes[index] ^ healthy[index];
+    }
+    return difference == 0u ? RIBON_PROTOCOL_STATUS_OK :
+        RIBON_PROTOCOL_STATUS_BAD_CONFIRMATION;
 }
 
 static const struct RibonBootProtocolOps validation_operations = {
@@ -58,7 +68,7 @@ static const struct RibonBootProtocolOps validation_operations = {
     .select_image_formats = validation_formats,
     .prepare_handoff = validation_handoff,
     .prepare_entry_invocation = validation_entry,
-    .validate_confirmation = validation_confirmation,
+    .validate_boot_health = validation_boot_health,
 };
 
 static const struct RibonBootProtocol validation_protocol = {

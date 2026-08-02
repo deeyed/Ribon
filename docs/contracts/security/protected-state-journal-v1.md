@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 code_paths:
   - include/Ribon/security/protected_state.h
   - src/security/protected_state.c
@@ -67,18 +67,24 @@ pending_sequence: 0 | confirmed_floor + 1
 trial_attempts_remaining: u32
 generation: positive u64
 domain_digest: [u8; 32]
+trial_binding_digest: zero | [u8; 32]
+attempt_sequence: 0 | positive u64
 ```
 
-`CONFIRMED`는 pending과 attempts가 모두 0이다. `TRIAL`은 pending이 exact successor이며 attempts는
-0..32다. Attempt 0은 직전 trial transfer가 마지막 attempt를 소비했다는 durable state이고 다음
-pending authorization을 거부한다. 모든 reserved byte, flags, enum과 size/version은 exact해야 한다.
+`CONFIRMED`는 pending과 attempts가 모두 0이다. Legacy/unbound history는 binding과 attempt가
+모두 0이고, bound confirmation 또는 failed bound trial은 마지막 binding과 positive attempt
+sequence를 유지한다. Confirmed duplicate는 floor까지 exact match할 때만 승인되며 failed receipt는
+floor가 다르므로 stale이다. `TRIAL`은 pending이 exact successor이며 attempts는 0..32다. Unbound
+trial은 binding/attempt가 모두 0이고 bound trial은 둘 다 nonzero다. Attempt 0은 직전 trial transfer가
+마지막 attempt를 소비했다는 durable state이고 다음 pending authorization을 거부한다. 모든 reserved
+byte, flags, enum과 size/version은 exact해야 한다.
 
 Sequence와 generation은 서로 다른 값이다. Sequence는 signed object rollback ordering이고
 generation은 journal transaction ordering이다. 둘 중 어느 값도 wrap하지 않는다.
 
 ## Wire codec
 
-Native C struct를 저장 매체에 쓰지 않는다. Record와 selector는 각각 exact 128-byte
+Native C struct를 저장 매체에 쓰지 않는다. Record와 selector는 각각 exact 160-byte
 little-endian wire object다. Pointer, `size_t`, padding, callback 주소와 native enum layout은
 serialization에 포함되지 않는다.
 
@@ -88,6 +94,7 @@ Record는 다음 의미를 포함한다.
 - exact byte size와 `PREPARED` phase
 - logical state, generation, confirmed floor, pending sequence와 attempts
 - exact domain digest
+- exact boot-attempt binding digest와 domain-monotonic attempt sequence
 - header/payload의 CRC32C와 zero reserved tail
 
 Selector는 다음 의미를 포함한다.
@@ -95,7 +102,7 @@ Selector는 다음 의미를 포함한다.
 - 16-byte magic과 format 1.0
 - selected record slot과 generation
 - exact domain digest
-- selected 128-byte record의 SHA-256
+- selected 160-byte record의 SHA-256
 - selector CRC32C와 zero reserved tail
 
 CRC32C는 torn/corrupt byte 검출을 위한 codec checksum이다. SHA-256은 selector가 exact record
@@ -148,6 +155,15 @@ commit된 뒤에만 begin-trial을 호출한다. Update journal의 PENDING만으
 protected-state commit 전에 crash가 나면 candidate는 inert pending으로 남는다. Retry는 동일 identity의
 trial을 열어야 하고 confirmed floor를 낮추어서는 안 된다.
 
+`begin_bound_trial()`은 같은 successor 규칙에 더해 nonzero canonical binding digest와 positive
+attempt sequence를 commit한다. Binding은 generic confirmation engine이 product, protocol/version,
+slot, image generation, manifest digest/sequence, policy version, nonce와 attempt sequence에서 계산한다.
+Journal은 이 raw identity를 해석하거나 저장하지 않는다.
+
+이미 열린 bound trial에서 다음 boot를 시도할 때 `rebind_trial_attempt()`은 pending sequence와 남은
+attempt를 유지하면서 더 큰 attempt sequence와 새 binding만 commit한다. 같은/작은 attempt,
+unbound/bound 혼용과 exhausted trial의 재결속은 거부한다.
+
 ### Authorize와 consume
 
 `CONFIRMED(N)`은 `N`만 승인한다. `TRIAL(N,N+1)`은 fallback용 `N`과 attempts가 남은 `N+1`만
@@ -156,9 +172,13 @@ generation으로 commit해야 한다. Pure authorization 결과만으로 transfe
 
 ### Confirm과 fail
 
-`confirm(N+1)`은 exact pending을 새 confirmed floor로 올리고 pending/attempts를 0으로 만든다.
+`confirm(N+1)`은 unbound exact pending을 새 confirmed floor로 올리고 pending/attempts를 0으로 만든다.
+`confirm_bound()`은 sequence, binding과 attempt sequence가 모두 일치하는 bound trial만 승격한다.
+이미 같은 bound identity로 confirmed된 상태에는 write 없이 성공해 receipt 재전달을 idempotent하게
+처리하며, 다른 binding이나 stale attempt는 `BINDING_MISMATCH`다.
 이후 `N`은 normal domain에서 rollback이다. `fail_trial()`은 pending을 제거하되 confirmed floor
-`N`을 유지한다. Recovery domain의 transition은 provider namespace와 exact binding 때문에 normal
+`N`을 유지하면서 마지막 bound attempt history를 보존해 다음 attempt sequence 재사용을 막는다.
+Recovery domain의 transition은 provider namespace와 exact binding 때문에 normal
 domain state를 수정하지 않는다.
 
 ## Fail-closed 조건
@@ -170,6 +190,7 @@ domain state를 수정하지 않는다.
 - selected record SHA-256 불일치
 - 같은 generation의 conflicting valid object
 - domain digest mismatch
+- bound/unbound pairing 또는 boot-attempt binding mismatch
 - sequence skip 또는 rollback
 - exhausted trial attempt
 - sequence/generation overflow

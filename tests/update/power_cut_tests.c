@@ -536,6 +536,8 @@ static void exhaustive_faults(const struct Fixture *fixture,
         "clean transaction reaches one pending generation");
     expect(clean_trace.count != 0u && clean_trace.count < MAX_EVENTS,
         "clean trace enumerates bounded operation edges");
+    expect(save_case(case_root, "clean-pending", &storage),
+        "persist clean pending confirmation fixture");
     {
         const uint64_t generation = result.snapshot.journal_generation;
         expect(run_transaction(fixture, &storage, scratch, NULL, 1u, &result) ==

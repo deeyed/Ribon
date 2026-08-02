@@ -118,33 +118,11 @@ static int parus_prepare_entry_invocation(
     return RIBON_PROTOCOL_STATUS_OK;
 }
 
-/** @brief 두 nonce를 전체 byte를 방문해 비교한다. */
-static int parus_nonce_equal(const uint8_t *lhs, const uint8_t *rhs, uint32_t size) {
-    uint8_t difference = 0u;
-    for (uint32_t index = 0; index < size; ++index) {
-        difference |= (uint8_t)(lhs[index] ^ rhs[index]);
-    }
-    return difference == 0u;
-}
-
-/** @brief Parus confirmation을 generation과 32-byte nonce에 묶어 검증한다. */
-static int parus_validate_confirmation(
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected) {
-    if (confirmation == 0 ||
-        expected == 0 ||
-        !parus_streq(confirmation->protocol_id, "parus") ||
-        confirmation->result != RIBON_BOOT_CONFIRMATION_HEALTHY ||
-        confirmation->generation != expected->generation ||
-        confirmation->nonce_size != RIBON_BOOT_CONFIRMATION_NONCE_SIZE ||
-        expected->nonce_size != RIBON_BOOT_CONFIRMATION_NONCE_SIZE ||
-        !parus_nonce_equal(
-            confirmation->nonce,
-            expected->nonce,
-            RIBON_BOOT_CONFIRMATION_NONCE_SIZE)) {
-        return RIBON_PROTOCOL_STATUS_BAD_CONFIRMATION;
-    }
-    return RIBON_PROTOCOL_STATUS_OK;
+/** @brief Parus producer 계약이 열리기 전에는 health payload를 거부한다. */
+static int parus_validate_boot_health(
+    const struct RibonBootHealthPayload *payload) {
+    (void)payload;
+    return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
 }
 
 static const struct RibonBootProtocolOps parus_ops = {
@@ -155,7 +133,7 @@ static const struct RibonBootProtocolOps parus_ops = {
     .select_image_formats = parus_select_image_formats,
     .prepare_handoff = ribon_parus_build_rph1,
     .prepare_entry_invocation = parus_prepare_entry_invocation,
-    .validate_confirmation = parus_validate_confirmation,
+    .validate_boot_health = parus_validate_boot_health,
 };
 
 static const struct RibonBootProtocol parus_protocol = {

@@ -149,22 +149,18 @@ static int synthetic_prepare_handoff(
     return RIBON_PROTOCOL_HANDOFF_STATUS_OK;
 }
 
-/** @brief Synthetic confirmation을 generation과 nonce에 묶어 검증한다. */
-static int synthetic_validate_confirmation(
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected) {
+/** @brief Synthetic protocol-owned canonical health receipt를 검증한다. */
+static int synthetic_validate_boot_health(
+    const struct RibonBootHealthPayload *payload) {
+    static const uint8_t healthy[8] = {'S','Y','N','H',1u,1u,0u,0u};
     uint8_t difference = 0u;
-    if (confirmation == 0 ||
-        expected == 0 ||
-        !synthetic_streq(confirmation->protocol_id, "synthetic") ||
-        confirmation->result != RIBON_BOOT_CONFIRMATION_HEALTHY ||
-        confirmation->generation != expected->generation ||
-        confirmation->nonce_size != RIBON_BOOT_CONFIRMATION_NONCE_SIZE ||
-        expected->nonce_size != RIBON_BOOT_CONFIRMATION_NONCE_SIZE) {
+    if (payload == 0 || payload->size != sizeof(*payload) ||
+        payload->abi_version == 0u || payload->bytes == 0 ||
+        payload->byte_size != sizeof(healthy)) {
         return RIBON_PROTOCOL_STATUS_BAD_CONFIRMATION;
     }
-    for (uint32_t index = 0; index < RIBON_BOOT_CONFIRMATION_NONCE_SIZE; ++index) {
-        difference |= (uint8_t)(confirmation->nonce[index] ^ expected->nonce[index]);
+    for (uint32_t index = 0; index < sizeof(healthy); ++index) {
+        difference |= (uint8_t)(payload->bytes[index] ^ healthy[index]);
     }
     return difference == 0u ?
         RIBON_PROTOCOL_STATUS_OK :
@@ -179,7 +175,7 @@ static const struct RibonBootProtocolOps synthetic_ops = {
     .select_image_formats = synthetic_select_image_formats,
     .prepare_handoff = synthetic_prepare_handoff,
     .prepare_entry_invocation = synthetic_prepare_entry_invocation,
-    .validate_confirmation = synthetic_validate_confirmation,
+    .validate_boot_health = synthetic_validate_boot_health,
 };
 
 static const struct RibonBootProtocol synthetic_protocol = {

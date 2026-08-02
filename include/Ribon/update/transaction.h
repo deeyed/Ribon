@@ -159,6 +159,29 @@ struct RibonUpdateTransactionalInstallResult {
     uint64_t reserved[4];
 };
 
+/** @brief Exact pending identity를 confirmed로 올리는 request다. */
+struct RibonUpdateConfirmPendingRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t flags;
+    uint32_t target_slot;
+    uint64_t image_generation;
+    uint8_t manifest_digest[RIBON_UPDATE_MANIFEST_DIGEST_BYTES];
+    const struct RibonUpdateTransactionJournal *journal;
+    struct RibonUpdateTransactionObserver *observer;
+    uint64_t reserved[4];
+};
+
+/** @brief Confirmation commit 또는 idempotent reopen 결과다. */
+struct RibonUpdateConfirmPendingResult {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t duplicate;
+    uint32_t reserved0;
+    struct RibonUpdateTransactionSnapshot snapshot;
+    uint64_t reserved[4];
+};
+
 /** @brief Observer descriptor의 shape와 reserved bytes를 검사한다. */
 int ribon_update_transaction_observer_is_valid(
     const struct RibonUpdateTransactionObserver *observer);
@@ -194,6 +217,16 @@ int ribon_update_transaction_initialize(
 int ribon_update_install_transactionally(
     const struct RibonUpdateTransactionalInstallRequest *request,
     struct RibonUpdateTransactionalInstallResult *result);
+
+/**
+ * @brief Exact current pending slot을 selector-committed CONFIRMED로 승격한다.
+ *
+ * 이미 같은 slot, image generation과 manifest digest가 active confirmed이면
+ * `duplicate=1`로 성공한다. 다른 pending 또는 confirmed identity는 바꾸지 않는다.
+ */
+int ribon_update_transaction_confirm_pending(
+    const struct RibonUpdateConfirmPendingRequest *request,
+    struct RibonUpdateConfirmPendingResult *result);
 
 /** @brief Transaction status의 stable diagnostic name을 반환한다. */
 const char *ribon_update_transaction_status_name(

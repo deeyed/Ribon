@@ -1,30 +1,16 @@
 #ifndef RIBON_PROTOCOL_CONFIRMATION_H
 #define RIBON_PROTOCOL_CONFIRMATION_H
 
+#include <stddef.h>
 #include <stdint.h>
 
-/** @brief Boot confirmation nonce의 고정 byte 수다. */
-#define RIBON_BOOT_CONFIRMATION_NONCE_SIZE 32u
-
-/** @brief OS가 기록할 수 있는 confirmation 결과다. */
-enum RibonBootConfirmationResult {
-    RIBON_BOOT_CONFIRMATION_HEALTHY = 1,
-};
-
-/** @brief Parser가 검증한 OS-specific confirmation view다. */
-struct RibonBootConfirmation {
-    const char *protocol_id; /**< Confirmation을 해석할 protocol ID다. */
-    uint64_t generation; /**< 확인 대상 slot generation이다. */
-    uint8_t nonce[RIBON_BOOT_CONFIRMATION_NONCE_SIZE]; /**< Attempt nonce다. */
-    uint32_t nonce_size; /**< 유효 nonce byte 수다. */
-    enum RibonBootConfirmationResult result; /**< OS health 결과다. */
-};
-
-/** @brief 선택한 attempt와 confirmation을 묶는 기대값이다. */
-struct RibonBootConfirmationExpectation {
-    uint64_t generation; /**< 선택한 attempt generation이다. */
-    uint8_t nonce[RIBON_BOOT_CONFIRMATION_NONCE_SIZE]; /**< 선택 시 생성한 nonce다. */
-    uint32_t nonce_size; /**< 유효 nonce byte 수다. */
+/** @brief Protocol callback이 해석하는 authenticated health payload view다. */
+struct RibonBootHealthPayload {
+    uint32_t size; /**< `sizeof(struct RibonBootHealthPayload)`이다. */
+    uint32_t abi_version; /**< Generic envelope ABI version이다. */
+    const uint8_t *bytes; /**< Protocol-owned immutable payload다. */
+    size_t byte_size; /**< Payload의 exact bounded byte 수다. */
+    uint8_t digest[32]; /**< Envelope가 결속한 SHA-256이다. */
 };
 
 #endif

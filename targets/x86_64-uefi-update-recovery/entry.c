@@ -5,8 +5,11 @@
 #include <Ribon/plugin/registry.h>
 #include <Ribon/port/port.h>
 #include <Ribon/security/protected_state.h>
+#include <Ribon/update/confirmation.h>
 #include <Ribon/update/installer.h>
 #include <Ribon/update/transaction.h>
+
+#include "../../products/validation/uefi-update-recovery/protected_state.h"
 
 #include "../../src/security/sha256.h"
 
@@ -16,6 +19,7 @@
 #define UPDATE_REGION_CAPACITY 256u
 #define UPDATE_MANIFEST_CAPACITY 4096u
 #define UPDATE_ENVELOPE_CAPACITY 512u
+#define UPDATE_CONFIRMATION_CAPACITY RIBON_BOOT_CONFIRMATION_MAX_WIRE_BYTES
 #define UPDATE_BUNDLE_CAPACITY (64u * 1024u)
 #define UPDATE_SCRATCH_CAPACITY (64u * 1024u)
 
@@ -23,11 +27,26 @@ static _Alignas(16) uint8_t raw_memory_map[UPDATE_MEMORY_MAP_CAPACITY];
 static struct RibonMemoryRegion memory_regions[UPDATE_REGION_CAPACITY];
 static _Alignas(4096) uint8_t manifest_bytes[UPDATE_MANIFEST_CAPACITY];
 static _Alignas(4096) uint8_t envelope_bytes[UPDATE_ENVELOPE_CAPACITY];
+static _Alignas(4096) uint8_t confirmation_bytes[UPDATE_CONFIRMATION_CAPACITY];
 static _Alignas(4096) uint8_t bundle_bytes[UPDATE_BUNDLE_CAPACITY];
 static _Alignas(4096) uint8_t install_scratch[UPDATE_SCRATCH_CAPACITY];
 static uint8_t transaction_mode_bytes[16];
+static uint8_t confirmation_mode_bytes[16];
 static struct RibonUefiUpdateStorageContext update_storage;
 static const struct RibonDiagnosticSinkServiceOperations *diagnostic_sink;
+
+extern const struct RibonPluginDescriptor
+    ribon_uefi_update_validation_protocol_plugin_descriptor;
+
+static const uint8_t confirmation_product_id[] =
+    "validation.x86_64-uefi-update-recovery";
+static const uint8_t confirmation_protocol_id[] = "validation-update";
+static const uint8_t confirmation_nonce[32] = {
+    0x46u,0xf9u,0x96u,0x7cu,0x39u,0xb9u,0x5cu,0xa8u,
+    0x7cu,0xaeu,0xf6u,0x5cu,0x0eu,0x37u,0x46u,0xd3u,
+    0xe8u,0xceu,0x78u,0x8au,0x59u,0x0du,0x4eu,0x18u,
+    0x69u,0xbau,0x44u,0x28u,0x2bu,0xb3u,0x69u,0x85u,
+};
 
 struct MemoryBundle {
     const uint8_t *bytes;
@@ -150,11 +169,85 @@ static struct RibonUpdateManifestExpectation fixture_expectation(
     return expectation;
 }
 
-/** @brief Journal authority에서 interrupted install을 PENDING까지 idempotent하게 닫는다. */
+/** @brief Validation product의 deterministic reference nonce를 반환한다. */
+static int fill_confirmation_nonce(void *context, uint8_t nonce[32])
+{
+    (void)context;
+    memcpy(nonce, confirmation_nonce, sizeof(confirmation_nonce));
+    return 0;
+}
+
+/** @brief Authorized update view를 exact boot-attempt identity로 낮춘다. */
+static struct RibonBootAttemptIdentity confirmation_identity(
+    const struct RibonUpdateManifestView *view,
+    const uint8_t manifest_digest[32])
+{
+    struct RibonBootAttemptIdentity identity = {
+        .size = sizeof(identity),
+        .abi_version = RIBON_BOOT_CONFIRMATION_ABI_VERSION,
+        .mode = RIBON_KEY_POLICY_MODE_RECOVERY,
+        .slot_id = 1u,
+        .protocol_major = 1u,
+        .policy_version = (uint32_t)view->creation_policy_version,
+        .image_generation = view->bundle_generation,
+        .manifest_sequence = view->rollback_sequence,
+        .product_id = confirmation_product_id,
+        .product_id_size = sizeof(confirmation_product_id) - 1u,
+        .protocol_id = confirmation_protocol_id,
+        .protocol_id_size = sizeof(confirmation_protocol_id) - 1u,
+    };
+    memcpy(identity.manifest_digest, manifest_digest, 32u);
+    memcpy(identity.product_digest, ribon_generated_product_source_digest(), 32u);
+    memcpy(identity.rollback_domain_digest, view->rollback_domain_digest, 32u);
+    return identity;
+}
+
+/** @brief Exact signed health envelope를 검증하고 두 journal을 confirmed로 닫는다. */
+static EFI_STATUS accept_confirmation(
+    const struct RibonBootAttemptIdentity *identity,
+    const struct RibonUpdateTransactionJournal *update_journal,
+    const struct RibonProtectedStateJournal *protected_journal,
+    uint64_t confirmation_size)
+{
+    const struct RibonBootProtocol *protocol =
+        ribon_uefi_update_validation_protocol_plugin_descriptor.operations;
+    struct RibonBootConfirmationAcceptRequest request = {
+        .size = sizeof(request),
+        .abi_version = RIBON_BOOT_CONFIRMATION_ABI_VERSION,
+        .envelope = confirmation_bytes,
+        .envelope_size = (size_t)confirmation_size,
+        .identity = identity,
+        .protocol = protocol,
+        .key_policy = ribon_generated_key_policy_store(),
+        .signature_provider = ribon_generated_signature_provider(),
+        .update_journal = update_journal,
+        .protected_journal = protected_journal,
+    };
+    struct RibonBootConfirmationReceipt receipt;
+    int status = ribon_boot_confirmation_accept(&request, &receipt);
+    if (status != RIBON_BOOT_CONFIRMATION_STATUS_OK &&
+        status != RIBON_BOOT_CONFIRMATION_STATUS_DUPLICATE) {
+        return fail(ribon_boot_confirmation_status_name(
+            (enum RibonBootConfirmationStatus)status));
+    }
+    if (receipt.active_slot != 1u || receipt.update_generation == 0u ||
+        receipt.protected_generation == 0u) {
+        return fail("confirmation-receipt");
+    }
+    marker(receipt.duplicate != 0u ?
+        "RIBON-D06-CONFIRMATION-REOPEN-CONFIRMED" :
+        "RIBON-D06-CONFIRMATION-CONFIRMED");
+    return EFI_SUCCESS;
+}
+
+/** @brief Journal authority에서 install과 one-attempt confirmation을 닫는다. */
 static EFI_STATUS run_transaction_mode(
     uint64_t manifest_size,
     uint64_t envelope_size,
-    uint64_t bundle_size)
+    uint64_t bundle_size,
+    uint64_t confirmation_size,
+    int confirmation_mode,
+    const struct RibonProtectedStateJournal *protected_journal)
 {
     struct RibonUpdateManifestExpectation expectation =
         fixture_expectation(ribon_generated_product_source_digest());
@@ -207,8 +300,31 @@ static EFI_STATUS run_transaction_mode(
         .journal = &journal,
     };
     struct RibonUpdateTransactionalInstallResult result;
+    struct RibonUpdateTransactionSnapshot current;
+    struct RibonUpdateManifestView authorized;
+    struct RibonKeyPolicyDecision decision;
+    struct RibonBootAttemptIdentity identity;
+    uint8_t manifest_digest[32];
     int status;
 
+    status = ribon_update_manifest_authorize(
+        &install.authorization, &authorized, &decision);
+    if (status != RIBON_UPDATE_MANIFEST_STATUS_OK) {
+        return fail(manifest_status_stage(status));
+    }
+    ribon_security_sha256(manifest_bytes, (size_t)manifest_size, manifest_digest);
+    identity = confirmation_identity(&authorized, manifest_digest);
+    status = ribon_update_transaction_open(&journal, &current);
+    if (status != RIBON_UPDATE_TRANSACTION_STATUS_OK) {
+        return fail(ribon_update_transaction_status_name(
+            (enum RibonUpdateTransactionStatus)status));
+    }
+    if (confirmation_mode != 0 && current.metadata.active_slot == 1u &&
+        current.metadata.pending_slot == RIBON_UPDATE_SLOT_NONE &&
+        current.metadata.slots[1].state == RIBON_UPDATE_SLOT_CONFIRMED) {
+        return accept_confirmation(&identity, &journal,
+            protected_journal, confirmation_size);
+    }
     status = ribon_update_install_transactionally(&request, &result);
     if (status != RIBON_UPDATE_TRANSACTION_STATUS_OK ||
         result.snapshot.target_slot != 1u ||
@@ -225,7 +341,37 @@ static EFI_STATUS run_transaction_mode(
     marker("RIBON-D04-TRANSACTION-PENDING");
     if (result.resumed_from == RIBON_UPDATE_SLOT_PENDING) {
         marker("RIBON-D04-TRANSACTION-REOPEN-PENDING");
+        return confirmation_mode != 0 ?
+            accept_confirmation(&identity, &journal,
+                protected_journal, confirmation_size) : EFI_SUCCESS;
     }
+    if (confirmation_mode == 0) {
+        return EFI_SUCCESS;
+    }
+    {
+        const struct RibonBootAttemptNonceSource nonce_source = {
+            .size = sizeof(nonce_source),
+            .abi_version = RIBON_BOOT_CONFIRMATION_ABI_VERSION,
+            .fill = fill_confirmation_nonce,
+        };
+        const struct RibonBootAttemptBeginRequest begin = {
+            .size = sizeof(begin),
+            .abi_version = RIBON_BOOT_CONFIRMATION_ABI_VERSION,
+            .maximum_attempts = 3u,
+            .identity = &identity,
+            .update_journal = &journal,
+            .protected_journal = protected_journal,
+            .nonce_source = &nonce_source,
+        };
+        struct RibonBootAttempt attempt;
+        status = ribon_boot_confirmation_begin_attempt(&begin, &attempt);
+        if (status != RIBON_BOOT_CONFIRMATION_STATUS_OK ||
+            attempt.attempt_sequence != 1u || attempt.slot_id != 1u) {
+            return fail(ribon_boot_confirmation_status_name(
+                (enum RibonBootConfirmationStatus)status));
+        }
+    }
+    marker("RIBON-D06-PENDING-BOOT-ATTEMPT");
     return EFI_SUCCESS;
 }
 
@@ -237,6 +383,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_tab
         ribon_generated_product_descriptor();
     const struct RibonUpdateStorageProductBinding *binding =
         ribon_generated_update_storage_binding();
+    const struct RibonProtectedStateProductBinding *protected_binding =
+        ribon_generated_protected_state_binding();
     struct RibonUefiAppContext native = {
         .raw_memory_map = raw_memory_map,
         .raw_memory_map_capacity = sizeof(raw_memory_map),
@@ -251,11 +399,16 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_tab
     struct RibonUpdateInstallRequest request;
     struct RibonUpdateManifestView authorized_manifest;
     struct RibonKeyPolicyDecision key_decision;
+    struct RibonProtectedStateJournal protected_journal;
+    struct RibonProtectedStateSnapshot protected_snapshot;
     uint8_t current_manifest_digest[32];
     uint64_t manifest_size = 0u;
     uint64_t envelope_size = 0u;
     uint64_t bundle_size = 0u;
+    uint64_t confirmation_size = 0u;
     uint64_t transaction_mode_size = 0u;
+    uint64_t confirmation_mode_size = 0u;
+    int confirmation_mode = 0;
     int status;
 
     if (!ribon_port_descriptor_is_valid(port) || port->diagnostic_sink == NULL ||
@@ -283,8 +436,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_tab
         ribon_service_directory_validate(ribon_generated_service_directory(),
             product, RIBON_MODE_RECOVERY) != RIBON_CORE_STATUS_OK ||
         ribon_protected_state_binding_validate(
-            ribon_generated_protected_state_binding()) !=
-            RIBON_PROTECTED_STATE_STATUS_OK) {
+            protected_binding) != RIBON_PROTECTED_STATE_STATUS_OK ||
+        protected_binding->domain_count != 1u) {
         return fail("product-graph");
     }
     marker("RIBON-D03-UPDATE-PRODUCT-GRAPH-OK");
@@ -299,6 +452,33 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_tab
             RIBON_UEFI_APP_STATUS_OK) {
         return fail("esp-update-input");
     }
+    if (ribon_uefi_app_read_file(&native, "/RIBON/CONFIRM.V1",
+            confirmation_mode_bytes, sizeof(confirmation_mode_bytes),
+            &confirmation_mode_size) == RIBON_UEFI_APP_STATUS_OK &&
+        confirmation_mode_size == sizeof(confirmation_mode_bytes) &&
+        memcmp(confirmation_mode_bytes, "RIBON-D06-CFM-V1",
+            sizeof(confirmation_mode_bytes)) == 0) {
+        confirmation_mode = 1;
+        if (ribon_uefi_app_read_file(&native, "/RIBON/CONFIRM.BIN",
+                confirmation_bytes, sizeof(confirmation_bytes),
+                &confirmation_size) != RIBON_UEFI_APP_STATUS_OK ||
+            !ribon_qemu_update_protected_state_bind(&update_storage.provider,
+                &update_storage.layout, protected_binding->domain_digests[0]) ||
+            ribon_protected_state_journal_bind(protected_binding,
+                protected_binding->domain_digests[0], &protected_journal) !=
+                RIBON_PROTECTED_STATE_STATUS_OK) {
+            return fail("confirmation-input");
+        }
+        status = ribon_protected_state_open(
+            &protected_journal, &protected_snapshot);
+        if (status == RIBON_PROTECTED_STATE_STATUS_UNINITIALIZED) {
+            status = ribon_protected_state_initialize(
+                &protected_journal, 1u, &protected_snapshot);
+        }
+        if (status != RIBON_PROTECTED_STATE_STATUS_OK) {
+            return fail("protected-state-open");
+        }
+    }
     if (ribon_uefi_app_read_file(&native, "/RIBON/TRANSACT.V1",
             transaction_mode_bytes, sizeof(transaction_mode_bytes),
             &transaction_mode_size) == RIBON_UEFI_APP_STATUS_OK &&
@@ -306,7 +486,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_tab
         memcmp(transaction_mode_bytes, "RIBON-D04-TXN-V1",
             sizeof(transaction_mode_bytes)) == 0) {
         return run_transaction_mode(
-            manifest_size, envelope_size, bundle_size);
+            manifest_size, envelope_size, bundle_size, confirmation_size,
+            confirmation_mode,
+            confirmation_mode != 0 ? &protected_journal : NULL);
     }
     if (ribon_uefi_update_storage_read_metadata(&update_storage, &metadata) !=
             RIBON_UEFI_UPDATE_STORAGE_OK) {

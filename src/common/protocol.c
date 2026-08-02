@@ -22,7 +22,7 @@ int ribon_boot_protocol_is_valid(const struct RibonBootProtocol *protocol) {
         protocol->ops->select_image_formats == 0 ||
         protocol->ops->prepare_handoff == 0 ||
         protocol->ops->prepare_entry_invocation == 0 ||
-        protocol->ops->validate_confirmation == 0) {
+        protocol->ops->validate_boot_health == 0) {
         return 0;
     }
     formats = protocol->ops->select_image_formats();
@@ -39,14 +39,13 @@ int ribon_boot_protocol_has_expectation(
 }
 
 /** @brief Protocol confirmation callback을 fail-closed로 호출한다. */
-int ribon_boot_protocol_validate_confirmation(
+int ribon_boot_protocol_validate_boot_health(
     const struct RibonBootProtocol *protocol,
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected) {
+    const struct RibonBootHealthPayload *payload) {
     if (!ribon_boot_protocol_is_valid(protocol)) {
         return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
     }
-    return protocol->ops->validate_confirmation(confirmation, expected);
+    return protocol->ops->validate_boot_health(payload);
 }
 
 /** @brief Boot Protocol plugin descriptor와 operation table을 함께 검사한다. */

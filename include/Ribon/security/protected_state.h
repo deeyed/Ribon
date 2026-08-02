@@ -17,10 +17,10 @@
 #define RIBON_PROTECTED_STATE_RECORD_SLOTS 2u
 
 /** @brief Journal record의 canonical little-endian byte 길이다. */
-#define RIBON_PROTECTED_STATE_RECORD_BYTES 128u
+#define RIBON_PROTECTED_STATE_RECORD_BYTES 160u
 
 /** @brief Commit selector의 canonical little-endian byte 길이다. */
-#define RIBON_PROTECTED_STATE_SELECTOR_BYTES 128u
+#define RIBON_PROTECTED_STATE_SELECTOR_BYTES 160u
 
 /** @brief 한 product가 승인할 수 있는 rollback domain 최대 수다. */
 #define RIBON_PROTECTED_STATE_MAX_DOMAINS 8u
@@ -81,6 +81,7 @@ enum RibonProtectedStateStatus {
     RIBON_PROTECTED_STATE_STATUS_OVERFLOW = -12,
     RIBON_PROTECTED_STATE_STATUS_READBACK_MISMATCH = -13,
     RIBON_PROTECTED_STATE_STATUS_ALREADY_INITIALIZED = -14,
+    RIBON_PROTECTED_STATE_STATUS_BINDING_MISMATCH = -15,
 };
 
 struct RibonProtectedStateProvider;
@@ -167,6 +168,8 @@ struct RibonProtectedStateSnapshot {
     uint32_t flags;
     uint64_t generation;
     uint8_t domain_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES];
+    uint8_t trial_binding_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES];
+    uint64_t attempt_sequence;
     uint64_t reserved[4];
 };
 
@@ -214,6 +217,34 @@ int ribon_protected_state_begin_trial(
     uint32_t attempts,
     struct RibonProtectedStateSnapshot *snapshot);
 
+/**
+ * @brief Exact successor trial을 boot-attempt identity에 결속해 연다.
+ *
+ * Binding digest는 product, protocol, slot, image generation, manifest,
+ * nonce와 attempt sequence의 canonical digest다. Core는 raw identity를 journal에
+ * 저장하지 않으며 `attempt_sequence`는 domain 안에서 양의 단조 증가 값이다.
+ */
+int ribon_protected_state_begin_bound_trial(
+    const struct RibonProtectedStateJournal *journal,
+    uint64_t candidate_sequence,
+    uint32_t attempts,
+    const uint8_t binding_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    uint64_t attempt_sequence,
+    struct RibonProtectedStateSnapshot *snapshot);
+
+/**
+ * @brief 열린 trial을 더 새로운 boot attempt identity로 durable하게 재결속한다.
+ *
+ * Pending sequence와 remaining-attempt 값은 바꾸지 않는다. 새 attempt sequence는
+ * 직전 값보다 정확히 커야 하며 exhausted trial은 재결속할 수 없다.
+ */
+int ribon_protected_state_rebind_trial_attempt(
+    const struct RibonProtectedStateJournal *journal,
+    uint64_t pending_sequence,
+    const uint8_t binding_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    uint64_t attempt_sequence,
+    struct RibonProtectedStateSnapshot *snapshot);
+
 /** @brief 현재 state에서 sequence의 confirmed 또는 pending authority를 판정한다. */
 int ribon_protected_state_authorize(
     const struct RibonProtectedStateJournal *journal,
@@ -230,6 +261,19 @@ int ribon_protected_state_consume_trial_attempt(
 int ribon_protected_state_confirm(
     const struct RibonProtectedStateJournal *journal,
     uint64_t pending_sequence,
+    struct RibonProtectedStateSnapshot *snapshot);
+
+/**
+ * @brief Exact pending sequence와 boot-attempt binding을 idempotent하게 확인한다.
+ *
+ * 이미 같은 binding으로 confirmed인 경우 journal generation을 늘리지 않고 성공한다.
+ * 다른 binding, sequence 또는 stale attempt는 fail-closed한다.
+ */
+int ribon_protected_state_confirm_bound(
+    const struct RibonProtectedStateJournal *journal,
+    uint64_t pending_sequence,
+    const uint8_t binding_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    uint64_t attempt_sequence,
     struct RibonProtectedStateSnapshot *snapshot);
 
 /** @brief Pending state를 폐기하고 기존 confirmed floor를 유지한다. */

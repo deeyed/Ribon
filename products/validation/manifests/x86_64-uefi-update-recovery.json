@@ -20,7 +20,7 @@
   },
   "evidence": {
     "class": "qemu-smoke",
-    "claim": "x86_64 QEMU q35 UEFI recovery installs one signed bundle into the exact inactive slot and reopens VERIFIED metadata"
+    "claim": "x86_64 QEMU q35 UEFI recovery installs one signed bundle, opens a bound boot attempt, accepts one authenticated protocol health receipt, and reopens the exact confirmed slot"
   },
   "max_plugins": 16,
   "services": [
@@ -148,6 +148,7 @@
         ],
         "status": "active",
         "usages": [
+          "boot-confirmation",
           "update-manifest"
         ]
       }

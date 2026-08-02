@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define RIBON_KEY_POLICY_ALL_MODE_MASK UINT32_C(0x0f)
-#define RIBON_KEY_POLICY_ALL_USAGE_MASK UINT64_C(0x3f)
+#define RIBON_KEY_POLICY_ALL_USAGE_MASK UINT64_C(0x7f)
 
 struct RibonKeyPolicySha256 {
     uint32_t state[8];
@@ -688,7 +688,7 @@ ribon_key_policy_request_is_valid(
         request->mode >= RIBON_KEY_POLICY_MODE_NORMAL &&
         request->mode <= RIBON_KEY_POLICY_MODE_DIAGNOSTIC &&
         request->usage >= RIBON_KEY_POLICY_USAGE_POLICY_NORMAL &&
-        request->usage <= RIBON_KEY_POLICY_USAGE_BOOT_IMAGE &&
+        request->usage <= RIBON_KEY_POLICY_USAGE_BOOT_CONFIRMATION &&
         request->flags == 0u && request->reserved0 == 0u &&
         ribon_key_policy_id_is_valid(request->key_id, request->key_id_size) &&
         !ribon_key_policy_bytes_are_zero(

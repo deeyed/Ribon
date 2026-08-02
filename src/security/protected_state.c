@@ -9,8 +9,8 @@
 #define RECORD_MAGIC "RIBON-PSTATE-R1"
 #define SELECTOR_MAGIC "RIBON-PSTATE-S1"
 #define WIRE_MAGIC_BYTES 16u
-#define RECORD_CHECKSUM_OFFSET 112u
-#define SELECTOR_CHECKSUM_OFFSET 112u
+#define RECORD_CHECKSUM_OFFSET 144u
+#define SELECTOR_CHECKSUM_OFFSET 144u
 #define WIRE_CHECKSUM_BYTES 4u
 #define RECORD_PHASE_PREPARED 1u
 
@@ -21,6 +21,8 @@ struct RibonProtectedRecord {
     uint32_t attempts;
     uint64_t generation;
     uint8_t domain[RIBON_PROTECTED_STATE_DIGEST_BYTES];
+    uint8_t binding[RIBON_PROTECTED_STATE_DIGEST_BYTES];
+    uint64_t attempt_sequence;
 };
 
 struct RibonProtectedSelector {
@@ -110,7 +112,7 @@ crc32c(const uint8_t *bytes, size_t size)
     return ~crc;
 }
 
-/** @brief Exact 128-byte record의 selector identity SHA-256을 계산한다. */
+/** @brief Exact 160-byte record의 selector identity SHA-256을 계산한다. */
 static void
 record_identity(
     const uint8_t record[RIBON_PROTECTED_STATE_RECORD_BYTES],
@@ -165,7 +167,7 @@ provider_flush(const struct RibonProtectedStateJournal *journal)
         journal->provider, journal->domain_digest));
 }
 
-/** @brief Pointer-free logical state를 128-byte record로 encode한다. */
+/** @brief Pointer-free logical state를 160-byte record로 encode한다. */
 static void
 record_encode(
     const struct RibonProtectedRecord *record,
@@ -182,10 +184,12 @@ record_encode(
     store_u64(bytes + 48u, record->pending_sequence);
     store_u32(bytes + 56u, record->attempts);
     memcpy(bytes + 64u, record->domain, RIBON_PROTECTED_STATE_DIGEST_BYTES);
+    memcpy(bytes + 96u, record->binding, RIBON_PROTECTED_STATE_DIGEST_BYTES);
+    store_u64(bytes + 128u, record->attempt_sequence);
     store_u32(bytes + RECORD_CHECKSUM_OFFSET, crc32c(bytes, RECORD_CHECKSUM_OFFSET));
 }
 
-/** @brief 128-byte record를 재검산하고 logical state로 decode한다. */
+/** @brief 160-byte record를 재검산하고 logical state로 decode한다. */
 static int
 record_decode(
     const uint8_t bytes[RIBON_PROTECTED_STATE_RECORD_BYTES],
@@ -196,25 +200,30 @@ record_decode(
     const uint32_t attempts = load_u32(bytes + 56u);
     const uint64_t confirmed = load_u64(bytes + 40u);
     const uint64_t pending = load_u64(bytes + 48u);
+    const int binding_is_zero = bytes_zero(
+        bytes + 96u, RIBON_PROTECTED_STATE_DIGEST_BYTES);
+    const uint64_t attempt_sequence = load_u64(bytes + 128u);
 
     if (!bytes_equal(bytes, (const uint8_t *)RECORD_MAGIC, sizeof(RECORD_MAGIC) - 1u) ||
         bytes[15] != 0u || bytes[16] != 1u || bytes[17] != 0u ||
         bytes[18] != 0u || bytes[19] != 0u ||
         load_u32(bytes + 20u) != RIBON_PROTECTED_STATE_RECORD_BYTES ||
         load_u32(bytes + 24u) != RECORD_PHASE_PREPARED ||
-        load_u32(bytes + 60u) != 0u ||
+        load_u32(bytes + 60u) != 0u || load_u64(bytes + 136u) != 0u ||
         load_u32(bytes + RECORD_CHECKSUM_OFFSET) !=
             crc32c(bytes, RECORD_CHECKSUM_OFFSET) ||
-        !bytes_zero(bytes + 116u, 12u) ||
+        !bytes_zero(bytes + 148u, 12u) ||
         bytes_zero(bytes + 64u, RIBON_PROTECTED_STATE_DIGEST_BYTES) ||
         load_u64(bytes + 32u) == 0u ||
         (kind != RIBON_PROTECTED_STATE_KIND_CONFIRMED &&
          kind != RIBON_PROTECTED_STATE_KIND_TRIAL) ||
         (kind == RIBON_PROTECTED_STATE_KIND_CONFIRMED &&
-         (pending != 0u || attempts != 0u)) ||
+         (pending != 0u || attempts != 0u ||
+          (binding_is_zero != (attempt_sequence == 0u)))) ||
         (kind == RIBON_PROTECTED_STATE_KIND_TRIAL &&
          (confirmed == UINT64_MAX || pending != confirmed + 1u ||
-          attempts > RIBON_PROTECTED_STATE_MAX_TRIAL_ATTEMPTS))) {
+          attempts > RIBON_PROTECTED_STATE_MAX_TRIAL_ATTEMPTS ||
+          (binding_is_zero != (attempt_sequence == 0u))))) {
         return RIBON_PROTECTED_STATE_STATUS_CORRUPT;
     }
     *record = (struct RibonProtectedRecord){
@@ -223,12 +232,14 @@ record_decode(
         .pending_sequence = pending,
         .attempts = attempts,
         .generation = load_u64(bytes + 32u),
+        .attempt_sequence = attempt_sequence,
     };
     memcpy(record->domain, bytes + 64u, sizeof(record->domain));
+    memcpy(record->binding, bytes + 96u, sizeof(record->binding));
     return RIBON_PROTECTED_STATE_STATUS_OK;
 }
 
-/** @brief Commit selector를 canonical 128-byte representation으로 encode한다. */
+/** @brief Commit selector를 canonical 160-byte representation으로 encode한다. */
 static void
 selector_encode(
     const struct RibonProtectedSelector *selector,
@@ -259,10 +270,10 @@ selector_decode(
         load_u32(bytes + 28u) != 0u || load_u64(bytes + 32u) == 0u ||
         bytes_zero(bytes + 40u, RIBON_PROTECTED_STATE_DIGEST_BYTES) ||
         bytes_zero(bytes + 72u, RIBON_PROTECTED_STATE_DIGEST_BYTES) ||
-        load_u32(bytes + 104u) != 0u || load_u32(bytes + 108u) != 0u ||
+        !bytes_zero(bytes + 104u, SELECTOR_CHECKSUM_OFFSET - 104u) ||
         load_u32(bytes + SELECTOR_CHECKSUM_OFFSET) !=
             crc32c(bytes, SELECTOR_CHECKSUM_OFFSET) ||
-        !bytes_zero(bytes + 116u, 12u)) {
+        !bytes_zero(bytes + 148u, 12u)) {
         return RIBON_PROTECTED_STATE_STATUS_CORRUPT;
     }
     *selector = (struct RibonProtectedSelector){
@@ -305,6 +316,9 @@ snapshot_from_record(
         .generation = record->generation,
     };
     memcpy(snapshot->domain_digest, record->domain, sizeof(snapshot->domain_digest));
+    memcpy(snapshot->trial_binding_digest, record->binding,
+           sizeof(snapshot->trial_binding_digest));
+    snapshot->attempt_sequence = record->attempt_sequence;
 }
 
 /** @brief Inactive record와 selector를 ordered write로 commit한다. */
@@ -577,12 +591,14 @@ ribon_protected_state_initialize(
     return commit_record(journal, 0u, &record, snapshot);
 }
 
-/** @brief Confirmed floor의 exact successor trial을 durable하게 연다. */
-int
-ribon_protected_state_begin_trial(
+/** @brief Optional boot binding과 함께 exact successor trial을 연다. */
+static int
+begin_trial(
     const struct RibonProtectedStateJournal *journal,
     uint64_t candidate_sequence,
     uint32_t attempts,
+    const uint8_t *binding_digest,
+    uint64_t attempt_sequence,
     struct RibonProtectedStateSnapshot *snapshot)
 {
     struct RibonProtectedStateSnapshot current;
@@ -606,12 +622,90 @@ ribon_protected_state_begin_trial(
     if (attempts == 0u || attempts > RIBON_PROTECTED_STATE_MAX_TRIAL_ATTEMPTS) {
         return RIBON_PROTECTED_STATE_STATUS_INVALID_ARGUMENT;
     }
+    if ((binding_digest == NULL && attempt_sequence != 0u) ||
+        (binding_digest != NULL &&
+         (bytes_zero(binding_digest, RIBON_PROTECTED_STATE_DIGEST_BYTES) ||
+          attempt_sequence == 0u))) {
+        return RIBON_PROTECTED_STATE_STATUS_INVALID_ARGUMENT;
+    }
     next = (struct RibonProtectedRecord){
         .kind = RIBON_PROTECTED_STATE_KIND_TRIAL,
         .confirmed_floor = current.confirmed_floor,
         .pending_sequence = candidate_sequence,
         .attempts = attempts,
+        .attempt_sequence = attempt_sequence,
     };
+    if (binding_digest != NULL) {
+        memcpy(next.binding, binding_digest, sizeof(next.binding));
+    }
+    return transition_record(journal, &current, &next, snapshot);
+}
+
+/** @brief Confirmed floor의 exact unbound successor trial을 durable하게 연다. */
+int
+ribon_protected_state_begin_trial(
+    const struct RibonProtectedStateJournal *journal,
+    uint64_t candidate_sequence,
+    uint32_t attempts,
+    struct RibonProtectedStateSnapshot *snapshot)
+{
+    return begin_trial(journal, candidate_sequence, attempts, NULL, 0u, snapshot);
+}
+
+/** @brief Exact successor trial을 canonical boot-attempt binding에 결속한다. */
+int
+ribon_protected_state_begin_bound_trial(
+    const struct RibonProtectedStateJournal *journal,
+    uint64_t candidate_sequence,
+    uint32_t attempts,
+    const uint8_t binding_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    uint64_t attempt_sequence,
+    struct RibonProtectedStateSnapshot *snapshot)
+{
+    return begin_trial(journal, candidate_sequence, attempts,
+                       binding_digest, attempt_sequence, snapshot);
+}
+
+/** @brief Existing trial을 strictly newer boot-attempt binding으로 재결속한다. */
+int
+ribon_protected_state_rebind_trial_attempt(
+    const struct RibonProtectedStateJournal *journal,
+    uint64_t pending_sequence,
+    const uint8_t binding_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    uint64_t attempt_sequence,
+    struct RibonProtectedStateSnapshot *snapshot)
+{
+    struct RibonProtectedStateSnapshot current;
+    struct RibonProtectedRecord next;
+    int status;
+
+    if (binding_digest == NULL ||
+        bytes_zero(binding_digest, RIBON_PROTECTED_STATE_DIGEST_BYTES) ||
+        attempt_sequence == 0u) {
+        return RIBON_PROTECTED_STATE_STATUS_INVALID_ARGUMENT;
+    }
+    status = ribon_protected_state_open(journal, &current);
+    if (status != RIBON_PROTECTED_STATE_STATUS_OK) {
+        return status;
+    }
+    if (current.kind != RIBON_PROTECTED_STATE_KIND_TRIAL ||
+        current.pending_sequence != pending_sequence) {
+        return RIBON_PROTECTED_STATE_STATUS_ROLLBACK;
+    }
+    if (current.trial_attempts_remaining == 0u) {
+        return RIBON_PROTECTED_STATE_STATUS_ATTEMPTS_EXHAUSTED;
+    }
+    if (attempt_sequence <= current.attempt_sequence) {
+        return RIBON_PROTECTED_STATE_STATUS_BINDING_MISMATCH;
+    }
+    next = (struct RibonProtectedRecord){
+        .kind = RIBON_PROTECTED_STATE_KIND_TRIAL,
+        .confirmed_floor = current.confirmed_floor,
+        .pending_sequence = current.pending_sequence,
+        .attempts = current.trial_attempts_remaining,
+        .attempt_sequence = attempt_sequence,
+    };
+    memcpy(next.binding, binding_digest, sizeof(next.binding));
     return transition_record(journal, &current, &next, snapshot);
 }
 
@@ -687,7 +781,9 @@ ribon_protected_state_consume_trial_attempt(
         .confirmed_floor = current.confirmed_floor,
         .pending_sequence = current.pending_sequence,
         .attempts = current.trial_attempts_remaining - 1u,
+        .attempt_sequence = current.attempt_sequence,
     };
+    memcpy(next.binding, current.trial_binding_digest, sizeof(next.binding));
     return transition_record(journal, &current, &next, snapshot);
 }
 
@@ -706,13 +802,62 @@ ribon_protected_state_confirm(
         return status;
     }
     if (current.kind != RIBON_PROTECTED_STATE_KIND_TRIAL ||
-        current.pending_sequence != pending_sequence) {
+        current.pending_sequence != pending_sequence ||
+        !bytes_zero(current.trial_binding_digest,
+                    sizeof(current.trial_binding_digest)) ||
+        current.attempt_sequence != 0u) {
         return RIBON_PROTECTED_STATE_STATUS_ROLLBACK;
     }
     next = (struct RibonProtectedRecord){
         .kind = RIBON_PROTECTED_STATE_KIND_CONFIRMED,
         .confirmed_floor = pending_sequence,
     };
+    return transition_record(journal, &current, &next, snapshot);
+}
+
+/** @brief Exact bound pending attempt를 idempotent하게 confirmed로 승격한다. */
+int
+ribon_protected_state_confirm_bound(
+    const struct RibonProtectedStateJournal *journal,
+    uint64_t pending_sequence,
+    const uint8_t binding_digest[RIBON_PROTECTED_STATE_DIGEST_BYTES],
+    uint64_t attempt_sequence,
+    struct RibonProtectedStateSnapshot *snapshot)
+{
+    struct RibonProtectedStateSnapshot current;
+    struct RibonProtectedRecord next;
+    int status;
+
+    if (snapshot == NULL || binding_digest == NULL ||
+        bytes_zero(binding_digest, RIBON_PROTECTED_STATE_DIGEST_BYTES) ||
+        attempt_sequence == 0u) {
+        return RIBON_PROTECTED_STATE_STATUS_INVALID_ARGUMENT;
+    }
+    status = ribon_protected_state_open(journal, &current);
+    if (status != RIBON_PROTECTED_STATE_STATUS_OK) {
+        return status;
+    }
+    if (current.kind == RIBON_PROTECTED_STATE_KIND_CONFIRMED &&
+        current.confirmed_floor == pending_sequence &&
+        current.attempt_sequence == attempt_sequence &&
+        bytes_equal(current.trial_binding_digest, binding_digest,
+                    RIBON_PROTECTED_STATE_DIGEST_BYTES)) {
+        *snapshot = current;
+        return RIBON_PROTECTED_STATE_STATUS_OK;
+    }
+    if (current.kind != RIBON_PROTECTED_STATE_KIND_TRIAL ||
+        current.pending_sequence != pending_sequence ||
+        current.attempt_sequence != attempt_sequence ||
+        !bytes_equal(current.trial_binding_digest, binding_digest,
+                     RIBON_PROTECTED_STATE_DIGEST_BYTES)) {
+        return RIBON_PROTECTED_STATE_STATUS_BINDING_MISMATCH;
+    }
+    next = (struct RibonProtectedRecord){
+        .kind = RIBON_PROTECTED_STATE_KIND_CONFIRMED,
+        .confirmed_floor = pending_sequence,
+        .attempt_sequence = attempt_sequence,
+    };
+    memcpy(next.binding, binding_digest, sizeof(next.binding));
     return transition_record(journal, &current, &next, snapshot);
 }
 
@@ -735,6 +880,8 @@ ribon_protected_state_fail_trial(
     next = (struct RibonProtectedRecord){
         .kind = RIBON_PROTECTED_STATE_KIND_CONFIRMED,
         .confirmed_floor = current.confirmed_floor,
+        .attempt_sequence = current.attempt_sequence,
     };
+    memcpy(next.binding, current.trial_binding_digest, sizeof(next.binding));
     return transition_record(journal, &current, &next, snapshot);
 }

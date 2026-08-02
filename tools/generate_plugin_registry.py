@@ -192,6 +192,7 @@ KEY_POLICY_USAGES = {
     "policy-diagnostic": 4,
     "update-manifest": 5,
     "boot-image": 6,
+    "boot-confirmation": 7,
 }
 KEY_POLICY_LIFECYCLES = {
     "active": "RIBON_KEY_POLICY_LIFECYCLE_ACTIVE",

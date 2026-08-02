@@ -76,11 +76,9 @@ static int freebsd_prepare_entry_invocation(
 }
 
 /** @brief 미지원 FreeBSD runtime confirmation을 명시적으로 거부한다. */
-static int freebsd_validate_confirmation(
-    const struct RibonBootConfirmation *confirmation,
-    const struct RibonBootConfirmationExpectation *expected) {
-    (void)confirmation;
-    (void)expected;
+static int freebsd_validate_boot_health(
+    const struct RibonBootHealthPayload *payload) {
+    (void)payload;
     return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
 }
 
@@ -92,7 +90,7 @@ static const struct RibonBootProtocolOps freebsd_ops = {
     .select_image_formats = freebsd_select_image_formats,
     .prepare_handoff = freebsd_prepare_handoff,
     .prepare_entry_invocation = freebsd_prepare_entry_invocation,
-    .validate_confirmation = freebsd_validate_confirmation,
+    .validate_boot_health = freebsd_validate_boot_health,
 };
 
 static const struct RibonBootProtocol freebsd_protocol = {
