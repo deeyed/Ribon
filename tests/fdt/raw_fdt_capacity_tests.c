@@ -28,6 +28,11 @@ static void put_be32(unsigned char *bytes, uint32_t offset, uint32_t value) {
     bytes[offset + 3u] = (unsigned char)value;
 }
 
+static void put_be64(unsigned char *bytes, uint32_t offset, uint64_t value) {
+    put_be32(bytes, offset, (uint32_t)(value >> 32u));
+    put_be32(bytes, offset + 4u, (uint32_t)value);
+}
+
 static void append_u32(unsigned char *bytes, uint32_t *cursor, uint32_t value) {
     put_be32(bytes, *cursor, value);
     *cursor += 4u;
@@ -59,7 +64,9 @@ static void append_property(
 /** @brief Host pointer를 담는 two-cell memory FDT를 만든다. */
 static uint32_t make_fdt(unsigned char *bytes, uint64_t base, uint64_t size) {
     static const char strings[] = "#address-cells\0#size-cells\0reg\0";
-    const uint32_t structure_offset = 40u;
+    const uint32_t reserve_offset = 40u;
+    const uint32_t structure_offset =
+        reserve_offset + (RIBON_RAW_FDT_MAX_FIRMWARE_RESERVATIONS + 1u) * 16u;
     unsigned char two[4] = {0u, 0u, 0u, 2u};
     unsigned char cells[16];
     uint32_t cursor = structure_offset;
@@ -68,6 +75,16 @@ static uint32_t make_fdt(unsigned char *bytes, uint64_t base, uint64_t size) {
     uint32_t total_size;
 
     memset(bytes, 0, TEST_PAGE_SIZE);
+    for (uint32_t index = 0u;
+         index < RIBON_RAW_FDT_MAX_FIRMWARE_RESERVATIONS;
+         ++index) {
+        const uint32_t offset = reserve_offset + index * 16u;
+        put_be64(
+            bytes,
+            offset,
+            base + (uint64_t)(2u + 2u * index) * TEST_PAGE_SIZE);
+        put_be64(bytes, offset + 8u, 128u);
+    }
     append_node(bytes, &cursor, "");
     append_property(bytes, &cursor, 0u, two, sizeof(two));
     append_property(bytes, &cursor, 15u, two, sizeof(two));
@@ -89,7 +106,7 @@ static uint32_t make_fdt(unsigned char *bytes, uint64_t base, uint64_t size) {
     put_be32(bytes, 4u, total_size);
     put_be32(bytes, 8u, structure_offset);
     put_be32(bytes, 12u, strings_offset);
-    put_be32(bytes, 16u, 0u);
+    put_be32(bytes, 16u, reserve_offset);
     put_be32(bytes, 20u, 17u);
     put_be32(bytes, 24u, 16u);
     put_be32(bytes, 28u, 0u);
@@ -98,7 +115,7 @@ static uint32_t make_fdt(unsigned char *bytes, uint64_t base, uint64_t size) {
     return total_size;
 }
 
-/** @brief 10 target reservations와 implicit FDT가 정확히 23 regions를 만든다. */
+/** @brief target 10개, FDT reserve 8개와 blob이 정확히 39 regions를 만든다. */
 int main(void) {
     const uint64_t memory_base = (uint64_t)(uintptr_t)physical_memory;
     const uint64_t memory_size = sizeof(physical_memory);
@@ -112,6 +129,7 @@ int main(void) {
     struct RibonBootEnvironment environment;
     struct RibonRawFdtEntry entry;
     uint32_t boot_modules = 0u;
+    uint32_t firmware = 0u;
     uint32_t usable = 0u;
     const uint32_t fdt_size = make_fdt(fdt, memory_base, memory_size);
 
@@ -153,8 +171,11 @@ int main(void) {
             RIBON_MEMORY_REGION_USABLE ? 1u : 0u;
         boot_modules += environment.memory_map.regions[index].kind ==
             RIBON_MEMORY_REGION_BOOT_MODULE ? 1u : 0u;
+        firmware += environment.memory_map.regions[index].kind ==
+            RIBON_MEMORY_REGION_FIRMWARE ? 1u : 0u;
     }
-    if (usable != 12u || boot_modules != RIBON_BOOT_MODULE_CAPACITY) {
+    if (usable != 20u || boot_modules != RIBON_BOOT_MODULE_CAPACITY ||
+        firmware != RIBON_RAW_FDT_MAX_FIRMWARE_RESERVATIONS + 1u) {
         fputs("raw_fdt_capacity_tests: worst-case kinds are not exact\n", stderr);
         return 1;
     }
@@ -174,6 +195,6 @@ int main(void) {
         fputs("raw_fdt_capacity_tests: eleventh target reservation was accepted\n", stderr);
         return 1;
     }
-    puts("RIBON-RAW-FDT-CAPACITY-OK regions=23 modules=8");
+    puts("RIBON-RAW-FDT-CAPACITY-OK regions=39 modules=8 firmware=9");
     return 0;
 }

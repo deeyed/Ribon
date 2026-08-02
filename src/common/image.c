@@ -10,6 +10,8 @@ const char *ribon_executable_format_name(enum RibonExecutableFormat format) {
         return "pe-coff";
     case RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64:
         return "linux-aarch64-image";
+    case RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64:
+        return "linux-riscv64-image";
     case RIBON_EXECUTABLE_FORMAT_UNKNOWN:
     default:
         return "unknown";
@@ -93,6 +95,9 @@ int ribon_image_plugin_operations_are_valid(
         break;
     case RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64:
         expected_capability = RIBON_CAP_IMAGE_LINUX_AARCH64;
+        break;
+    case RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64:
+        expected_capability = RIBON_CAP_IMAGE_LINUX_RISCV64;
         break;
     default:
         return 0;

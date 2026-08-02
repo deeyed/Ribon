@@ -8,6 +8,8 @@ code_paths:
   - tools/validate_external_parus_payload.py
   - tools/generate_boot_module_bundle.py
   - tools/prepare_external_linux_image.py
+  - tools/prepare_external_linux_riscv64_image.py
+  - tools/check_multi_os_runtime.py
   - tools/prepare_external_freebsd.py
   - tools/compose_freebsd_uefi.py
   - tools/build_linux_initramfs.py
@@ -16,6 +18,7 @@ code_paths:
   - products/bootmgr/manifests/qemu-aarch64-virt-modules-fixture.json
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
   - products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
+  - products/bootmgr/manifests/qemu-riscv64-virt-linux.json
   - products/bootmgr/manifests/x86_64-uefi-parus-fixture.json
   - products/bootmgr/manifests/x86_64-uefi-parus-external.json
   - products/bootmgr/manifests/x86_64-uefi-linux.json
@@ -24,6 +27,8 @@ code_paths:
   - tests/tools/qemu_target_smoke_tests.py
   - tests/tools/external_parus_payload_tests.py
   - tests/tools/external_linux_image_tests.py
+  - tests/tools/external_linux_riscv64_image_tests.py
+  - tests/tools/multi_os_runtime_tests.py
   - tests/tools/external_freebsd_tests.py
 tests:
   - make check-qemu-evidence
@@ -38,6 +43,8 @@ tests:
   - make x86_64-uefi-freebsd-smoke
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
   - make qemu-riscv64-virt-rph1-fixture-smoke
+  - make qemu-riscv64-virt-linux-smoke
+  - make check-multi-os-runtime
 hardware:
   - none
 supersedes:
@@ -165,6 +172,31 @@ Harness는 fixture provenance를 external kernel과 구분한다. Success marker
 `RIBON-RPH1-RISCV64-FIXTURE-OK`이고 `PARUS:*` runtime marker를 요구하지 않는다.
 `RIBON-RPH1-RISCV64-FIXTURE-FAIL:`은 timeout을 기다리지 않는 terminal fixture
 failure다.
+
+## RISC-V64 Linux raw Image 증거
+
+RISC-V64 Linux product는 Debian 13 installer artifact의 versioned URL, exact size `31172608`, effective
+Image size `31891456`과 SHA-256
+`c601b3ef8415fb0309c5098569cab61954916a9388fba929a32e11f024e8490a`를 고정한다. Validator와 target
+plugin은 RISC-V Linux Image header version 2, little-endian flags, optional PE signature, 64 MiB 상한과
+2 MiB-aligned product placement를 독립 검사한다.
+
+OpenSBI가 전달한 `/reserved-memory`의 두 `mmode_resv` range와 FDT blob은 raw-FDT environment에서
+각각 `FIRMWARE`로 정규화된다. Linux terminal request는 bootstrap hart와 FDT를 `a0`와 `a1`에 두고
+translation disabled를 요구한다. Success는 firmware-region receipt, Ribon terminal transfer,
+`RIBON:LINUX:PID1:v1:OK`, `reboot: Power down`, QEMU status 0과 forced-kill 없는 cleanup을 모두 요구한다.
+
+이 증거는 Debian installer kernel의 named QEMU/OpenSBI tuple에만 해당한다. Physical RISC-V,
+RISC-V UEFI, SBI HSM SMP, production firmware 또는 모든 RISC-V Linux image 지원을 뜻하지 않는다.
+
+## Multi-OS runtime matrix
+
+`check-multi-os-runtime`은 AArch64 Linux raw-FDT, x86_64 Linux EFI stub, FreeBSD amd64 UEFI와 RISC-V64
+Linux OpenSBI를 `qemu-runtime`으로 기록한다. AArch64·x86_64·RISC-V64 Parus protocol fixture는
+`qemu-contract-fixture`로 별도 기록한다. 모든 row는 동일 source revision, exact payload class,
+tuple-specific terminal, immutable payload/composed artifact, raw serial hash, cleanup complete와
+forced kill false를 요구한다. Matrix summary는 physical hardware를 `not-run`, production firmware를
+`not-claimed`로 유지한다.
 
 ## Result와 cleanup
 

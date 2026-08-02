@@ -337,7 +337,9 @@ static int raw_fdt_build_memory_map(
     uint64_t cursor;
 
     if (range_count > RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS ||
-        range_count + 1u > RIBON_RAW_FDT_MAX_RESERVATIONS ||
+        facts->reservation_count > RIBON_FDT_RESERVATION_CAPACITY ||
+        range_count + facts->reservation_count + 1u >
+            RIBON_RAW_FDT_MAX_RESERVATIONS ||
         facts->memory_size == 0u ||
         facts->memory_base > UINT64_MAX - facts->memory_size) {
         return RIBON_RAW_FDT_STATUS_BAD_RESERVATION;
@@ -345,6 +347,28 @@ static int raw_fdt_build_memory_map(
     memory_end = facts->memory_base + facts->memory_size;
     for (uint32_t index = 0u; index < range_count; ++index) {
         ranges[index] = entry->reservations[index];
+    }
+    for (uint32_t index = 0u; index < facts->reservation_count; ++index) {
+        const struct RibonFdtReservation *reservation =
+            &facts->reservations[index];
+        uint64_t reservation_end;
+        if (reservation->base > UINT64_MAX - reservation->size) {
+            return RIBON_RAW_FDT_STATUS_BAD_RESERVATION;
+        }
+        reservation_end = reservation->base + reservation->size;
+        if (reservation_end <= facts->memory_base ||
+            reservation->base >= memory_end) {
+            continue;
+        }
+        if (reservation->base < facts->memory_base ||
+            reservation_end > memory_end) {
+            return RIBON_RAW_FDT_STATUS_BAD_RESERVATION;
+        }
+        ranges[range_count++] = (struct RibonRawFdtReservation){
+            .base = reservation->base,
+            .size = reservation->size,
+            .kind = RIBON_MEMORY_REGION_FIRMWARE,
+        };
     }
     ranges[range_count++] = (struct RibonRawFdtReservation){
         .base = (uint64_t)(uintptr_t)entry->fdt,

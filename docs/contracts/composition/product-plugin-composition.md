@@ -209,6 +209,8 @@ Gate는 archive member와 final link map을 검사하여 다음을 거부한다.
 - UEFI application target의 BIOS 또는 raw-FDT object
 - QEMU `virt` target의 RPi5 object와 package input
 - Linux 또는 FreeBSD product의 Parus object
+- RISC-V Linux product의 AArch64 Linux image object 또는 Parus protocol object
+- RISC-V direct-entry product의 UEFI terminal-image launcher object
 - normal product의 recovery network와 update writer
 - normal product의 mutable filesystem 또는 inactive destination storage authority
 - normal Ribos binding의 network, flash 또는 update-writer helper route

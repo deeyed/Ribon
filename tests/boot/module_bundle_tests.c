@@ -25,10 +25,10 @@ _Static_assert(
     RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS == 10u,
     "target reservation closure must include 8 modules");
 _Static_assert(
-    RIBON_RAW_FDT_MAX_RESERVATIONS == 11u,
-    "raw-FDT closure must include its FDT reservation");
+    RIBON_RAW_FDT_MAX_RESERVATIONS == 19u,
+    "raw-FDT closure must include target, firmware, and FDT reservations");
 _Static_assert(
-    RIBON_RAW_FDT_MAX_MEMORY_REGIONS == 23u,
+    RIBON_RAW_FDT_MAX_MEMORY_REGIONS == 39u,
     "single-bank split closure must be 2N+1");
 
 /** @brief Test module section 밖에 disjoint bootloader/kernel range를 만든다. */

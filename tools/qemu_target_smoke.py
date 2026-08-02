@@ -328,6 +328,12 @@ def observed_payload_class(path: Path) -> str:
     prefix = path.read_bytes()
     if len(prefix) >= 64 and prefix[56:60] == b"ARMd":
         return "linux-image"
+    if (
+        len(prefix) >= 64
+        and prefix[48:56] == b"RISCV\0\0\0"
+        and prefix[56:60] == b"RSC\x05"
+    ):
+        return "linux-riscv64-image"
     if prefix.startswith(b"MZ"):
         return (
             "freebsd-efi"
@@ -380,7 +386,7 @@ def command_for(args: argparse.Namespace) -> list[str]:
     if args.target == "riscv64-virt-opensbi":
         if args.image is None or args.firmware is None:
             raise ValueError("--image and --firmware are required")
-        return [
+        command = [
             args.qemu,
             "-machine", "virt",
             "-m", "256M",
@@ -388,10 +394,22 @@ def command_for(args: argparse.Namespace) -> list[str]:
             "-monitor", "none",
             "-net", "none",
             "-no-reboot",
-            "-no-shutdown",
             "-bios", str(args.firmware),
             "-kernel", str(args.image),
         ]
+        if not args.expect_clean_exit:
+            command[command.index("-bios"):command.index("-bios")] = [
+                "-no-shutdown"
+            ]
+        if args.preload_payload_address is not None:
+            command += [
+                "-device",
+                "loader,file=" + str(args.payload)
+                + f",addr={args.preload_payload_address},force-raw=on",
+            ]
+        if args.kernel_command_line is not None:
+            command += ["-append", args.kernel_command_line]
+        return command
     if args.firmware is None or (args.esp is None and args.disk_image is None):
         raise ValueError("--esp/--disk-image and --firmware are required")
     # Keep firmware NvVars writes in a transient overlay over the immutable ESP.
@@ -531,7 +549,10 @@ def main() -> int:
     parser.add_argument("--package-provenance", type=Path)
     parser.add_argument(
         "--expected-payload-class",
-        choices=("fixture", "kernel", "linux-image", "linux-efi", "freebsd-efi"),
+        choices=(
+            "fixture", "kernel", "linux-image", "linux-riscv64-image",
+            "linux-efi", "freebsd-efi",
+        ),
         required=True,
     )
     parser.add_argument("--expected-payload-sha256")
@@ -612,6 +633,13 @@ def main() -> int:
         or not args.expect_clean_exit
     ):
         preflight_error = "linux-runtime-contract-incomplete"
+    elif args.expected_payload_class == "linux-riscv64-image" and (
+        args.external_payload_validation is None
+        or args.preload_payload_address is None
+        or not args.expect_clean_exit
+        or args.target != "riscv64-virt-opensbi"
+    ):
+        preflight_error = "linux-riscv64-runtime-contract-incomplete"
     elif args.expected_payload_class == "linux-efi" and (
         args.external_payload_validation is None
         or not args.expect_clean_exit
@@ -650,6 +678,17 @@ def main() -> int:
                 and isinstance(placement, dict)
                 and placement.get("base") == args.preload_payload_address
             )
+            raw_linux_riscv64 = (
+                isinstance(artifact, dict)
+                and external_validation_report.get("schema") ==
+                    "ribon-external-linux-riscv64-image-validation-v1"
+                and artifact.get("class") == "linux-riscv64-image"
+                and artifact.get("architecture") == "riscv64"
+                and artifact.get("text_offset") == 2 * 1024 * 1024
+                and isinstance(placement, dict)
+                and placement.get("base") == args.preload_payload_address
+                and placement.get("base") % (2 * 1024 * 1024) == 0
+            )
             efi_linux = (
                 isinstance(artifact, dict)
                 and
@@ -676,7 +715,7 @@ def main() -> int:
                         or artifact.get("size") != args.payload.stat().st_size
                     )
                 )
-                or not (raw_linux or efi_linux or freebsd)
+                or not (raw_linux or raw_linux_riscv64 or efi_linux or freebsd)
             ):
                 raise ValueError("external validation does not bind payload")
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError):

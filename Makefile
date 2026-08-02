@@ -480,6 +480,8 @@ QEMU_RISCV64_REGISTRY_C := $(QEMU_RISCV64_DIR)/generated/plugin_registry.c
 QEMU_RISCV64_GRAPH := $(QEMU_RISCV64_DIR)/results/object-graph.json
 QEMU_RISCV64_PAYLOAD ?=
 QEMU_RISCV64_EMBED_C := $(QEMU_RISCV64_DIR)/generated/embedded_payload.c
+QEMU_RISCV64_EXTERNAL_PAYLOAD_ASM ?=
+QEMU_RISCV64_CPPFLAGS ?=
 QEMU_RISCV64_ELF := $(QEMU_RISCV64_DIR)/ribon.elf
 QEMU_RISCV64_IMAGE := $(QEMU_RISCV64_DIR)/ribon.bin
 QEMU_RISCV64_VALIDATION := $(QEMU_RISCV64_DIR)/results/external-payload.json
@@ -489,8 +491,55 @@ QEMU_RISCV64_SRCS := $(RAW_COMMON_SRCS) \
 QEMU_RISCV64_OBJS := $(QEMU_RISCV64_SRCS:%.c=$(QEMU_RISCV64_DIR)/obj/%.o)
 QEMU_RISCV64_OBJS += \
 	$(QEMU_RISCV64_DIR)/obj/generated/plugin_registry.o \
-	$(QEMU_RISCV64_DIR)/obj/generated/embedded_payload.o \
 	$(QEMU_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o
+ifneq ($(strip $(QEMU_RISCV64_EXTERNAL_PAYLOAD_ASM)),)
+QEMU_RISCV64_OBJS += $(QEMU_RISCV64_DIR)/obj/generated/external_payload.o
+else
+QEMU_RISCV64_OBJS += $(QEMU_RISCV64_DIR)/obj/generated/embedded_payload.o
+endif
+
+QEMU_RISCV64_MODULE_COMPONENT_MANIFEST ?=
+ifneq ($(strip $(QEMU_RISCV64_MODULE_COMPONENT_MANIFEST)),)
+QEMU_RISCV64_MODULE_DIR := $(QEMU_RISCV64_DIR)/generated/boot-modules
+QEMU_RISCV64_MODULE_ASM := $(QEMU_RISCV64_MODULE_DIR)/bundle.S
+QEMU_RISCV64_MODULE_C := $(QEMU_RISCV64_MODULE_DIR)/descriptor.c
+QEMU_RISCV64_MODULE_STAMP := $(QEMU_RISCV64_MODULE_DIR)/generated.stamp
+QEMU_RISCV64_MODULE_PROVENANCE := \
+	$(QEMU_RISCV64_DIR)/results/boot-modules.json
+QEMU_RISCV64_MODULE_CPPFLAGS := -DRIBON_RAW_FDT_HAS_BOOT_MODULE_BUNDLE=1
+QEMU_RISCV64_OBJS += \
+	$(QEMU_RISCV64_DIR)/obj/src/common/module_bundle.o \
+	$(QEMU_RISCV64_DIR)/obj/generated/boot-modules/descriptor.o \
+	$(QEMU_RISCV64_DIR)/obj/generated/boot-modules/bundle.o
+endif
+
+QEMU_RISCV64_LINUX_DIR := \
+	$(TARGET_BUILD_ROOT)/qemu-riscv64-virt-linux
+QEMU_RISCV64_LINUX_MANIFEST := \
+	products/bootmgr/manifests/qemu-riscv64-virt-linux.json
+QEMU_RISCV64_LINUX_INPUT_DESCRIPTOR := \
+	external/inputs/linux-riscv64-debian-13-installer-20250803-deb13u6.json
+QEMU_RISCV64_LINUX_CACHE ?= \
+	$(BUILD_ROOT)/external/linux/debian-trixie-riscv64/Image
+QEMU_RISCV64_LINUX_EXTERNAL_ASM := \
+	$(QEMU_RISCV64_LINUX_DIR)/generated/external_payload.S
+QEMU_RISCV64_LINUX_EXTERNAL_VALIDATION := \
+	$(QEMU_RISCV64_LINUX_DIR)/results/external-linux-image.json
+QEMU_RISCV64_LINUX_EXTERNAL_STAMP := \
+	$(QEMU_RISCV64_LINUX_DIR)/generated/external-linux-image.stamp
+QEMU_RISCV64_LINUX_INIT_OBJ := \
+	$(QEMU_RISCV64_LINUX_DIR)/initramfs/init.o
+QEMU_RISCV64_LINUX_INIT_ELF := \
+	$(QEMU_RISCV64_LINUX_DIR)/initramfs/init
+QEMU_RISCV64_LINUX_INITRAMFS := \
+	$(QEMU_RISCV64_LINUX_DIR)/initramfs/initramfs.cpio
+QEMU_RISCV64_LINUX_MODULE_MANIFEST := \
+	$(QEMU_RISCV64_LINUX_DIR)/initramfs/manifest.json
+QEMU_RISCV64_LINUX_INITRAMFS_STAMP := \
+	$(QEMU_RISCV64_LINUX_DIR)/initramfs/generated.stamp
+QEMU_RISCV64_LINUX_IMAGE := $(QEMU_RISCV64_LINUX_DIR)/ribon.bin
+QEMU_RISCV64_LINUX_MODULE_PROVENANCE := \
+	$(QEMU_RISCV64_LINUX_DIR)/results/boot-modules.json
 
 QEMU_RISCV64_RPH1_FIXTURE_DIR := \
 	$(TARGET_BUILD_ROOT)/qemu-riscv64-virt-rph1-fixture
@@ -1040,10 +1089,12 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
 	qemu-riscv64-virt-rph1-fixture-product \
 	qemu-riscv64-virt-rph1-fixture-smoke \
+	qemu-riscv64-virt-linux-product qemu-riscv64-virt-linux-smoke \
 	x86_64-uefi-parus-external x86_64-uefi-parus-external-product \
 	x86_64-uefi-parus-fixture-smoke x86_64-uefi-parus-external-smoke \
 	x86_64-uefi-linux-product x86_64-uefi-linux-smoke \
 	check-terminal-image-launch check-uefi-managed-image check-linux-x86_64-efi \
+	check-linux-riscv64 check-multi-os-runtime \
 	x86_64-uefi-freebsd-product x86_64-uefi-freebsd-smoke \
 	check-freebsd-package check-freebsd-uefi \
 	uefi-external-input-force rpi5-external-input-force \
@@ -2456,6 +2507,7 @@ $(LINUX_BOOT_TEST): \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/fdt.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/image-formats/linux_aarch64.o \
+	$(TEST_BUILD_DIR)/obj/src/image-formats/linux_riscv64.o \
 	$(TEST_BUILD_DIR)/obj/src/common/image.o \
 	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/core/memory.o
@@ -2711,7 +2763,39 @@ $(QEMU_RISCV64_EMBED_C): $(QEMU_RISCV64_PAYLOAD) tools/embed_binary.py
 
 $(QEMU_RISCV64_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
+	$(RISCV64_CC) $(RISCV64_FLAGS) $(QEMU_RISCV64_CPPFLAGS) \
+		$(QEMU_RISCV64_MODULE_CPPFLAGS) $(DEPFLAGS) -c $< -o $@
+
+ifneq ($(strip $(QEMU_RISCV64_MODULE_COMPONENT_MANIFEST)),)
+$(QEMU_RISCV64_MODULE_STAMP): \
+	$(QEMU_RISCV64_MODULE_COMPONENT_MANIFEST) \
+	$(QEMU_RISCV64_MANIFEST) \
+	tools/generate_boot_module_bundle.py boot-module-input-force
+	$(PYTHON) tools/generate_boot_module_bundle.py \
+		--manifest $(QEMU_RISCV64_MODULE_COMPONENT_MANIFEST) \
+		--product-manifest $(QEMU_RISCV64_MANIFEST) \
+		--output-root $(QEMU_RISCV64_DIR) \
+		--assembly $(QEMU_RISCV64_MODULE_ASM) \
+		--descriptors $(QEMU_RISCV64_MODULE_C) \
+		--provenance $(QEMU_RISCV64_MODULE_PROVENANCE)
+	@touch $@
+
+$(QEMU_RISCV64_MODULE_ASM) $(QEMU_RISCV64_MODULE_C) \
+		$(QEMU_RISCV64_MODULE_PROVENANCE): $(QEMU_RISCV64_MODULE_STAMP)
+	@test -f $@
+
+$(QEMU_RISCV64_DIR)/obj/generated/boot-modules/descriptor.o: \
+	$(QEMU_RISCV64_MODULE_C)
+	@mkdir -p $(@D)
 	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(QEMU_RISCV64_DIR)/obj/generated/boot-modules/bundle.o: \
+	$(QEMU_RISCV64_MODULE_ASM)
+	@mkdir -p $(@D)
+	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
+		-mabi=lp64d -mcmodel=medany -I$(QEMU_RISCV64_MODULE_DIR) \
+		-c $< -o $@
+endif
 
 $(QEMU_RISCV64_DIR)/obj/generated/plugin_registry.o: $(QEMU_RISCV64_REGISTRY_C)
 	@mkdir -p $(@D)
@@ -2720,6 +2804,14 @@ $(QEMU_RISCV64_DIR)/obj/generated/plugin_registry.o: $(QEMU_RISCV64_REGISTRY_C)
 $(QEMU_RISCV64_DIR)/obj/generated/embedded_payload.o: $(QEMU_RISCV64_EMBED_C)
 	@mkdir -p $(@D)
 	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+ifneq ($(strip $(QEMU_RISCV64_EXTERNAL_PAYLOAD_ASM)),)
+$(QEMU_RISCV64_DIR)/obj/generated/external_payload.o: \
+	$(QEMU_RISCV64_EXTERNAL_PAYLOAD_ASM)
+	@mkdir -p $(@D)
+	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
+		-mabi=lp64d -mcmodel=medany -c $< -o $@
+endif
 
 $(QEMU_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o: \
 	targets/qemu-riscv64-virt-opensbi/entry.S
@@ -2803,6 +2895,104 @@ qemu-riscv64-virt-rph1-fixture-smoke: \
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.log \
 		--result $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.json
+
+$(QEMU_RISCV64_LINUX_EXTERNAL_STAMP): \
+		$(QEMU_RISCV64_LINUX_INPUT_DESCRIPTOR) \
+		$(QEMU_RISCV64_LINUX_MANIFEST) \
+		tools/prepare_external_linux_riscv64_image.py
+	$(PYTHON) tools/prepare_external_linux_riscv64_image.py \
+		--descriptor $(QEMU_RISCV64_LINUX_INPUT_DESCRIPTOR) \
+		--cache $(QEMU_RISCV64_LINUX_CACHE) \
+		--product-manifest $(QEMU_RISCV64_LINUX_MANIFEST) \
+		--assembly $(QEMU_RISCV64_LINUX_EXTERNAL_ASM) \
+		--result $(QEMU_RISCV64_LINUX_EXTERNAL_VALIDATION) \
+		--allow-download
+	@touch $@
+
+$(QEMU_RISCV64_LINUX_EXTERNAL_ASM) \
+		$(QEMU_RISCV64_LINUX_EXTERNAL_VALIDATION): \
+		$(QEMU_RISCV64_LINUX_EXTERNAL_STAMP)
+	@test -f $@
+
+$(QEMU_RISCV64_LINUX_INIT_OBJ): tests/fixtures/linux/riscv64/init.S
+	@mkdir -p $(@D)
+	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
+		-mabi=lp64d -mcmodel=medany -c $< -o $@
+
+$(QEMU_RISCV64_LINUX_INIT_ELF): $(QEMU_RISCV64_LINUX_INIT_OBJ) \
+		tests/fixtures/linux/riscv64/init.ld
+	$(LD_LLD) -m elf64lriscv -static \
+		-T tests/fixtures/linux/riscv64/init.ld \
+		-o $@ $(QEMU_RISCV64_LINUX_INIT_OBJ)
+
+$(QEMU_RISCV64_LINUX_INITRAMFS_STAMP): \
+		$(QEMU_RISCV64_LINUX_INIT_ELF) tools/build_linux_initramfs.py
+	$(PYTHON) tools/build_linux_initramfs.py --architecture riscv64 \
+		--init $(QEMU_RISCV64_LINUX_INIT_ELF) \
+		--output $(QEMU_RISCV64_LINUX_INITRAMFS) \
+		--component-manifest $(QEMU_RISCV64_LINUX_MODULE_MANIFEST)
+	@touch $@
+
+$(QEMU_RISCV64_LINUX_INITRAMFS) \
+		$(QEMU_RISCV64_LINUX_MODULE_MANIFEST): \
+		$(QEMU_RISCV64_LINUX_INITRAMFS_STAMP)
+	@test -f $@
+
+qemu-riscv64-virt-linux-product: \
+		$(QEMU_RISCV64_LINUX_EXTERNAL_STAMP) \
+		$(QEMU_RISCV64_LINUX_INITRAMFS_STAMP)
+	$(MAKE) --no-print-directory \
+		QEMU_RISCV64_DIR=$(abspath $(QEMU_RISCV64_LINUX_DIR)) \
+		QEMU_RISCV64_MANIFEST=$(QEMU_RISCV64_LINUX_MANIFEST) \
+		QEMU_RISCV64_PAYLOAD=$(abspath $(QEMU_RISCV64_LINUX_CACHE)) \
+		QEMU_RISCV64_EXTERNAL_PAYLOAD_ASM=$(abspath $(QEMU_RISCV64_LINUX_EXTERNAL_ASM)) \
+		QEMU_RISCV64_MODULE_COMPONENT_MANIFEST=$(abspath $(QEMU_RISCV64_LINUX_MODULE_MANIFEST)) \
+		RAW_IMAGE_FORMAT_SRCS=src/image-formats/linux_riscv64.c \
+		RAW_PROTOCOL_SRCS="src/protocols/os/linux/protocol.c src/protocols/os/linux/fdt.c" \
+		$(abspath $(QEMU_RISCV64_LINUX_IMAGE))
+
+qemu-riscv64-virt-linux-smoke: qemu-riscv64-virt-linux-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target riscv64-virt-opensbi --qemu $(QEMU_RISCV64) \
+		--image $(QEMU_RISCV64_LINUX_IMAGE) \
+		--firmware $(RISCV64_OPENSBI_FIRMWARE) \
+		--payload $(QEMU_RISCV64_LINUX_CACHE) \
+		--expected-payload-class linux-riscv64-image \
+		--expected-payload-sha256 c601b3ef8415fb0309c5098569cab61954916a9388fba929a32e11f024e8490a \
+		--product-manifest $(QEMU_RISCV64_LINUX_MANIFEST) \
+		--module-provenance $(QEMU_RISCV64_LINUX_MODULE_PROVENANCE) \
+		--external-payload-validation $(QEMU_RISCV64_LINUX_EXTERNAL_VALIDATION) \
+		--preload-payload-address 0x80400000 \
+		--kernel-command-line "console=ttyS0 earlycon=sbi rdinit=/init panic=-1" \
+		--expect-clean-exit \
+		--required-marker-anywhere RIBON-RFDT-FIRMWARE-REGIONS=0x0000000000000003 \
+		--required-marker-anywhere RIBON:LINUX:PID1:v1:OK \
+		--required-marker-anywhere "reboot: Power down" \
+		--source-revision $(shell git rev-parse HEAD) --timeout 60 \
+		--log $(RESULTS_DIR)/qemu-riscv64-virt-linux.log \
+		--result $(RESULTS_DIR)/qemu-riscv64-virt-linux.json
+
+check-linux-riscv64: check-linux-boot check-linux-external-input \
+	qemu-riscv64-virt-linux-smoke
+
+check-multi-os-runtime: \
+	qemu-aarch64-virt-linux-smoke \
+	x86_64-uefi-linux-smoke \
+	x86_64-uefi-freebsd-smoke \
+	qemu-riscv64-virt-linux-smoke \
+	qemu-aarch64-virt-raw-fdt-smoke \
+	x86_64-uefi-parus-fixture-smoke \
+	qemu-riscv64-virt-rph1-fixture-smoke
+	$(PYTHON) tools/check_multi_os_runtime.py \
+		--source-revision $(shell git rev-parse HEAD) \
+		--linux-aarch64-raw-fdt $(RESULTS_DIR)/qemu-aarch64-virt-linux.json \
+		--linux-x86_64-uefi $(UEFI_LINUX_DIR)/results/qemu.json \
+		--freebsd-amd64-uefi $(UEFI_FREEBSD_DIR)/results/qemu.json \
+		--linux-riscv64-opensbi $(RESULTS_DIR)/qemu-riscv64-virt-linux.json \
+		--parus-aarch64-rph1-fixture $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.json \
+		--parus-x86_64-rph1-fixture $(UEFI_FIXTURE_DIR)/results/qemu.json \
+		--parus-riscv64-rph1-fixture $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.json \
+		--output $(RESULTS_DIR)/multi-os/R04/matrix.json
 
 $(RPI5_PARUS_VALIDATION): \
 	$(RPI5_EXTERNAL_MANIFEST) $(RPI5_SELECTED_PAYLOAD) \
@@ -3604,6 +3794,7 @@ check-linux-boot: $(LINUX_BOOT_TEST)
 
 check-linux-external-input:
 	$(PYTHON) tests/tools/external_linux_image_tests.py
+	$(PYTHON) tests/tools/external_linux_riscv64_image_tests.py
 
 check-library-embed: $(PROTOCOL_FREE_EMBED_TEST)
 	$(PROTOCOL_FREE_EMBED_TEST)
@@ -3615,6 +3806,8 @@ check-qemu-evidence:
 	$(PYTHON) tests/tools/qemu_target_smoke_tests.py
 	$(PYTHON) tests/tools/external_parus_payload_tests.py
 	$(PYTHON) tests/tools/external_linux_image_tests.py
+	$(PYTHON) tests/tools/external_linux_riscv64_image_tests.py
+	$(PYTHON) tests/tools/multi_os_runtime_tests.py
 
 sdk-install: lib ribosc ribos-verify ribos-run
 	$(PYTHON) tools/install_sdk.py \
@@ -3827,7 +4020,8 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-modules-fixture-package \
 	qemu-aarch64-virt-raw-fdt qemu-aarch64-virt-modules-fixture-product \
 	qemu-aarch64-virt-linux-product \
-	qemu-riscv64-virt-rph1-fixture-product x86_64-uefi-parus-fixture \
+	qemu-riscv64-virt-rph1-fixture-product \
+	qemu-riscv64-virt-linux-product x86_64-uefi-parus-fixture \
 	x86_64-uefi-linux-product x86_64-uefi-freebsd-product \
 	x86_64-uefi-network-update-recovery
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)

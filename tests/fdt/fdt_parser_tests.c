@@ -48,7 +48,7 @@ static uint32_t make_fdt(unsigned char bytes[512]) {
     const uint32_t size_name = 15u;
     const uint32_t reg_name = 27u;
     const uint32_t bootargs_name = 31u;
-    const uint32_t structure_offset = 40u;
+    const uint32_t structure_offset = 56u;
     uint32_t cursor = structure_offset;
     unsigned char cells[16];
     unsigned char two[4] = {0u, 0u, 0u, 2u};
@@ -67,6 +67,17 @@ static uint32_t make_fdt(unsigned char bytes[512]) {
     put_be32(cells, 8u, 0u);
     put_be32(cells, 12u, 0x10000000u);
     append_property(bytes, &cursor, reg_name, cells, sizeof(cells));
+    append_u32(bytes, &cursor, END_NODE);
+    append_node(bytes, &cursor, "reserved-memory");
+    append_property(bytes, &cursor, address_name, two, sizeof(two));
+    append_property(bytes, &cursor, size_name, two, sizeof(two));
+    append_node(bytes, &cursor, "resident@40010000");
+    put_be32(cells, 0u, 0u);
+    put_be32(cells, 4u, 0x40010000u);
+    put_be32(cells, 8u, 0u);
+    put_be32(cells, 12u, 0x00010000u);
+    append_property(bytes, &cursor, reg_name, cells, sizeof(cells));
+    append_u32(bytes, &cursor, END_NODE);
     append_u32(bytes, &cursor, END_NODE);
     append_node(bytes, &cursor, "chosen");
     append_property(
@@ -87,7 +98,7 @@ static uint32_t make_fdt(unsigned char bytes[512]) {
     put_be32(bytes, 4u, total_size);
     put_be32(bytes, 8u, structure_offset);
     put_be32(bytes, 12u, strings_offset);
-    put_be32(bytes, 16u, 0u);
+    put_be32(bytes, 16u, 40u);
     put_be32(bytes, 20u, 17u);
     put_be32(bytes, 24u, 16u);
     put_be32(bytes, 28u, 0u);
@@ -104,6 +115,9 @@ int main(void) {
         facts.total_size != size ||
         facts.memory_base != 0x40000000u ||
         facts.memory_size != 0x10000000u ||
+        facts.reservation_count != 1u ||
+        facts.reservations[0].base != 0x40010000u ||
+        facts.reservations[0].size != 0x00010000u ||
         facts.boot_arguments_size != 15u ||
         memcmp(facts.boot_arguments, "console=ttyAMA0", 15u) != 0) {
         fputs("fdt_parser_tests: valid fixture rejected\n", stderr);

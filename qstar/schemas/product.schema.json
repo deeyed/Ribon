@@ -51,7 +51,9 @@
         "architecture": {"enum": ["x86_64", "aarch64", "riscv64"]},
         "class": {"const": "external-kernel"},
         "entry_abi": {"type": "string", "minLength": 1},
-        "format": {"enum": ["elf64", "linux-aarch64-image"]},
+        "format": {
+          "enum": ["elf64", "linux-aarch64-image", "linux-riscv64-image"]
+        },
         "load_base": {"type": "integer", "minimum": 1},
         "load_size": {"type": "integer", "minimum": 1}
       }

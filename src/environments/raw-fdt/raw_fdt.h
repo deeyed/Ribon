@@ -9,9 +9,12 @@
 /** @brief Target-owned reservation: bootloader, kernel, 최대 boot modules다. */
 #define RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS \
     (2u + RIBON_BOOT_MODULE_CAPACITY)
+/** @brief FDT reserve map에서 normalized memory map으로 가져올 range 상한이다. */
+#define RIBON_RAW_FDT_MAX_FIRMWARE_RESERVATIONS 8u
 /** @brief Firmware FDT 자체를 포함한 내부 reservation 상한이다. */
 #define RIBON_RAW_FDT_MAX_RESERVATIONS \
-    (RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS + 1u)
+    (RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS + \
+     RIBON_RAW_FDT_MAX_FIRMWARE_RESERVATIONS + 1u)
 /** @brief 단일 memory bank를 모든 reservation으로 분할한 최악 region 수다. */
 #define RIBON_RAW_FDT_MAX_MEMORY_REGIONS \
     (2u * RIBON_RAW_FDT_MAX_RESERVATIONS + 1u)

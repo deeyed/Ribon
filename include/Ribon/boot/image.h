@@ -20,6 +20,7 @@ enum RibonExecutableFormat {
     RIBON_EXECUTABLE_FORMAT_ELF64 = 1,
     RIBON_EXECUTABLE_FORMAT_PE_COFF = 2,
     RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 = 3,
+    RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64 = 4,
 };
 
 /** @brief Image validation이 허용하는 terminal execution model bit다. */
@@ -169,5 +170,9 @@ extern const struct RibonPluginDescriptor ribon_pe_coff_image_plugin_descriptor;
 /** @brief AArch64 Linux raw Image plugin descriptor다. */
 extern const struct RibonPluginDescriptor
     ribon_linux_aarch64_image_plugin_descriptor;
+
+/** @brief RISC-V64 Linux raw Image plugin descriptor다. */
+extern const struct RibonPluginDescriptor
+    ribon_linux_riscv64_image_plugin_descriptor;
 
 #endif

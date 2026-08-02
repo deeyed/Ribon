@@ -59,9 +59,21 @@ static int linux_validate_components(const struct RibonManifestView *manifest) {
         RIBON_PROTOCOL_STATUS_OK : RIBON_PROTOCOL_STATUS_BAD_COMPONENTS;
 }
 
-/** @brief Linux AArch64 raw Image만 허용한다. */
+/** @brief Linux raw Image format의 architecture별 typed 집합을 반환한다. */
 static uint64_t linux_select_image_formats(void) {
-    return RIBON_IMAGE_FORMAT_MASK(RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64);
+    return RIBON_IMAGE_FORMAT_MASK(RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64) |
+           RIBON_IMAGE_FORMAT_MASK(RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64);
+}
+
+/** @brief Architecture와 raw Linux Image format 조합을 exact하게 검사한다. */
+static int linux_architecture_matches_image(const struct RibonBootPlan *plan) {
+    return plan != 0 && plan->arch != 0 &&
+           ((plan->arch->id == RIBON_ARCHITECTURE_AARCH64 &&
+             plan->kernel_image.format ==
+                 RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64) ||
+            (plan->arch->id == RIBON_ARCHITECTURE_RISCV64 &&
+             plan->kernel_image.format ==
+                 RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64));
 }
 
 /** @brief Half-open range가 서로 겹치는지 검사한다. */
@@ -116,8 +128,7 @@ static int linux_prepare_handoff(
     uint64_t initrd_size = 0u;
     uint64_t output_size;
     if (plan == 0 || environment == 0 || buffer == 0 || out == 0 ||
-        plan->arch == 0 || plan->arch->id != RIBON_ARCHITECTURE_AARCH64 ||
-        plan->kernel_image.format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
+        !linux_architecture_matches_image(plan) ||
         plan->kernel_runtime_entry_address == 0u ||
         plan->kernel_runtime_load_end <= plan->kernel_runtime_load_base ||
         (environment->flags & RIBON_BOOT_ENV_HAS_DEVICE_TREE) == 0u ||
@@ -170,19 +181,43 @@ static int linux_prepare_handoff(
     return RIBON_PROTOCOL_HANDOFF_STATUS_OK;
 }
 
-/** @brief Linux AArch64 entry의 x0=FDT, x1..x3=0 계약을 봉인한다. */
+/** @brief Architecture별 Linux raw-FDT register/translation 계약을 봉인한다. */
 static int linux_prepare_terminal(
     const struct RibonArchDescriptor *arch,
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
     const struct RibonHandoffArtifact *handoff,
     struct RibonTerminalRequest *out) {
-    (void)environment;
     if (arch == 0 || plan == 0 || handoff == 0 || handoff->data == 0 || out == 0 ||
-        arch->id != RIBON_ARCHITECTURE_AARCH64 ||
-        plan->kernel_image.format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 ||
+        environment == 0 || arch != plan->arch ||
+        !linux_architecture_matches_image(plan) ||
         plan->kernel_runtime_entry_address == 0u || handoff->size == 0u) {
         return RIBON_PROTOCOL_STATUS_BAD_ARGUMENT;
+    }
+    if (arch->id == RIBON_ARCHITECTURE_RISCV64) {
+        if ((environment->flags & RIBON_BOOT_ENV_HAS_BOOT_CPU_ID) == 0u) {
+            return RIBON_PROTOCOL_STATUS_BAD_ARGUMENT;
+        }
+        *out = (struct RibonTerminalRequest){
+            .size = sizeof(*out),
+            .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
+            .kind = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
+            .direct_entry = {
+                .size = sizeof(out->direct_entry),
+                .abi_version = RIBON_ENTRY_INVOCATION_ABI_VERSION,
+                .entry_address = plan->kernel_runtime_entry_address,
+                .register_abi = RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3,
+                .argument_count = 2u,
+                .arguments = {
+                    environment->boot_cpu_id,
+                    (uint64_t)(uintptr_t)handoff->data,
+                },
+                .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
+                .privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR,
+                .translation = RIBON_ENTRY_TRANSLATION_DISABLED,
+            },
+        };
+        return RIBON_PROTOCOL_STATUS_OK;
     }
     *out = (struct RibonTerminalRequest){
         .size = sizeof(*out),
@@ -267,3 +302,34 @@ const struct RibonPluginDescriptor ribon_linux_protocol_plugin_descriptor = {
     .operations_abi = 1u,
     .validate_operations = ribon_protocol_plugin_operations_are_valid,
 };
+
+/** @brief RISC-V64 Linux raw-FDT route의 product-scoped descriptor다. */
+const struct RibonPluginDescriptor
+    ribon_linux_riscv64_protocol_plugin_descriptor = {
+        .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
+        .size = sizeof(ribon_linux_riscv64_protocol_plugin_descriptor),
+        .abi_major = RIBON_PLUGIN_ABI_MAJOR,
+        .abi_minor = RIBON_PLUGIN_ABI_MINOR,
+        .kind = RIBON_PLUGIN_KIND_BOOT_PROTOCOL,
+        .phase = RIBON_PLUGIN_PHASE_BOOT,
+        .id = "protocol.linux",
+        .provides =
+            RIBON_CAP_BOOT_PROTOCOL |
+            RIBON_CAP_HANDOFF |
+            RIBON_CAP_ENTRY_CONTRACT |
+            RIBON_CAP_BOOT_CONFIRMATION,
+        .requires = RIBON_CAP_IMAGE_LINUX_RISCV64,
+        .architecture_mask = RIBON_ARCH_MASK_RISCV64,
+        .environment_mask = RIBON_ENV_MASK_RAW_FDT,
+        .mode_mask =
+            RIBON_MODE_MASK(RIBON_MODE_NORMAL) |
+            RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
+        .arena_budget = 64ull * 1024ull,
+        .input_budget = 64ull * 1024ull * 1024ull,
+        .output_budget = 64ull * 1024ull,
+        .deadline_ms = 30000u,
+        .operations = &linux_protocol,
+        .operations_size = sizeof(linux_protocol),
+        .operations_abi = 1u,
+        .validate_operations = ribon_protocol_plugin_operations_are_valid,
+    };

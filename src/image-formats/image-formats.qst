@@ -25,10 +25,20 @@ qstar.staticlib "ribon_image_linux_aarch64" {
   },
 }
 
+qstar.staticlib "ribon_image_linux_riscv64" {
+  sources = {
+    "src/image-formats/linux_riscv64.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_host_c",
+  },
+}
+
 qstar.group "ribon_image_formats" {
   deps = {
     "//src/image-formats:ribon_image_elf64",
     "//src/image-formats:ribon_image_linux_aarch64",
+    "//src/image-formats:ribon_image_linux_riscv64",
     "//src/image-formats:ribon_image_pe_coff",
   },
 }

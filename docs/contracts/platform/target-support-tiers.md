@@ -101,7 +101,10 @@ RISC-V SBI target의 독립 acceptance는 다음 경계를 모두 확인해야 �
 - RPH1 `BOOT_CPU` required section의 bounded producer/parser 검증
 - primary OS entry의 `a0=RPH1`, `a1=flags`
 - S-mode, interrupt-masked, `satp=0` terminal transfer
+- FDT reserve map과 `/reserved-memory`의 firmware-owned normalization
+- 선택한 Linux product에서는 2 MiB-aligned Image, `a0=hartid`, `a1=FDT`, PID 1과 clean poweroff
 
 Ribon-owned contract fixture의 QEMU 결과는 이 register와 artifact 경계를 검증할 수
-있지만 실제 Parus RISC-V consumer, SBI HSM SMP, UEFI RISC-V, 물리 보드 또는
-production security evidence를 대신하지 않는다.
+있다. 별도의 Debian Linux product는 QEMU/OpenSBI에서 실제 Linux PID 1 runtime을 검증한다. 어느
+결과도 실제 Parus RISC-V consumer, SBI HSM SMP, UEFI RISC-V, 물리 보드 또는 production security
+evidence를 대신하지 않는다.

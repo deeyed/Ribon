@@ -36,6 +36,10 @@ static uint16_t expected_machine(
         arch->id == RIBON_ARCHITECTURE_AARCH64) {
         return arch->elf_machine;
     }
+    if (format == RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64 &&
+        arch->id == RIBON_ARCHITECTURE_RISCV64) {
+        return arch->elf_machine;
+    }
     return 0u;
 }
 
@@ -161,7 +165,8 @@ int ribon_arch_validate_direct_load(
         (image->execution_support & RIBON_IMAGE_EXECUTION_DIRECT_ENTRY) == 0u ||
         (image->format != RIBON_EXECUTABLE_FORMAT_ELF64 &&
          image->format != RIBON_EXECUTABLE_FORMAT_PE_COFF &&
-         image->format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64) ||
+         image->format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 &&
+         image->format != RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64) ||
         payload->segments == 0 ||
         payload->segment_count == 0u ||
         payload->segment_count > payload->segment_capacity) {

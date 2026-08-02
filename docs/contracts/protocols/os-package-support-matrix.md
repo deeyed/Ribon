@@ -13,9 +13,11 @@ tests:
   - make qemu-aarch64-virt-linux-smoke
   - make qemu-aarch64-virt-parus-smoke
   - make qemu-riscv64-virt-parus-smoke
+  - make qemu-riscv64-virt-linux-smoke
   - make x86_64-uefi-parus-external-smoke
   - make x86_64-uefi-linux-smoke
   - make x86_64-uefi-freebsd-smoke
+  - make check-multi-os-runtime
 hardware:
   - RPi5 evidence is independent and requires fresh UART
 supersedes:
@@ -31,7 +33,7 @@ tuple만 실행 지원을 주장한다.
 | OS package | 구현 경계 | 허용 주장 | 열지 않는 주장 |
 | --- | --- | --- | --- |
 | Parus | RPH1 build/parse, AArch64·x86_64·RISC-V invocation | product별 QEMU 또는 hardware evidence가 있는 tuple | 모든 board, production firmware, feature parity |
-| Linux | AArch64 raw `Image` direct entry와 x86_64 EFI-stub managed image | pinned OpenWrt AArch64·x86_64 image의 product별 QEMU PID 1 boot | RISC-V Linux, bzImage direct loader, physical board와 production firmware |
+| Linux | AArch64·RISC-V64 raw `Image` direct entry와 x86_64 EFI-stub managed image | pinned OpenWrt AArch64·x86_64와 Debian RISC-V64 image의 product별 QEMU PID 1 boot | bzImage direct loader, physical board와 production firmware |
 | FreeBSD | pinned 15.1 amd64 mini-memstick, PE/COFF validation과 managed UEFI loader chain | QEMU q35에서 official loader, GENERIC kernel과 single-user terminal prompt | clean poweroff, multi-user, network, physical board와 production authenticity |
 | Zircon | bounded ZBI container validation과 AArch64 invocation | unit-level experimental protocol contract | complete ZBI item policy 또는 Zircon runtime boot |
 | Windows | 없음 | unsupported | placeholder, PE/COFF parser만으로 boot 가능하다는 주장 |
@@ -57,14 +59,15 @@ kernel과 single-user shell pathname prompt까지다. Evidence 관측 뒤 harnes
 guest poweroff는 주장하지 않는다. PGP-signed checksum 문서의 identity와 signature presence는
 보존하지만 signature 자체를 검증하지 않았으므로 production authenticity도 주장하지 않는다.
 
-현재 Linux 실행 증거는 AArch64 QEMU virt raw-FDT와 x86_64 QEMU q35 OVMF에서 각각 Ribon
-lifecycle, pinned image, `/init` unique marker와 clean poweroff까지 도달한다. x86_64 경로는
-firmware-managed EFI stub이며 direct PE loader가 아니다. 각 증거는 descriptor가 고정한 OpenWrt
-release와 hash 및 해당 QEMU tuple에만 한정된다. Parus 실행 증거는 AArch64
-QEMU virt와 x86_64 QEMU q35가 full Parus IDLE receipt까지 도달한다. RISC-V QEMU virt는
-OpenSBI→Ribon→Parus transfer와 EB2까지의 evidence만
-있고 EB3 Sv39 authority에서 fail-closed한다. 이 결과는 RISC-V runtime boot support로
-승격되지 않는다.
+현재 Linux 실행 증거는 AArch64 QEMU virt raw-FDT, x86_64 QEMU q35 OVMF와 RISC-V64 QEMU virt
+OpenSBI에서 각각 Ribon lifecycle, pinned image, `/init` unique marker와 clean poweroff까지 도달한다.
+x86_64 경로는 firmware-managed EFI stub이며 direct PE loader가 아니다. RISC-V64 경로는 bootstrap
+hartid, compact FDT, `satp=0`, 2 MiB placement와 OpenSBI `/reserved-memory` normalization을 요구한다.
+각 증거는 descriptor가 고정한 release/hash와 해당 QEMU tuple에만 한정된다.
+
+`check-multi-os-runtime`의 Parus row 세 개는 Ribon-owned AArch64, x86_64와 RISC-V64 protocol fixture다.
+이는 RPH1와 register ABI 회귀 증거이며 현재 Parus kernel의 full boot 또는 IDLE receipt를 주장하지
+않는다. 실제 external Parus payload 성공은 별도 payload identity와 marker graph를 요구한다.
 
 ## Boot health confirmation 지원
 

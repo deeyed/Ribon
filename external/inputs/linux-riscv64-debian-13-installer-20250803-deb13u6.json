@@ -1,0 +1,25 @@
+{
+  "schema": "ribon-external-linux-riscv64-image-v1",
+  "source": {
+    "distribution": "Debian",
+    "release": "13 installer 20250803+deb13u6",
+    "target": "riscv64/netboot",
+    "url": "https://deb.debian.org/debian/dists/trixie/main/installer-riscv64/20250803+deb13u6/images/netboot/debian-installer/riscv64/linux"
+  },
+  "artifact": {
+    "architecture": "riscv64",
+    "class": "linux-riscv64-image",
+    "filename": "Image",
+    "expected_sha256": "c601b3ef8415fb0309c5098569cab61954916a9388fba929a32e11f024e8490a",
+    "expected_size": 31172608,
+    "maximum_size": 33554432
+  },
+  "license": {
+    "spdx": "GPL-2.0-only",
+    "notice": "Linux kernel binary distributed by Debian; Ribon does not redistribute it."
+  },
+  "provenance": {
+    "kind": "pinned-upstream-release-artifact",
+    "verification": "Debian SHA256SUMS, exact size, digest, and Linux RISC-V Image header"
+  }
+}

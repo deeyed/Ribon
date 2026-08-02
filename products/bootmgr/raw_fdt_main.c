@@ -202,6 +202,7 @@ _Noreturn void ribon_raw_fdt_boot_main(
     uint32_t reservation_count = 0u;
     uint32_t boot_module_count = 0u;
     uint32_t initial_image_count = 0u;
+    uint32_t firmware_region_count = 0u;
     int status;
 
     if (!ribon_port_descriptor_is_valid(port) ||
@@ -326,9 +327,17 @@ _Noreturn void ribon_raw_fdt_boot_main(
             &environment, &persistent_inputs)) {
         bootmgr_fail("persistent-inputs", RIBON_BOOT_STATUS_INCOMPLETE_ENVIRONMENT);
     }
+    for (uint32_t index = 0u;
+         index < environment.memory_map.region_count;
+         ++index) {
+        firmware_region_count +=
+            environment.memory_map.regions[index].kind ==
+            RIBON_MEMORY_REGION_FIRMWARE;
+    }
     bootmgr_marker("RIBON-R4-FDT-ACCEPTED");
     bootmgr_hex("RIBON-RFDT-MODULES=", boot_module_count);
     bootmgr_hex("RIBON-RFDT-INITIAL-IMAGES=", initial_image_count);
+    bootmgr_hex("RIBON-RFDT-FIRMWARE-REGIONS=", firmware_region_count);
 
     registry = ribon_generated_plugin_registry();
     protocol_plugin = ribon_plugin_registry_find_selected(

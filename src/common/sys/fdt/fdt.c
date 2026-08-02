@@ -19,6 +19,11 @@ static uint32_t fdt_be32(const unsigned char *bytes) {
            (uint32_t)bytes[3];
 }
 
+/** @brief Big-endian 64-bit FDT reserve-map field를 읽는다. */
+static uint64_t fdt_be64(const unsigned char *bytes) {
+    return ((uint64_t)fdt_be32(bytes) << 32u) | fdt_be32(bytes + 4u);
+}
+
 /** @brief FDT cell 하나 또는 둘을 64-bit 값으로 결합한다. */
 static int fdt_cells(
     const unsigned char *bytes,
@@ -98,6 +103,7 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
     uint32_t total_size;
     uint32_t structure_offset;
     uint32_t strings_offset;
+    uint32_t reserve_offset;
     uint32_t strings_size;
     uint32_t structure_size;
     uint32_t cursor;
@@ -105,8 +111,12 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
     uint32_t depth = 0u;
     uint32_t chosen_depth = UINT32_MAX;
     uint32_t memory_depth = UINT32_MAX;
+    uint32_t reserved_memory_depth = UINT32_MAX;
+    uint32_t reserved_child_depth = UINT32_MAX;
     uint32_t address_cells = 2u;
     uint32_t size_cells = 2u;
+    uint32_t reserved_address_cells = 2u;
+    uint32_t reserved_size_cells = 2u;
     int saw_end = 0;
 
     if (bytes == 0 || out == 0 || capacity < RIBON_FDT_HEADER_SIZE) {
@@ -116,6 +126,7 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
     total_size = fdt_be32(bytes + 4u);
     structure_offset = fdt_be32(bytes + 8u);
     strings_offset = fdt_be32(bytes + 12u);
+    reserve_offset = fdt_be32(bytes + 16u);
     strings_size = fdt_be32(bytes + 32u);
     structure_size = fdt_be32(bytes + 36u);
     if (fdt_be32(bytes) != RIBON_FDT_MAGIC ||
@@ -123,11 +134,33 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
         total_size > capacity ||
         fdt_be32(bytes + 20u) < 17u ||
         fdt_be32(bytes + 24u) > 17u ||
+        reserve_offset < RIBON_FDT_HEADER_SIZE ||
+        reserve_offset > total_size ||
         structure_offset > total_size ||
         structure_size > total_size - structure_offset ||
         strings_offset > total_size ||
         strings_size > total_size - strings_offset) {
         return RIBON_FDT_STATUS_BAD_HEADER;
+    }
+    cursor = reserve_offset;
+    for (;;) {
+        uint64_t base;
+        uint64_t size;
+        if (cursor > total_size || total_size - cursor < 16u) {
+            return RIBON_FDT_STATUS_TRUNCATED;
+        }
+        base = fdt_be64(bytes + cursor);
+        size = fdt_be64(bytes + cursor + 8u);
+        cursor += 16u;
+        if (base == 0u && size == 0u) {
+            break;
+        }
+        if (size == 0u || base > UINT64_MAX - size ||
+            out->reservation_count >= RIBON_FDT_RESERVATION_CAPACITY) {
+            return RIBON_FDT_STATUS_BAD_STRUCTURE;
+        }
+        out->reservations[out->reservation_count++] =
+            (struct RibonFdtReservation){.base = base, .size = size};
     }
     structure_end = structure_offset + structure_size;
     cursor = structure_offset;
@@ -155,6 +188,18 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
                 fdt_is_memory_node((const char *)bytes + cursor, name_size)) {
                 memory_depth = depth;
             }
+            if (depth == 2u &&
+                fdt_streq(
+                    (const char *)bytes + cursor,
+                    name_size,
+                    "reserved-memory")) {
+                reserved_memory_depth = depth;
+                reserved_address_cells = address_cells;
+                reserved_size_cells = size_cells;
+            } else if (reserved_memory_depth != UINT32_MAX &&
+                       depth == reserved_memory_depth + 1u) {
+                reserved_child_depth = depth;
+            }
             cursor += aligned_name;
             continue;
         }
@@ -167,6 +212,12 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
             }
             if (memory_depth == depth) {
                 memory_depth = UINT32_MAX;
+            }
+            if (reserved_child_depth == depth) {
+                reserved_child_depth = UINT32_MAX;
+            }
+            if (reserved_memory_depth == depth) {
+                reserved_memory_depth = UINT32_MAX;
             }
             --depth;
             continue;
@@ -221,6 +272,60 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
                         size_cells,
                         &out->memory_size)) {
                     return RIBON_FDT_STATUS_BAD_STRUCTURE;
+                }
+            } else if (reserved_memory_depth == depth && value_size == 4u &&
+                       fdt_streq(
+                           property_name,
+                           property_name_size,
+                           "#address-cells")) {
+                reserved_address_cells = fdt_be32(value);
+            } else if (reserved_memory_depth == depth && value_size == 4u &&
+                       fdt_streq(
+                           property_name,
+                           property_name_size,
+                           "#size-cells")) {
+                reserved_size_cells = fdt_be32(value);
+            } else if (reserved_child_depth == depth &&
+                       fdt_streq(property_name, property_name_size, "reg")) {
+                const uint32_t tuple_cells =
+                    reserved_address_cells + reserved_size_cells;
+                uint32_t tuple_size;
+                if ((reserved_address_cells != 1u &&
+                     reserved_address_cells != 2u) ||
+                    (reserved_size_cells != 1u &&
+                     reserved_size_cells != 2u) ||
+                    tuple_cells > UINT32_MAX / 4u) {
+                    return RIBON_FDT_STATUS_BAD_STRUCTURE;
+                }
+                tuple_size = tuple_cells * 4u;
+                if (value_size == 0u || value_size % tuple_size != 0u) {
+                    return RIBON_FDT_STATUS_BAD_STRUCTURE;
+                }
+                for (uint32_t offset = 0u;
+                     offset < value_size;
+                     offset += tuple_size) {
+                    uint64_t base;
+                    uint64_t size;
+                    if (out->reservation_count >=
+                            RIBON_FDT_RESERVATION_CAPACITY ||
+                        !fdt_cells(
+                            value + offset,
+                            value_size - offset,
+                            reserved_address_cells,
+                            &base) ||
+                        !fdt_cells(
+                            value + offset + reserved_address_cells * 4u,
+                            value_size - offset - reserved_address_cells * 4u,
+                            reserved_size_cells,
+                            &size) ||
+                        size == 0u || base > UINT64_MAX - size) {
+                        return RIBON_FDT_STATUS_BAD_STRUCTURE;
+                    }
+                    out->reservations[out->reservation_count++] =
+                        (struct RibonFdtReservation){
+                            .base = base,
+                            .size = size,
+                        };
                 }
             }
             cursor += aligned_value;

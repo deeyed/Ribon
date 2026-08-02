@@ -6,6 +6,10 @@
 /** @brief Linux raw-FDT entry Boot Protocol plugin descriptor다. */
 extern const struct RibonPluginDescriptor ribon_linux_protocol_plugin_descriptor;
 
+/** @brief Linux RISC-V64 raw-FDT entry Boot Protocol plugin descriptor다. */
+extern const struct RibonPluginDescriptor
+    ribon_linux_riscv64_protocol_plugin_descriptor;
+
 /** @brief Linux x86_64 EFI-stub firmware-managed Boot Protocol descriptor다. */
 extern const struct RibonPluginDescriptor ribon_linux_efi_protocol_plugin_descriptor;
 

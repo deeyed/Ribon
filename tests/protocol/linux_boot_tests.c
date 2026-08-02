@@ -22,6 +22,12 @@ static void put_le64(unsigned char *bytes, uint64_t value) {
     }
 }
 
+static void put_le32(unsigned char *bytes, uint32_t value) {
+    for (uint32_t index = 0u; index < 4u; ++index) {
+        bytes[index] = (unsigned char)(value >> (index * 8u));
+    }
+}
+
 /** @brief root #address-cells=2와 /chosen을 가진 최소 valid FDT를 만든다. */
 static uint32_t make_fdt(unsigned char *bytes) {
     const uint32_t structure_offset = 56u;
@@ -69,6 +75,8 @@ int main(void) {
         ribon_linux_protocol_plugin_descriptor.operations;
     const struct RibonImageFormatOps *image =
         ribon_linux_aarch64_image_plugin_descriptor.operations;
+    const struct RibonImageFormatOps *riscv_image =
+        ribon_linux_riscv64_image_plugin_descriptor.operations;
     const struct RibonArchDescriptor arch = {
         .id = RIBON_ARCHITECTURE_AARCH64,
     };
@@ -111,6 +119,7 @@ int main(void) {
     struct RibonHandoffArtifact handoff;
     unsigned char output[512];
     struct RibonTerminalRequest terminal;
+    struct RibonTerminalRequest riscv_terminal;
     struct RibonValidatedImage validated;
     unsigned char image_bytes[128] = {0};
     struct RibonLoadSegment segment;
@@ -123,10 +132,44 @@ int main(void) {
         .size = sizeof(image_bytes),
         .source_name = "Image",
     };
+    const struct RibonArchDescriptor riscv_arch = {
+        .id = RIBON_ARCHITECTURE_RISCV64,
+    };
+    struct RibonBootPlan riscv_plan = {
+        .arch = &riscv_arch,
+        .kernel_image = {
+            .format = RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64,
+        },
+        .kernel_runtime_entry_address = 0x80400000ull,
+        .kernel_runtime_load_base = 0x80400000ull,
+        .kernel_runtime_load_end = 0x80401000ull,
+    };
+    struct RibonBootEnvironment riscv_environment = environment;
+    unsigned char riscv_image_bytes[128] = {0};
+    struct RibonValidatedImage riscv_validated;
+    struct RibonLoadSegment riscv_segment;
+    struct RibonDirectLoadPlan riscv_loaded = {
+        .segments = &riscv_segment,
+        .segment_capacity = 1u,
+    };
+    struct RibonPayloadImage riscv_payload = {
+        .data = riscv_image_bytes,
+        .size = sizeof(riscv_image_bytes),
+        .source_name = "Image",
+    };
 
     image_bytes[56] = 'A'; image_bytes[57] = 'R';
     image_bytes[58] = 'M'; image_bytes[59] = 'd';
     put_le64(image_bytes + 16u, 4096u);
+    put_le64(riscv_image_bytes + 8u, 2ull * 1024ull * 1024ull);
+    put_le64(riscv_image_bytes + 16u, 4096u);
+    put_le32(riscv_image_bytes + 32u, 2u);
+    memcpy(riscv_image_bytes + 48u, "RISCV\0\0\0", 8u);
+    memcpy(riscv_image_bytes + 56u, "RSC\x05", 4u);
+    put_le32(riscv_image_bytes + 60u, 64u);
+    memcpy(riscv_image_bytes + 64u, "PE\0\0", 4u);
+    riscv_environment.boot_cpu_id = 7u;
+    riscv_environment.flags |= RIBON_BOOT_ENV_HAS_BOOT_CPU_ID;
     if (!ribon_protocol_plugin_operations_are_valid(
             &ribon_linux_protocol_plugin_descriptor) ||
         !ribon_image_plugin_operations_are_valid(
@@ -147,6 +190,72 @@ int main(void) {
         fputs("linux_boot_tests: positive contract failed\n", stderr);
         return 1;
     }
+    if (!ribon_image_plugin_operations_are_valid(
+            &ribon_linux_riscv64_image_plugin_descriptor) ||
+        !ribon_protocol_plugin_operations_are_valid(
+            &ribon_linux_riscv64_protocol_plugin_descriptor) ||
+        riscv_image->analyze(
+            &riscv_payload, &riscv_validated, &riscv_loaded) !=
+            RIBON_LOADER_STATUS_OK ||
+        riscv_validated.format != RIBON_EXECUTABLE_FORMAT_LINUX_RISCV64 ||
+        riscv_loaded.entry_point != 0u ||
+        riscv_loaded.segments[0].alignment != 2ull * 1024ull * 1024ull ||
+        protocol->ops->prepare_handoff(
+            &riscv_plan, &riscv_environment, &memory_map,
+            output, sizeof(output), &handoff) !=
+            RIBON_PROTOCOL_HANDOFF_STATUS_OK ||
+        protocol->ops->prepare_terminal(
+            &riscv_arch, &riscv_plan, &riscv_environment, &handoff,
+            &riscv_terminal) != RIBON_PROTOCOL_STATUS_OK ||
+        riscv_terminal.direct_entry.register_abi !=
+            RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3 ||
+        riscv_terminal.direct_entry.translation !=
+            RIBON_ENTRY_TRANSLATION_DISABLED ||
+        riscv_terminal.direct_entry.argument_count != 2u ||
+        riscv_terminal.direct_entry.arguments[0] != 7u ||
+        riscv_terminal.direct_entry.arguments[1] !=
+            (uint64_t)(uintptr_t)output) {
+        fputs("linux_boot_tests: RISC-V64 contract failed\n", stderr);
+        return 1;
+    }
+    riscv_environment.flags &= ~RIBON_BOOT_ENV_HAS_BOOT_CPU_ID;
+    if (protocol->ops->prepare_terminal(
+            &riscv_arch, &riscv_plan, &riscv_environment, &handoff,
+            &riscv_terminal) != RIBON_PROTOCOL_STATUS_BAD_ARGUMENT) {
+        fputs("linux_boot_tests: missing hart authority accepted\n", stderr);
+        return 1;
+    }
+    riscv_image_bytes[48u] = 0u;
+    if (riscv_image->analyze(
+            &riscv_payload, &riscv_validated, &riscv_loaded) ==
+            RIBON_LOADER_STATUS_OK) {
+        fputs("linux_boot_tests: invalid RISC-V64 magic accepted\n", stderr);
+        return 1;
+    }
+    riscv_image_bytes[48u] = 'R';
+    riscv_payload.size = 63u;
+    if (riscv_image->analyze(
+            &riscv_payload, &riscv_validated, &riscv_loaded) ==
+            RIBON_LOADER_STATUS_OK) {
+        fputs("linux_boot_tests: truncated RISC-V64 image accepted\n", stderr);
+        return 1;
+    }
+    riscv_payload.size = sizeof(riscv_image_bytes);
+    put_le64(riscv_image_bytes + 16u, 0u);
+    if (riscv_image->analyze(
+            &riscv_payload, &riscv_validated, &riscv_loaded) ==
+            RIBON_LOADER_STATUS_OK) {
+        fputs("linux_boot_tests: zero RISC-V64 effective size accepted\n", stderr);
+        return 1;
+    }
+    put_le64(riscv_image_bytes + 16u, UINT64_MAX);
+    if (riscv_image->analyze(
+            &riscv_payload, &riscv_validated, &riscv_loaded) ==
+            RIBON_LOADER_STATUS_OK) {
+        fputs("linux_boot_tests: unbounded RISC-V64 effective size accepted\n", stderr);
+        return 1;
+    }
+    put_le64(riscv_image_bytes + 16u, 4096u);
 
     environment.flags = RIBON_BOOT_ENV_HAS_BOOT_MODULES;
     if (protocol->ops->prepare_handoff(

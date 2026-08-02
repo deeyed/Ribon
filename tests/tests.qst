@@ -70,6 +70,22 @@ qstar.test "fdt_parser_tests" {
   },
 }
 
+qstar.test "linux_boot_tests" {
+  sources = {
+    "tests/protocol/linux_boot_tests.c",
+    "src/protocols/os/linux/fdt.c",
+    "src/protocols/os/linux/protocol.c",
+    "src/image-formats/linux_aarch64.c",
+    "src/image-formats/linux_riscv64.c",
+    "src/common/image.c",
+    "src/common/protocol.c",
+    "src/core/memory.c",
+  },
+  configs = {
+    "//qstar/policies:ribon_test_c",
+  },
+}
+
 qstar.test "os_package_tests" {
   sources = {
     "tests/protocol/os_package_tests.c",
@@ -585,6 +601,7 @@ qstar.group "ribon_tests" {
     "//tests:parus_entry_contract_tests",
     "//tests:pe_coff_loader_tests",
     "//tests:fdt_parser_tests",
+    "//tests:linux_boot_tests",
     "//tests:os_package_tests",
     "//tests:port_service_tests",
     "//tests:ribos_executable_corpus",

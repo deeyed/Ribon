@@ -11,6 +11,7 @@ from pathlib import Path
 
 ELF_MACHINE_AARCH64 = 183
 ELF_MACHINE_X86_64 = 62
+ELF_MACHINE_RISCV64 = 243
 MAX_INITRAMFS_SIZE = 1024 * 1024
 
 
@@ -20,6 +21,7 @@ def validate_init(data: bytes, architecture: str) -> None:
     expected_machine = {
         "aarch64": ELF_MACHINE_AARCH64,
         "x86_64": ELF_MACHINE_X86_64,
+        "riscv64": ELF_MACHINE_RISCV64,
     }[architecture]
 
     if (
@@ -91,7 +93,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--init", type=Path, required=True)
     parser.add_argument(
-        "--architecture", choices=("aarch64", "x86_64"), default="aarch64"
+        "--architecture",
+        choices=("aarch64", "riscv64", "x86_64"),
+        default="aarch64",
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--component-manifest", type=Path, required=True)
