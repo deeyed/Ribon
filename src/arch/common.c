@@ -32,6 +32,10 @@ static uint16_t expected_machine(
     if (format == RIBON_EXECUTABLE_FORMAT_PE_COFF) {
         return arch->pe_coff_machine;
     }
+    if (format == RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 &&
+        arch->id == RIBON_ARCHITECTURE_AARCH64) {
+        return arch->elf_machine;
+    }
     return 0u;
 }
 
@@ -147,7 +151,8 @@ int ribon_arch_validate_loaded_payload(
         arch->word_bits != 64u ||
         arch->page_size == 0u ||
         (payload->format != RIBON_EXECUTABLE_FORMAT_ELF64 &&
-         payload->format != RIBON_EXECUTABLE_FORMAT_PE_COFF) ||
+         payload->format != RIBON_EXECUTABLE_FORMAT_PE_COFF &&
+         payload->format != RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64) ||
         payload->segments == 0 ||
         payload->segment_count == 0u ||
         payload->segment_count > payload->segment_capacity) {

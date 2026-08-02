@@ -2,11 +2,14 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-02
 code_paths:
   - tools/qemu_target_smoke.py
   - tools/validate_external_parus_payload.py
   - tools/generate_boot_module_bundle.py
+  - tools/prepare_external_linux_image.py
+  - tools/build_linux_initramfs.py
+  - products/bootmgr/manifests/qemu-aarch64-virt-linux.json
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-modules.json
   - products/bootmgr/manifests/qemu-aarch64-virt-modules-fixture.json
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
@@ -16,10 +19,12 @@ code_paths:
   - tests/fixtures/riscv64/
   - tests/tools/qemu_target_smoke_tests.py
   - tests/tools/external_parus_payload_tests.py
+  - tests/tools/external_linux_image_tests.py
 tests:
   - make check-qemu-evidence
   - make check-boot-modules
   - make check-uefi-product-hermeticity
+  - make qemu-aarch64-virt-linux-smoke
   - make qemu-aarch64-virt-modules-fixture-smoke
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf QEMU_PARUS_MODULE_COMPONENT_MANIFEST=/path/to/components.json qemu-aarch64-virt-parus-modules-smoke
   - make x86_64-uefi-parus-fixture-smoke
@@ -54,6 +59,25 @@ immutability를 확인한다. Fixture target은 별도 build directory와 genera
 External-kernel class는 actual payload identity와 Ribon transfer 증거를 연다. Parus
 boot stage 또는 runtime 성공은 별도 required marker graph와 Parus integration
 harness가 검증해야 하며, payload class만으로 열리지 않는다.
+
+## AArch64 Linux raw Image 증거
+
+Linux product는 ELF external-kernel class를 재사용하지 않는다. Source descriptor는 upstream
+release URL, distribution/release/target identity, license notice, exact size, maximum size와 SHA-256를
+고정한다. Build는 cache가 존재해도 digest와 AArch64 Linux Image header를 다시 검증한다. Raw Image는
+Ribon binary에 포함하지 않고 product placement 주소에 QEMU loader로 별도 pre-load한다. Generated
+descriptor object는 같은 주소와 exact file size만 Core의 generic memory boot source에 게시한다.
+
+Initramfs는 source-owned AArch64 assembly PID 1을 static ELF로 만든 뒤 deterministic `newc` archive로
+직렬화한다. Raw-FDT module bundle은 `initramfs` auxiliary module과 BOOT_MODULE reservation을 제공한다.
+Linux protocol만 `/chosen/linux,initrd-start`와 `linux,initrd-end`를 compact copied FDT에 추가한다.
+Generic raw-FDT frontend, placement service와 module bundle에는 Linux branch가 없다.
+
+Success는 Ribon lifecycle marker, Linux PID 1 marker가 정확히 한 번, Linux power-down receipt가 정확히
+한 번 나타나고 QEMU가 자체적으로 status 0으로 끝날 때만 성립한다. Harness는 이 product에서
+`-no-shutdown`을 사용하지 않으며 forced termination을 success로 바꾸지 않는다. Result는 source
+descriptor, external validation, product, raw Image, initramfs provenance, composed Ribon image, QEMU
+command/version, serial hash와 clean exit code를 분리해 보존한다.
 
 ## raw-FDT typed module 증거
 

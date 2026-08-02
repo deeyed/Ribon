@@ -150,6 +150,7 @@ adr/0048-uefi-block-update-adapter
 adr/0049-crash-consistent-update-transaction-journal
 adr/0050-recovery-only-bounded-network-update
 adr/0051-os-neutral-boot-confirmation
+adr/0052-linux-aarch64-raw-image-product
 ```
 
 ```{toctree}
@@ -218,6 +219,7 @@ log/2026-07-31-ribos-ribon-product-integration
 log/2026-07-31-ribos-cross-architecture-vm-validation
 log/2026-07-31-r01-uefi-product-hermetic-build
 log/2026-07-31-r02-ribos-executable-corpus
+log/2026-08-02-d07-linux-aarch64-qemu
 log/2026-07-31-rfdt-mod0-typed-boot-modules
 log/2026-07-31-r03-production-trust-contracts
 log/2026-07-31-r04-freestanding-ed25519

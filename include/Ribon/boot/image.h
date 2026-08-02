@@ -13,6 +13,7 @@ enum RibonExecutableFormat {
     RIBON_EXECUTABLE_FORMAT_UNKNOWN = 0,
     RIBON_EXECUTABLE_FORMAT_ELF64 = 1,
     RIBON_EXECUTABLE_FORMAT_PE_COFF = 2,
+    RIBON_EXECUTABLE_FORMAT_LINUX_AARCH64 = 3,
 };
 
 /** @brief Image format을 protocol allowlist bit로 변환한다. */
@@ -50,6 +51,7 @@ enum RibonLoadPlanFlags {
     RIBON_LOAD_PLAN_HAS_LINKED_PHYSICAL_RANGE = 1u << 5,
     RIBON_LOAD_PLAN_SEGMENTS_PLACED = 1u << 6,
     RIBON_LOAD_PLAN_FALLBACK_ALLOCATION = 1u << 7,
+    RIBON_LOAD_PLAN_RELOCATABLE = 1u << 8,
 };
 
 /** @brief Caller가 이미 읽은 immutable image bytes다. */
@@ -128,5 +130,9 @@ extern const struct RibonPluginDescriptor ribon_elf64_image_plugin_descriptor;
 
 /** @brief PE32+ image-format plugin descriptor다. */
 extern const struct RibonPluginDescriptor ribon_pe_coff_image_plugin_descriptor;
+
+/** @brief AArch64 Linux raw Image plugin descriptor다. */
+extern const struct RibonPluginDescriptor
+    ribon_linux_aarch64_image_plugin_descriptor;
 
 #endif

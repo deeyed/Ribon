@@ -26,6 +26,7 @@ qstar.staticlib "ribon_protocol_parus" {
 
 qstar.staticlib "ribon_protocol_linux" {
   sources = {
+    "src/protocols/os/linux/fdt.c",
     "src/protocols/os/linux/protocol.c",
   },
   deps = {

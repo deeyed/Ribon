@@ -36,10 +36,11 @@ enum RibonCapability {
     RIBON_CAP_FIRMWARE_SERVICE_DIRECTORY = 1ull << 25,
     RIBON_CAP_SDK_CONTRACT = 1ull << 26,
     RIBON_CAP_PAYLOAD_PLACEMENT = 1ull << 27,
+    RIBON_CAP_IMAGE_LINUX_AARCH64 = 1ull << 28,
 };
 
 /** @brief Public plugin ABI가 정의하는 capability 전체다. */
-#define RIBON_CAP_ALL ((1ull << 28) - 1ull)
+#define RIBON_CAP_ALL ((1ull << 29) - 1ull)
 
 /** @brief Ribon product의 실행 정책 mode다. */
 enum RibonMode {

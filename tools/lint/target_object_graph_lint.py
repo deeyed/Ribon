@@ -89,6 +89,30 @@ EXPECTED = {
             "generated/embedded_payload",
         ),
     },
+    "qemu-aarch64-virt-linux": {
+        "architecture": "aarch64",
+        "environment": "raw-fdt",
+        "port": "qemu-virt-aarch64",
+        "map": "ribon.map",
+        "product_id": "bootmgr.qemu-aarch64-virt-linux",
+        "payload_entry_abi": "arm64-linux-fdt-v1",
+        "payload_format": "linux-aarch64-image",
+        "boot_module_bundle": True,
+        "needles": (
+            "src/environments/raw-fdt/raw_fdt",
+            "src/image-formats/linux_aarch64.o",
+            "src/protocols/os/linux/protocol.o",
+            "src/protocols/os/linux/fdt.o",
+            "generated/external_payload.o",
+            "generated/boot-modules/descriptor.o",
+            "generated/boot-modules/bundle.o",
+        ),
+        "forbidden": (
+            "src/image-formats/elf64.o",
+            "src/protocols/os/parus/",
+            "generated/embedded_payload.o",
+        ),
+    },
     "qemu-aarch64-virt-parus-modules": {
         "architecture": "aarch64",
         "environment": "raw-fdt",
@@ -263,6 +287,12 @@ def main() -> int:
                 or payload.get("entry_abi") != payload_entry_abi
             ):
                 fail(f"{target}: external payload product contract is not exact")
+            payload_format = expected.get("payload_format")
+            if payload_format is not None and (
+                not isinstance(payload, dict)
+                or payload.get("format") != payload_format
+            ):
+                fail(f"{target}: external payload format is not exact")
         expected_bundle = expected.get("boot_module_bundle")
         report_services = report.get("services")
         if not isinstance(report_services, list):

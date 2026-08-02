@@ -149,6 +149,84 @@ static void boot_copy_image_plan(
     out->kernel_load_segments = layout->segments;
 }
 
+/** @brief Relative image plan을 selected physical placement window에 재배치한다. */
+static int boot_apply_relocatable_placement(
+    const struct RibonBootTransaction *transaction,
+    struct RibonLoadedPayload *layout) {
+    const struct RibonServiceDescriptor *service;
+    const struct RibonPayloadPlacementServiceOperations *placement;
+    uint64_t window_end;
+
+    if ((layout->load_plan_flags & RIBON_LOAD_PLAN_RELOCATABLE) == 0u) {
+        return RIBON_BOOT_STATUS_OK;
+    }
+    service = boot_service_authority(
+        transaction->core->services,
+        RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT);
+    if (service == 0 ||
+        !ribon_payload_placement_service_operations_are_valid(service)) {
+        return RIBON_BOOT_STATUS_MISSING_CAPABILITY;
+    }
+    placement = service->operations;
+    if (placement == 0 || placement->physical_base == 0u ||
+        placement->physical_size == 0u ||
+        placement->physical_base > UINT64_MAX - placement->physical_size) {
+        return RIBON_BOOT_STATUS_INVALID_PAYLOAD;
+    }
+    window_end = placement->physical_base + placement->physical_size;
+    for (uint32_t index = 0u; index < layout->segment_count; ++index) {
+        struct RibonLoadSegment *segment = &layout->segments[index];
+        uint64_t load_address;
+        uint64_t load_end;
+        uint64_t virtual_address;
+        if (segment->load_address > UINT64_MAX - placement->physical_base ||
+            segment->virtual_address > UINT64_MAX - placement->physical_base) {
+            return RIBON_BOOT_STATUS_INVALID_PAYLOAD;
+        }
+        load_address = placement->physical_base + segment->load_address;
+        virtual_address = placement->physical_base + segment->virtual_address;
+        if (load_address < placement->physical_base ||
+            load_address > UINT64_MAX - segment->memory_size ||
+            (load_end = load_address + segment->memory_size) > window_end) {
+            return RIBON_BOOT_STATUS_INVALID_PAYLOAD;
+        }
+        segment->physical_address = load_address;
+        segment->load_address = load_address;
+        segment->runtime_address = load_address;
+        segment->virtual_address = virtual_address;
+        if (segment->linked_physical_address >
+            UINT64_MAX - placement->physical_base) {
+            return RIBON_BOOT_STATUS_INVALID_PAYLOAD;
+        }
+        segment->linked_physical_address += placement->physical_base;
+    }
+    if (layout->entry_point > UINT64_MAX - placement->physical_base ||
+        layout->entry_load_address > UINT64_MAX - placement->physical_base ||
+        layout->runtime_entry_address > UINT64_MAX - placement->physical_base ||
+        layout->load_base > UINT64_MAX - placement->physical_base ||
+        layout->load_end > UINT64_MAX - placement->physical_base ||
+        layout->runtime_load_base > UINT64_MAX - placement->physical_base ||
+        layout->runtime_load_end > UINT64_MAX - placement->physical_base ||
+        layout->linked_virtual_base > UINT64_MAX - placement->physical_base ||
+        layout->linked_virtual_end > UINT64_MAX - placement->physical_base ||
+        layout->linked_physical_base > UINT64_MAX - placement->physical_base ||
+        layout->linked_physical_end > UINT64_MAX - placement->physical_base) {
+        return RIBON_BOOT_STATUS_INVALID_PAYLOAD;
+    }
+    layout->entry_point += placement->physical_base;
+    layout->entry_load_address += placement->physical_base;
+    layout->runtime_entry_address += placement->physical_base;
+    layout->load_base += placement->physical_base;
+    layout->load_end += placement->physical_base;
+    layout->runtime_load_base += placement->physical_base;
+    layout->runtime_load_end += placement->physical_base;
+    layout->linked_virtual_base += placement->physical_base;
+    layout->linked_virtual_end += placement->physical_base;
+    layout->linked_physical_base += placement->physical_base;
+    layout->linked_physical_end += placement->physical_base;
+    return RIBON_BOOT_STATUS_OK;
+}
+
 /** @brief Frozen payload와 environment에서 protocol handoff plan을 bounded하게 만든다. */
 static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) {
     struct RibonBootDeadline deadline;
@@ -388,6 +466,8 @@ int ribon_boot_transaction_prepare(
     if (transaction->image_format->analyze(
             &transaction->payload, input->kernel_layout) !=
             RIBON_LOADER_STATUS_OK ||
+        boot_apply_relocatable_placement(
+            transaction, input->kernel_layout) != RIBON_BOOT_STATUS_OK ||
         transaction->arch->validate_payload(
             transaction->arch->descriptor, input->kernel_layout) != RIBON_ARCH_OPERATION_OK) {
         return boot_fail(transaction, RIBON_BOOT_STAGE_LOAD_IMAGE,

@@ -14,7 +14,6 @@ static const struct RibonModeDescriptor recovery_mode = {
         RIBON_CAP_PERSISTENT_METADATA |
         RIBON_CAP_RANDOM_NONCE |
         RIBON_CAP_ARCHITECTURE |
-        RIBON_CAP_IMAGE_ELF64 |
         RIBON_CAP_BOOT_PROTOCOL,
     .forbidden_capabilities = 0u,
     .limits = {

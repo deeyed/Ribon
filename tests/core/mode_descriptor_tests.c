@@ -32,7 +32,6 @@ static int expected_descriptor(
             RIBON_CAP_BOOT_SOURCE_READ |
             RIBON_CAP_MONOTONIC_TIMER |
             RIBON_CAP_ARCHITECTURE |
-            RIBON_CAP_IMAGE_ELF64 |
             RIBON_CAP_BOOT_PROTOCOL |
             RIBON_CAP_HANDOFF |
             RIBON_CAP_ENTRY_CONTRACT;
@@ -62,7 +61,6 @@ static int expected_descriptor(
             RIBON_CAP_PERSISTENT_METADATA |
             RIBON_CAP_RANDOM_NONCE |
             RIBON_CAP_ARCHITECTURE |
-            RIBON_CAP_IMAGE_ELF64 |
             RIBON_CAP_BOOT_PROTOCOL;
         *limits_out = (struct RibonResourceLimits){
             .max_memory_regions = 256u,

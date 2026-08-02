@@ -104,6 +104,7 @@ CAPABILITIES = {
         "RIBON_CAP_SDK_CONTRACT",
         "RIBON_CAP_PAYLOAD_PLACEMENT",
         "RIBON_CAP_BOOT_MODULE_BUNDLE",
+        "RIBON_CAP_IMAGE_LINUX_AARCH64",
     )
 }
 LIMIT_KEYS = (
@@ -1010,7 +1011,7 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             or not isinstance(payload, dict)
             or set(payload) != PAYLOAD_KEYS
             or payload.get("class") != "external-kernel"
-            or payload.get("format") != "elf64"
+            or payload.get("format") not in ("elf64", "linux-aarch64-image")
             or payload.get("architecture") != architecture
             or not isinstance(payload.get("entry_abi"), str)
             or not payload["entry_abi"]
@@ -1020,6 +1021,10 @@ def load_manifest(path: Path, selected_architecture: str | None) -> dict[str, ob
             or payload["load_size"] <= 0
         ):
             raise ValueError("payload must define one typed external kernel contract")
+        if payload["format"] == "linux-aarch64-image" and (
+            architecture != "aarch64" or payload["entry_abi"] != "arm64-linux-fdt-v1"
+        ):
+            raise ValueError("Linux raw Image requires the AArch64 Linux FDT entry ABI")
     boot_module_bundle = manifest.get("boot_module_bundle")
     if boot_module_bundle is not None:
         if (

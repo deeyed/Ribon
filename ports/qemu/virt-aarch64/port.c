@@ -5,7 +5,11 @@
 #define RIBON_PORT_UART_POLL_LIMIT 1000000u
 #define RIBON_PORT_TIMER_FREQUENCY 62500000u
 #define RIBON_PORT_NATIVE_INPUT_CAPACITY (2ull * 1024ull * 1024ull)
+#ifndef RIBON_PORT_PAYLOAD_BASE
 #define RIBON_PORT_PAYLOAD_BASE 0x41000000ull
+#endif
+#ifndef RIBON_PORT_PAYLOAD_SIZE
 #define RIBON_PORT_PAYLOAD_SIZE (16ull * 1024ull * 1024ull)
+#endif
 
 #include "../../common/pl011_raw_fdt_port.h"

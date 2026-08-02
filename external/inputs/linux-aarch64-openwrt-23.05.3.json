@@ -1,0 +1,25 @@
+{
+  "schema": "ribon-external-linux-image-v1",
+  "source": {
+    "distribution": "OpenWrt",
+    "release": "23.05.3",
+    "target": "armsr/armv8",
+    "url": "https://downloads.openwrt.org/releases/23.05.3/targets/armsr/armv8/openwrt-23.05.3-armsr-armv8-generic-kernel.bin"
+  },
+  "artifact": {
+    "architecture": "aarch64",
+    "class": "linux-aarch64-image",
+    "filename": "Image",
+    "expected_sha256": "cc281030454415267654a53c0d85f7bea79846258f1409bacfdf814d40ffede1",
+    "expected_size": 16452096,
+    "maximum_size": 33554432
+  },
+  "license": {
+    "spdx": "GPL-2.0-only",
+    "notice": "Linux kernel binary distributed by OpenWrt; Ribon does not redistribute it."
+  },
+  "provenance": {
+    "kind": "pinned-upstream-release-artifact",
+    "verification": "exact-size-sha256-and-linux-aarch64-header"
+  }
+}

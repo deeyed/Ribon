@@ -64,6 +64,7 @@ FIXTURE_PROVENANCE = (
 )
 FATAL_OUTPUT_MARKERS = (
     b"PANIC",
+    b"Kernel panic",
     b"Unhandled exception",
     b"qemu: fatal",
 )
@@ -305,8 +306,10 @@ def module_image_binding(
 
 
 def observed_payload_class(path: Path) -> str:
-    """Distinguish generated fixture payloads from external ELF payloads."""
+    """Distinguish generated fixtures, external ELF, and Linux raw Image."""
     prefix = path.read_bytes()
+    if len(prefix) >= 64 and prefix[56:60] == b"ARMd":
+        return "linux-image"
     if not prefix.startswith(b"\x7fELF"):
         return "invalid"
     if (
@@ -326,7 +329,7 @@ def command_for(args: argparse.Namespace) -> list[str]:
     if args.target == "aarch64-virt-raw-fdt":
         if args.image is None:
             raise ValueError("--image is required")
-        return [
+        command = [
             args.qemu,
             "-machine", "virt",
             "-cpu", "cortex-a72",
@@ -335,9 +338,21 @@ def command_for(args: argparse.Namespace) -> list[str]:
             "-monitor", "none",
             "-net", "none",
             "-no-reboot",
-            "-no-shutdown",
             "-kernel", str(args.image),
         ]
+        if not args.expect_clean_exit:
+            command[command.index("-kernel"):command.index("-kernel")] = [
+                "-no-shutdown"
+            ]
+        if args.preload_payload_address is not None:
+            command += [
+                "-device",
+                "loader,file=" + str(args.payload) +
+                f",addr={args.preload_payload_address},force-raw=on",
+            ]
+        if args.kernel_command_line is not None:
+            command += ["-append", args.kernel_command_line]
+        return command
     if args.target == "riscv64-virt-opensbi":
         if args.image is None or args.firmware is None:
             raise ValueError("--image and --firmware are required")
@@ -479,9 +494,10 @@ def main() -> int:
     parser.add_argument("--init-image", type=Path)
     parser.add_argument("--product-manifest", type=Path)
     parser.add_argument("--module-provenance", type=Path)
+    parser.add_argument("--external-payload-validation", type=Path)
     parser.add_argument(
         "--expected-payload-class",
-        choices=("fixture", "kernel"),
+        choices=("fixture", "kernel", "linux-image"),
         required=True,
     )
     parser.add_argument("--expected-payload-sha256")
@@ -491,6 +507,9 @@ def main() -> int:
         "--required-marker-anywhere", action="append", default=[]
     )
     parser.add_argument("--timeout", type=float, default=20.0)
+    parser.add_argument("--preload-payload-address", type=lambda value: int(value, 0))
+    parser.add_argument("--kernel-command-line")
+    parser.add_argument("--expect-clean-exit", action="store_true")
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
     args = parser.parse_args()
@@ -509,6 +528,12 @@ def main() -> int:
         if args.module_provenance is not None
         else None
     )
+    external_validation_hash = (
+        artifact_sha256(args.external_payload_validation)
+        if args.external_payload_validation is not None
+        else None
+    )
+    external_validation_report = None
     module_report = None
     module_image_bindings = None
     product_report = None
@@ -530,12 +555,19 @@ def main() -> int:
     launched = False
     cleanup_complete = True
     process_group_alive_after_cleanup = False
+    process_returncode = None
 
     preflight_error = None
     if args.expected_payload_sha256 not in (None, payload_hash):
         preflight_error = "payload-hash-mismatch"
     elif payload_class != args.expected_payload_class:
         preflight_error = "payload-class-mismatch"
+    elif args.expected_payload_class == "linux-image" and (
+        args.external_payload_validation is None
+        or args.preload_payload_address is None
+        or not args.expect_clean_exit
+    ):
+        preflight_error = "linux-runtime-contract-incomplete"
     elif args.module_provenance is not None and args.product_manifest is None:
         preflight_error = "module-product-manifest-required"
     elif args.product_manifest is not None:
@@ -545,6 +577,26 @@ def main() -> int:
             )
         except (OSError, UnicodeError, json.JSONDecodeError):
             preflight_error = "product-manifest-invalid"
+    if preflight_error is None and args.external_payload_validation is not None:
+        try:
+            external_validation_report = json.loads(
+                args.external_payload_validation.read_text(encoding="utf-8")
+            )
+            artifact = external_validation_report.get("artifact")
+            placement = external_validation_report.get("placement")
+            if (
+                external_validation_report.get("schema") !=
+                    "ribon-external-linux-image-validation-v1"
+                or not isinstance(artifact, dict)
+                or artifact.get("sha256") != payload_hash
+                or artifact.get("size") != args.payload.stat().st_size
+                or artifact.get("class") != "linux-aarch64-image"
+                or not isinstance(placement, dict)
+                or placement.get("base") != args.preload_payload_address
+            ):
+                raise ValueError("external validation does not bind payload")
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            preflight_error = "external-payload-validation-invalid"
     if (
         preflight_error is None
         and args.module_provenance is None
@@ -637,12 +689,15 @@ def main() -> int:
                             item["count"] == 1
                             for item in anywhere_observations
                         )
-                    ):
+                    ) and not args.expect_clean_exit:
                         outcome = "passed"
                         terminal = "required-evidence-observed"
                         break
                 if process.poll() is not None:
-                    outcome = "early-exit"
+                    outcome = (
+                        "clean-exit-candidate"
+                        if args.expect_clean_exit else "early-exit"
+                    )
                     terminal = "process-exit"
                     break
                 time.sleep(0.02)
@@ -669,6 +724,7 @@ def main() -> int:
             if tail:
                 output += tail
             process_group_alive_after_cleanup = process_group_alive(process.pid)
+            process_returncode = process.returncode
             cleanup_complete = (
                 process.poll() is not None
                 and not process_group_alive_after_cleanup
@@ -693,6 +749,16 @@ def main() -> int:
         for line in output.splitlines()
     ) or any(marker in output for marker in FATAL_OUTPUT_MARKERS)
     fixture_failed = any(marker in output for marker in FIXTURE_FAILURE_MARKERS)
+    if (
+        outcome == "clean-exit-candidate"
+        and process_returncode == 0
+        and first_divergence is None
+        and not target_failed
+        and not payload_failed
+        and not fixture_failed
+    ):
+        outcome = "passed"
+        terminal = "clean-poweroff"
     if outcome == "passed" and target_failed:
         outcome = "target-failure"
         terminal = "target-failure"
@@ -817,6 +883,15 @@ def main() -> int:
             if args.module_provenance is not None
             else None
         ),
+        "external_payload_validation": (
+            {
+                "path": str(args.external_payload_validation),
+                "sha256": external_validation_hash,
+                "report": external_validation_report,
+            }
+            if args.external_payload_validation is not None
+            else None
+        ),
         "composed_artifact": {
             "path": str(composed_path),
             "sha256": composed_hash,
@@ -834,6 +909,8 @@ def main() -> int:
         "qemu": {
             "version": qemu_version(args.qemu),
             "command": command,
+            "returncode": process_returncode,
+            "expected_clean_exit": args.expect_clean_exit,
         },
         "timeout": {
             "seconds": args.timeout,

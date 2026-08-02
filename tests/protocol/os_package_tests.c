@@ -54,7 +54,12 @@ int main(void) {
         },
         {
             .role = RIBON_COMPONENT_ROLE_BOOT_MODULE,
-            .name = "initrd",
+            .name = "initramfs",
+            .size = 4096u,
+        },
+        {
+            .role = RIBON_COMPONENT_ROLE_DEVICE_TREE,
+            .name = "platform.dtb",
             .size = 4096u,
         },
     };
@@ -63,7 +68,7 @@ int main(void) {
         .protocol_abi_min = 1u,
         .protocol_abi_max = 1u,
         .components = linux_components,
-        .component_count = 2u,
+        .component_count = 3u,
     };
     struct RibonHandoffArtifact handoff = {0};
     unsigned char buffer[64];
@@ -77,9 +82,9 @@ int main(void) {
         !ribon_protocol_plugin_operations_are_valid(
             &ribon_zircon_protocol_plugin_descriptor) ||
         !ribon_zircon_zbi_is_valid(&zbi, sizeof(zbi)) ||
-        (linux->expectations & RIBON_PROTOCOL_ALLOW_BOOT_MODULES) != 0u ||
+        (linux->expectations & RIBON_PROTOCOL_ALLOW_BOOT_MODULES) == 0u ||
         linux->ops->validate_components(&linux_module_manifest) !=
-            RIBON_PROTOCOL_STATUS_BAD_COMPONENTS ||
+            RIBON_PROTOCOL_STATUS_OK ||
         freebsd->ops->prepare_handoff(
             0, 0, 0, buffer, sizeof(buffer), &handoff) !=
             RIBON_PROTOCOL_HANDOFF_STATUS_UNSUPPORTED) {

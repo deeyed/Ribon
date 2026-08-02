@@ -121,6 +121,10 @@ static int bootmgr_place_payload(
         placement->physical_base + placement->physical_size;
     for (uint32_t index = 0u; index < layout->segment_count; ++index) {
         struct RibonLoadSegment *segment = &layout->segments[index];
+        const unsigned char *source =
+            (const unsigned char *)payload->data + segment->file_offset;
+        unsigned char *destination =
+            (unsigned char *)(uintptr_t)segment->load_address;
         uint64_t destination_end;
         if (segment->load_address < placement->physical_base ||
             segment->load_address > UINT64_MAX - segment->memory_size ||
@@ -131,11 +135,23 @@ static int bootmgr_place_payload(
             segment->file_size > segment->memory_size) {
             return RIBON_BOOT_STATUS_INVALID_PAYLOAD;
         }
-        memset((void *)(uintptr_t)segment->load_address, 0, (size_t)segment->memory_size);
-        memcpy(
-            (void *)(uintptr_t)segment->load_address,
-            (const unsigned char *)payload->data + segment->file_offset,
-            (size_t)segment->file_size);
+        if (source == destination) {
+            memset(
+                destination + segment->file_size,
+                0,
+                (size_t)(segment->memory_size - segment->file_size));
+        } else {
+            const uintptr_t source_base = (uintptr_t)source;
+            const uintptr_t destination_base = (uintptr_t)destination;
+            if (segment->file_size > UINTPTR_MAX - source_base ||
+                segment->memory_size > UINTPTR_MAX - destination_base ||
+                (source_base < destination_base + segment->memory_size &&
+                 destination_base < source_base + segment->file_size)) {
+                return RIBON_BOOT_STATUS_INVALID_PAYLOAD;
+            }
+            memset(destination, 0, (size_t)segment->memory_size);
+            memcpy(destination, source, (size_t)segment->file_size);
+        }
         segment->runtime_address = segment->load_address;
         if (ribon_arch_selected_ops()->cache_sync(
                 segment->runtime_address,
@@ -287,7 +303,7 @@ _Noreturn void ribon_raw_fdt_boot_main(
         .timer_frequency_hz = port->timer_frequency_hz,
         .payload = ribon_embedded_payload,
         .payload_size = ribon_embedded_payload_size,
-        .payload_name = "boot/payload.elf",
+        .payload_name = "boot/payload",
         .reservations = reservations,
         .reservation_count = reservation_count,
         .memory_regions = environment_regions,
@@ -367,7 +383,7 @@ _Noreturn void ribon_raw_fdt_boot_main(
         .source_size = ribon_embedded_payload_size,
         .payload_buffer = (void *)ribon_embedded_payload,
         .payload_buffer_capacity = ribon_embedded_payload_size,
-        .source_name = "boot/payload.elf",
+        .source_name = "boot/payload",
         .kernel_layout = &layout,
         .handoff_buffer = handoff_buffer,
         .handoff_buffer_capacity = sizeof(handoff_buffer),

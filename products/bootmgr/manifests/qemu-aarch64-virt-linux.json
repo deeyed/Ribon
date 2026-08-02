@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "product_id": "bootmgr.qemu-aarch64-virt-linux",
+  "product_kind": "bootloader",
+  "target_id": "qemu-aarch64-virt-raw-fdt",
+  "architecture": "aarch64",
+  "environment": "raw-fdt",
+  "port": "qemu-virt-aarch64",
+  "mode": "normal",
+  "boot_protocols": [
+    "linux"
+  ],
+  "policies": [
+    "normal"
+  ],
+  "image": {
+    "format": "raw-binary",
+    "recipe": "qemu-virt-kernel",
+    "artifact": "ribon.bin"
+  },
+  "evidence": {
+    "class": "qemu-smoke",
+    "claim": "Ribon transfers a pinned AArch64 Linux Image and typed initramfs to PID 1 under QEMU"
+  },
+  "payload": {
+    "architecture": "aarch64",
+    "class": "external-kernel",
+    "entry_abi": "arm64-linux-fdt-v1",
+    "format": "linux-aarch64-image",
+    "load_base": 1090519040,
+    "load_size": 33554432
+  },
+  "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.port.diagnostic-sink",
+      "kind": "diagnostic-sink",
+      "symbol": "ribon_port_diagnostic_sink_service_descriptor"
+    },
+    {
+      "id": "service.port.machine-description",
+      "kind": "machine-description",
+      "symbol": "ribon_port_machine_description_service_descriptor"
+    },
+    {
+      "id": "service.port.payload-placement",
+      "kind": "payload-placement",
+      "symbol": "ribon_port_payload_placement_service_descriptor"
+    },
+    {
+      "id": "service.product.boot-module-bundle",
+      "kind": "boot-module-bundle",
+      "symbol": "ribon_generated_boot_module_bundle_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_raw_fdt_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.environment-quiesce",
+      "kind": "environment-quiesce",
+      "symbol": "ribon_raw_fdt_environment_quiesce_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_raw_fdt_monotonic_timer_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.persistent-metadata",
+      "kind": "persistent-metadata",
+      "symbol": "ribon_raw_fdt_persistent_metadata_service_descriptor"
+    },
+    {
+      "id": "service.raw-fdt.storage-flush",
+      "kind": "storage-flush",
+      "symbol": "ribon_raw_fdt_storage_flush_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.linux-aarch64",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.linux",
+      "kind": "boot-protocol"
+    }
+  ],
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_MODULE_BUNDLE",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_LINUX_AARCH64",
+    "MACHINE_DESCRIPTION",
+    "MONOTONIC_TIMER",
+    "PAYLOAD_PLACEMENT",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_MODULE_BUNDLE",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENTRY_CONTRACT",
+    "ENVIRONMENT_QUIESCE",
+    "HANDOFF",
+    "IMAGE_LINUX_AARCH64",
+    "MACHINE_DESCRIPTION",
+    "MONOTONIC_TIMER",
+    "PAYLOAD_PLACEMENT",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH"
+  ],
+  "limits": {
+    "max_memory_regions": 256,
+    "max_load_segments": 32,
+    "max_components": 32,
+    "max_retries": 2,
+    "max_input_bytes": 67108864,
+    "max_handoff_bytes": 65536,
+    "arena_bytes": 262144,
+    "operation_deadline_ms": 30000
+  },
+  "plugins": [
+    {
+      "id": "arch.aarch64",
+      "package": "ribon.arch.aarch64",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "environment.raw-fdt",
+      "package": "ribon.environment.raw-fdt",
+      "symbol": "ribon_raw_fdt_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.linux-aarch64",
+      "package": "ribon.image.linux-aarch64",
+      "symbol": "ribon_linux_aarch64_image_plugin_descriptor"
+    },
+    {
+      "id": "protocol.linux",
+      "package": "ribon.protocol.linux",
+      "symbol": "ribon_linux_protocol_plugin_descriptor"
+    }
+  ],
+  "boot_module_bundle": {
+    "component_manifest_schema": "ribon-boot-module-components-v1",
+    "maximum_modules": 8,
+    "provider": "generated-component-bundle-v1"
+  }
+}

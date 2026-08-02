@@ -9,7 +9,6 @@ static const struct RibonModeDescriptor normal_mode = {
         RIBON_CAP_BOOT_SOURCE_READ |
         RIBON_CAP_MONOTONIC_TIMER |
         RIBON_CAP_ARCHITECTURE |
-        RIBON_CAP_IMAGE_ELF64 |
         RIBON_CAP_BOOT_PROTOCOL |
         RIBON_CAP_HANDOFF |
         RIBON_CAP_ENTRY_CONTRACT,

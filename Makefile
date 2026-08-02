@@ -322,6 +322,7 @@ PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
 PARUS_ENTRY_CONTRACT_TEST := $(TEST_BUILD_DIR)/parus_entry_contract_tests
 OS_PACKAGE_TEST := $(TEST_BUILD_DIR)/os_package_tests
+LINUX_BOOT_TEST := $(TEST_BUILD_DIR)/linux_boot_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
 SDK_INSTALL_ROOT := $(BUILD_ROOT)/sdk/install
 SDK_REPRO_FIRST := $(BUILD_ROOT)/sdk/reproducible-a
@@ -337,6 +338,12 @@ MODE_DESCRIPTOR_TESTS := \
 	$(TEST_BUILD_DIR)/mode_descriptor_recovery_tests \
 	$(TEST_BUILD_DIR)/mode_descriptor_provisioning_tests \
 	$(TEST_BUILD_DIR)/mode_descriptor_diagnostic_tests
+
+RAW_IMAGE_FORMAT_SRCS ?= src/image-formats/elf64.c
+RAW_PROTOCOL_SRCS ?= \
+	src/protocols/os/parus/protocol.c \
+	src/protocols/os/parus/rph1_builder.c \
+	src/protocols/os/parus/rph1_parser.c
 
 RAW_COMMON_SRCS := \
 	src/core/arena.c \
@@ -354,10 +361,8 @@ RAW_COMMON_SRCS := \
 	src/common/sys/fdt/fdt.c \
 	src/arch/common.c \
 	src/modes/normal.c \
-	src/image-formats/elf64.c \
-	src/protocols/os/parus/protocol.c \
-	src/protocols/os/parus/rph1_builder.c \
-	src/protocols/os/parus/rph1_parser.c \
+	$(RAW_IMAGE_FORMAT_SRCS) \
+	$(RAW_PROTOCOL_SRCS) \
 	src/environments/raw-fdt/raw_fdt.c \
 	products/bootmgr/raw_fdt_main.c
 
@@ -368,6 +373,8 @@ QEMU_RAW_GRAPH := $(QEMU_RAW_DIR)/results/object-graph.json
 QEMU_RAW_FIXTURE := $(QEMU_RAW_DIR)/payload.elf
 QEMU_RAW_PAYLOAD ?= $(QEMU_RAW_FIXTURE)
 QEMU_RAW_EMBED_C := $(QEMU_RAW_DIR)/generated/embedded_payload.c
+QEMU_RAW_EXTERNAL_PAYLOAD_ASM ?=
+QEMU_RAW_CPPFLAGS ?=
 QEMU_RAW_ELF := $(QEMU_RAW_DIR)/ribon.elf
 QEMU_RAW_IMAGE := $(QEMU_RAW_DIR)/ribon.bin
 QEMU_RAW_SRCS := $(RAW_COMMON_SRCS) \
@@ -377,8 +384,12 @@ QEMU_RAW_SRCS := $(RAW_COMMON_SRCS) \
 QEMU_RAW_OBJS := $(QEMU_RAW_SRCS:%.c=$(QEMU_RAW_DIR)/obj/%.o)
 QEMU_RAW_OBJS += \
 	$(QEMU_RAW_DIR)/obj/generated/plugin_registry.o \
-	$(QEMU_RAW_DIR)/obj/generated/embedded_payload.o \
 	$(QEMU_RAW_DIR)/obj/targets/qemu-aarch64-virt-raw-fdt/entry.o
+ifneq ($(strip $(QEMU_RAW_EXTERNAL_PAYLOAD_ASM)),)
+QEMU_RAW_OBJS += $(QEMU_RAW_DIR)/obj/generated/external_payload.o
+else
+QEMU_RAW_OBJS += $(QEMU_RAW_DIR)/obj/generated/embedded_payload.o
+endif
 
 QEMU_PARUS_DIR := $(TARGET_BUILD_ROOT)/qemu-aarch64-virt-parus
 QEMU_PARUS_MANIFEST := products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
@@ -406,6 +417,23 @@ QEMU_PARUS_MODULE_VALIDATION := \
 	$(QEMU_PARUS_MODULE_DIR)/results/external-payload.json
 QEMU_PARUS_MODULE_PROVENANCE := \
 	$(QEMU_PARUS_MODULE_DIR)/results/boot-modules.json
+
+QEMU_LINUX_DIR := $(TARGET_BUILD_ROOT)/qemu-aarch64-virt-linux
+QEMU_LINUX_MANIFEST := products/bootmgr/manifests/qemu-aarch64-virt-linux.json
+QEMU_LINUX_INPUT_DESCRIPTOR := \
+	external/inputs/linux-aarch64-openwrt-23.05.3.json
+QEMU_LINUX_CACHE ?= $(BUILD_ROOT)/external/linux/openwrt-23.05.3-aarch64/Image
+QEMU_LINUX_EXTERNAL_ASM := $(QEMU_LINUX_DIR)/generated/external_payload.S
+QEMU_LINUX_EXTERNAL_VALIDATION := \
+	$(QEMU_LINUX_DIR)/results/external-linux-image.json
+QEMU_LINUX_EXTERNAL_STAMP := $(QEMU_LINUX_DIR)/generated/external-linux-image.stamp
+QEMU_LINUX_INIT_OBJ := $(QEMU_LINUX_DIR)/initramfs/init.o
+QEMU_LINUX_INIT_ELF := $(QEMU_LINUX_DIR)/initramfs/init
+QEMU_LINUX_INITRAMFS := $(QEMU_LINUX_DIR)/initramfs/initramfs.cpio
+QEMU_LINUX_MODULE_MANIFEST := $(QEMU_LINUX_DIR)/initramfs/manifest.json
+QEMU_LINUX_INITRAMFS_STAMP := $(QEMU_LINUX_DIR)/initramfs/generated.stamp
+QEMU_LINUX_IMAGE := $(QEMU_LINUX_DIR)/ribon.bin
+QEMU_LINUX_MODULE_PROVENANCE := $(QEMU_LINUX_DIR)/results/boot-modules.json
 
 QEMU_RAW_MODULE_COMPONENT_MANIFEST ?=
 ifneq ($(strip $(QEMU_RAW_MODULE_COMPONENT_MANIFEST)),)
@@ -833,6 +861,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
 	check-parus-entry-contract \
 	check-os-packages \
+	check-linux-boot \
+	check-linux-external-input \
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
 	check-qemu-evidence \
@@ -879,6 +909,7 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	check-recovery-network-update x86_64-uefi-network-update-recovery \
 	ribos-parser-generate ribos-parser-regenerate-check \
 	qemu-aarch64-virt-raw-fdt-smoke qemu-aarch64-virt-parus-product \
+	qemu-aarch64-virt-linux-product qemu-aarch64-virt-linux-smoke \
 	qemu-aarch64-virt-parus-smoke \
 	qemu-aarch64-virt-modules-fixture-product \
 	qemu-aarch64-virt-modules-fixture-smoke \
@@ -2279,10 +2310,22 @@ $(PARUS_ENTRY_CONTRACT_TEST): \
 
 $(OS_PACKAGE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/protocol/os_package_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/fdt.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/freebsd/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/zircon/protocol.o \
-	$(TEST_BUILD_DIR)/obj/src/common/protocol.o
+	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/core/memory.o
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(LINUX_BOOT_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/protocol/linux_boot_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/fdt.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/image-formats/linux_aarch64.o \
+	$(TEST_BUILD_DIR)/obj/src/common/image.o \
+	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/core/memory.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
 $(PROTOCOL_FREE_EMBED_TEST): \
@@ -2339,7 +2382,8 @@ endif
 
 $(QEMU_RAW_DIR)/obj/%.o: %.c
 	@mkdir -p $(@D)
-	$(AARCH64_CC) $(AARCH64_FLAGS) $(QEMU_RAW_MODULE_CPPFLAGS) \
+	$(AARCH64_CC) $(AARCH64_FLAGS) $(QEMU_RAW_CPPFLAGS) \
+		$(QEMU_RAW_MODULE_CPPFLAGS) \
 		$(DEPFLAGS) -c $< -o $@
 
 $(QEMU_RAW_DIR)/obj/generated/plugin_registry.o: $(QEMU_RAW_REGISTRY_C)
@@ -2349,6 +2393,12 @@ $(QEMU_RAW_DIR)/obj/generated/plugin_registry.o: $(QEMU_RAW_REGISTRY_C)
 $(QEMU_RAW_DIR)/obj/generated/embedded_payload.o: $(QEMU_RAW_EMBED_C)
 	@mkdir -p $(@D)
 	$(AARCH64_CC) $(AARCH64_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+ifneq ($(strip $(QEMU_RAW_EXTERNAL_PAYLOAD_ASM)),)
+$(QEMU_RAW_DIR)/obj/generated/external_payload.o: $(QEMU_RAW_EXTERNAL_PAYLOAD_ASM)
+	@mkdir -p $(@D)
+	$(AARCH64_CC) --target=aarch64-none-elf -c $< -o $@
+endif
 
 $(QEMU_RAW_DIR)/obj/targets/qemu-aarch64-virt-raw-fdt/entry.o: \
 	targets/qemu-aarch64-virt-raw-fdt/entry.S
@@ -2372,6 +2422,71 @@ qemu-aarch64-virt-raw-fdt-smoke: $(QEMU_RAW_IMAGE)
 		--source-revision $(shell git rev-parse HEAD) \
 		--log $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.log \
 		--result $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.json
+
+$(QEMU_LINUX_EXTERNAL_STAMP): $(QEMU_LINUX_INPUT_DESCRIPTOR) \
+		$(QEMU_LINUX_MANIFEST) tools/prepare_external_linux_image.py
+	$(PYTHON) tools/prepare_external_linux_image.py \
+		--descriptor $(QEMU_LINUX_INPUT_DESCRIPTOR) \
+		--cache $(QEMU_LINUX_CACHE) \
+		--product-manifest $(QEMU_LINUX_MANIFEST) \
+		--assembly $(QEMU_LINUX_EXTERNAL_ASM) \
+		--result $(QEMU_LINUX_EXTERNAL_VALIDATION) --allow-download
+	@touch $@
+
+$(QEMU_LINUX_EXTERNAL_ASM) $(QEMU_LINUX_EXTERNAL_VALIDATION): \
+		$(QEMU_LINUX_EXTERNAL_STAMP)
+	@test -f $@
+
+$(QEMU_LINUX_INIT_OBJ): tests/fixtures/linux/aarch64/init.S
+	@mkdir -p $(@D)
+	$(AARCH64_CC) --target=aarch64-none-elf -c $< -o $@
+
+$(QEMU_LINUX_INIT_ELF): $(QEMU_LINUX_INIT_OBJ) \
+		tests/fixtures/linux/aarch64/init.ld
+	$(LD_LLD) -m aarch64elf -static -T tests/fixtures/linux/aarch64/init.ld \
+		-o $@ $(QEMU_LINUX_INIT_OBJ)
+
+$(QEMU_LINUX_INITRAMFS_STAMP): $(QEMU_LINUX_INIT_ELF) \
+		tools/build_linux_initramfs.py
+	$(PYTHON) tools/build_linux_initramfs.py --init $(QEMU_LINUX_INIT_ELF) \
+		--output $(QEMU_LINUX_INITRAMFS) \
+		--component-manifest $(QEMU_LINUX_MODULE_MANIFEST)
+	@touch $@
+
+$(QEMU_LINUX_INITRAMFS) $(QEMU_LINUX_MODULE_MANIFEST): \
+		$(QEMU_LINUX_INITRAMFS_STAMP)
+	@test -f $@
+
+qemu-aarch64-virt-linux-product: $(QEMU_LINUX_EXTERNAL_STAMP) \
+		$(QEMU_LINUX_INITRAMFS_STAMP)
+	$(MAKE) --no-print-directory \
+		QEMU_RAW_DIR=$(abspath $(QEMU_LINUX_DIR)) \
+		QEMU_RAW_MANIFEST=$(QEMU_LINUX_MANIFEST) \
+		QEMU_RAW_PAYLOAD=$(abspath $(QEMU_LINUX_CACHE)) \
+		QEMU_RAW_EXTERNAL_PAYLOAD_ASM=$(abspath $(QEMU_LINUX_EXTERNAL_ASM)) \
+		QEMU_RAW_MODULE_COMPONENT_MANIFEST=$(abspath $(QEMU_LINUX_MODULE_MANIFEST)) \
+		QEMU_RAW_CPPFLAGS=-DRIBON_PORT_PAYLOAD_SIZE=33554432ull \
+		RAW_IMAGE_FORMAT_SRCS=src/image-formats/linux_aarch64.c \
+		RAW_PROTOCOL_SRCS="src/protocols/os/linux/protocol.c src/protocols/os/linux/fdt.c" \
+		$(abspath $(QEMU_LINUX_IMAGE))
+
+qemu-aarch64-virt-linux-smoke: qemu-aarch64-virt-linux-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-virt-raw-fdt --qemu $(QEMU_AARCH64) \
+		--image $(QEMU_LINUX_IMAGE) --payload $(QEMU_LINUX_CACHE) \
+		--expected-payload-class linux-image \
+		--expected-payload-sha256 cc281030454415267654a53c0d85f7bea79846258f1409bacfdf814d40ffede1 \
+		--product-manifest $(QEMU_LINUX_MANIFEST) \
+		--module-provenance $(QEMU_LINUX_MODULE_PROVENANCE) \
+		--external-payload-validation $(QEMU_LINUX_EXTERNAL_VALIDATION) \
+		--preload-payload-address 0x41000000 \
+		--kernel-command-line "console=ttyAMA0 earlycon=pl011,0x09000000 rdinit=/init panic=-1" \
+		--expect-clean-exit \
+		--required-marker-anywhere RIBON:LINUX:PID1:v1:OK \
+		--required-marker-anywhere "reboot: Power down" \
+		--source-revision $(shell git rev-parse HEAD) --timeout 40 \
+		--log $(RESULTS_DIR)/qemu-aarch64-virt-linux.log \
+		--result $(RESULTS_DIR)/qemu-aarch64-virt-linux.json
 
 qemu-aarch64-virt-parus-product:
 	@test -n "$(QEMU_PARUS_PAYLOAD)" || \
@@ -3164,6 +3279,12 @@ check-parus-entry-contract: $(PARUS_ENTRY_CONTRACT_TEST)
 check-os-packages: $(OS_PACKAGE_TEST)
 	$(OS_PACKAGE_TEST)
 
+check-linux-boot: $(LINUX_BOOT_TEST)
+	$(LINUX_BOOT_TEST)
+
+check-linux-external-input:
+	$(PYTHON) tests/tools/external_linux_image_tests.py
+
 check-library-embed: $(PROTOCOL_FREE_EMBED_TEST)
 	$(PROTOCOL_FREE_EMBED_TEST)
 
@@ -3173,6 +3294,7 @@ check-composition-schemas:
 check-qemu-evidence:
 	$(PYTHON) tests/tools/qemu_target_smoke_tests.py
 	$(PYTHON) tests/tools/external_parus_payload_tests.py
+	$(PYTHON) tests/tools/external_linux_image_tests.py
 
 sdk-install: lib
 	$(PYTHON) tools/install_sdk.py \
@@ -3313,6 +3435,7 @@ check-one: $(HOST_REFERENCE) $(KERNEL_FIXTURE)
 check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-modules-fixture-package \
 	qemu-aarch64-virt-raw-fdt qemu-aarch64-virt-modules-fixture-product \
+	qemu-aarch64-virt-linux-product \
 	qemu-riscv64-virt-rph1-fixture-product x86_64-uefi-parus-fixture \
 	x86_64-uefi-network-update-recovery
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
@@ -3353,6 +3476,7 @@ check: legacy-hard-cut check-public-api check-frontends check-loader \
 	check-core-service check-port-services check-boot-lifecycle \
 	check-environment-persistent-inputs check-boot-modules check-media-pipeline check-mode-descriptors check-plugin-descriptors \
 	check-protocol-contract check-parus-entry-contract check-os-packages \
+	check-linux-boot check-linux-external-input \
 	check-library-embed check-composition-schemas \
 	check-qemu-evidence check-uefi-product-hermeticity \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
