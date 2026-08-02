@@ -28,11 +28,13 @@
 struct RibonUefiFileSource {
     EFI_FILE_PROTOCOL *handle; /**< ExitBootServices 전까지만 유효한 native handle이다. */
     uint64_t size; /**< SetPosition/GetPosition으로 확인한 immutable read bound다. */
+    char path[RIBON_UEFI_PATH_CAPACITY]; /**< Canonical source identity다. */
 };
 
 /** @brief UEFI application consumer가 caller-owned storage에 유지하는 native state다. */
 struct RibonUefiAppContext {
     EFI_HANDLE image_handle; /**< UEFI가 전달한 image handle이다. */
+    EFI_HANDLE device_handle; /**< Loaded image가 속한 volume device다. */
     EFI_SYSTEM_TABLE *system_table; /**< Boot Services lifetime의 borrowed table이다. */
     EFI_BOOT_SERVICES *boot_services; /**< ExitBootServices 전까지만 유효하다. */
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *file_system; /**< Loaded-image device의 borrowed file system이다. */
@@ -125,6 +127,15 @@ int ribon_uefi_app_exit_boot_services(
 
 /** @brief 초기화된 UEFI application typed service directory를 반환한다. */
 const struct RibonServiceDirectory *ribon_uefi_app_service_directory(void);
+
+/** @brief Optional UEFI providers가 소비하는 current initialized context다. */
+struct RibonUefiAppContext *ribon_uefi_app_current_context(void);
+
+/** @brief Source slot과 canonical path가 같은 immutable file을 가리키는지 검사한다. */
+int ribon_uefi_app_source_matches(
+    const struct RibonUefiAppContext *context,
+    const struct RibonBootSource *source,
+    const char *path);
 
 /** @brief UEFI application environment consumer plugin descriptor다. */
 extern const struct RibonPluginDescriptor ribon_uefi_app_environment_plugin_descriptor;

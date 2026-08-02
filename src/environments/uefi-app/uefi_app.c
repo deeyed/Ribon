@@ -12,6 +12,35 @@ static int uefi_services_initialized;
 static unsigned char uefi_attempt_metadata[64];
 static uint64_t uefi_attempt_metadata_size;
 
+/** @brief 두 bounded canonical byte string이 같은지 검사한다. */
+static int uefi_streq(const char *lhs, const char *rhs) {
+    if (lhs == 0 || rhs == 0) {
+        return 0;
+    }
+    while (*lhs != '\0' && *rhs != '\0' && *lhs == *rhs) {
+        ++lhs;
+        ++rhs;
+    }
+    return *lhs == *rhs;
+}
+
+/** @brief Canonical path를 fixed source identity에 복사한다. */
+static int uefi_copy_path(char out[RIBON_UEFI_PATH_CAPACITY], const char *path) {
+    uint32_t index = 0u;
+    if (out == 0 || path == 0) {
+        return 0;
+    }
+    while (index + 1u < RIBON_UEFI_PATH_CAPACITY && path[index] != '\0') {
+        out[index] = path[index];
+        ++index;
+    }
+    if (path[index] != '\0') {
+        return 0;
+    }
+    out[index] = '\0';
+    return 1;
+}
+
 /** @brief UEFI memory type을 Ribon ownership kind로 변환한다. */
 static enum RibonMemoryRegionKind uefi_memory_kind(UINT32 type) {
     switch (type) {
@@ -473,6 +502,7 @@ int ribon_uefi_app_initialize(
         return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
     }
     context->image_handle = image_handle;
+    context->device_handle = 0;
     context->system_table = system_table;
     context->boot_services = system_table->BootServices;
     context->file_system = 0;
@@ -492,6 +522,7 @@ int ribon_uefi_app_initialize(
     if (EFI_ERROR(status) || loaded_image == 0 || loaded_image->DeviceHandle == 0) {
         return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
     }
+    context->device_handle = loaded_image->DeviceHandle;
     status = context->boot_services->HandleProtocol(
         loaded_image->DeviceHandle,
         &file_system_guid,
@@ -580,6 +611,13 @@ int ribon_uefi_app_open_boot_source(
             .handle = file,
             .size = size,
         };
+        if (!uefi_copy_path(context->files[index].path, path)) {
+            context->files[index] = (struct RibonUefiFileSource){0};
+            if (file->Close != 0) {
+                (void)file->Close(file);
+            }
+            return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+        }
         *out = (struct RibonBootSource){
             .kind = RIBON_BOOT_MEDIA_FILE,
             .source_id = index + 1u,
@@ -889,6 +927,27 @@ const struct RibonServiceDirectory *ribon_uefi_app_service_directory(void) {
     return uefi_services_initialized && uefi_context != 0 ?
         &uefi_service_directory :
         0;
+}
+
+/** @brief Optional UEFI provider가 initialized native context를 조회한다. */
+struct RibonUefiAppContext *ribon_uefi_app_current_context(void) {
+    return uefi_services_initialized ? uefi_context : 0;
+}
+
+/** @brief Source slot의 exact size와 canonical path identity를 함께 검사한다. */
+int ribon_uefi_app_source_matches(
+    const struct RibonUefiAppContext *context,
+    const struct RibonBootSource *source,
+    const char *path) {
+    const struct RibonUefiFileSource *file;
+    if (context == 0 || source == 0 || path == 0 ||
+        source->kind != RIBON_BOOT_MEDIA_FILE || source->source_id == 0u ||
+        source->source_id > RIBON_UEFI_FILE_SOURCE_CAPACITY) {
+        return 0;
+    }
+    file = &context->files[source->source_id - 1u];
+    return file->handle != 0 && file->size == source->size &&
+           uefi_streq(file->path, path);
 }
 
 /** @brief UEFI environment descriptor와 live typed directory를 검증한다. */

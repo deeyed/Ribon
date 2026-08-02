@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 /** @brief Ribon Core와 plugin descriptor ABI major다. */
-#define RIBON_CORE_ABI_VERSION 6u
+#define RIBON_CORE_ABI_VERSION 7u
 
 /** @brief 한 product registry가 허용하는 plugin 수의 고정 상한이다. */
 #define RIBON_PLUGIN_REGISTRY_LIMIT 64u
@@ -37,10 +37,11 @@ enum RibonCapability {
     RIBON_CAP_SDK_CONTRACT = 1ull << 26,
     RIBON_CAP_PAYLOAD_PLACEMENT = 1ull << 27,
     RIBON_CAP_IMAGE_LINUX_AARCH64 = 1ull << 28,
+    RIBON_CAP_TERMINAL_IMAGE_LAUNCH = 1ull << 29,
 };
 
 /** @brief Public plugin ABI가 정의하는 capability 전체다. */
-#define RIBON_CAP_ALL ((1ull << 29) - 1ull)
+#define RIBON_CAP_ALL ((1ull << 30) - 1ull)
 
 /** @brief Ribon product의 실행 정책 mode다. */
 enum RibonMode {

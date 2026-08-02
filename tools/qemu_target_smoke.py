@@ -44,6 +44,14 @@ TARGET_MARKERS = {
         b"RIBON-R4-UEFI-EXIT-BOOT-SERVICES-OK",
         b"RIBON-R4-UEFI-TRANSFER",
     ),
+    "x86_64-uefi-managed": (
+        b"RIBON-R4-UEFI-ENTRY",
+        b"RIBON-R8-UEFI-CONFIG-OK",
+        b"RIBON-R4-UEFI-MEMORY-MAP",
+        b"RIBON-R4-UEFI-PRODUCT-GRAPH-OK",
+        b"RIBON-R02-UEFI-MANAGED-IMAGE-VALIDATED",
+        b"RIBON-R02-UEFI-MANAGED-LAUNCH-ATTEMPT",
+    ),
 }
 LEGACY_FIXTURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-OK",
@@ -53,6 +61,7 @@ TARGET_FIXTURE_SUCCESS_MARKERS = {
     "aarch64-virt-raw-fdt": b"PARUS-FIXTURE-ENTRY-OK",
     "riscv64-virt-opensbi": b"RIBON-RPH1-RISCV64-FIXTURE-OK",
     "x86_64-uefi": b"PARUS-FIXTURE-ENTRY-OK",
+    "x86_64-uefi-managed": b"PARUS-FIXTURE-ENTRY-OK",
 }
 FIXTURE_FAILURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-ABI-FAIL",
@@ -310,6 +319,8 @@ def observed_payload_class(path: Path) -> str:
     prefix = path.read_bytes()
     if len(prefix) >= 64 and prefix[56:60] == b"ARMd":
         return "linux-image"
+    if prefix.startswith(b"MZ"):
+        return "linux-efi"
     if not prefix.startswith(b"\x7fELF"):
         return "invalid"
     if (
@@ -371,7 +382,7 @@ def command_for(args: argparse.Namespace) -> list[str]:
     if args.esp is None or args.firmware is None:
         raise ValueError("--esp and --firmware are required")
     # Keep firmware NvVars writes in a transient overlay over the immutable ESP.
-    return [
+    command = [
         args.qemu,
         "-machine", "q35",
         "-m", "256M",
@@ -380,11 +391,13 @@ def command_for(args: argparse.Namespace) -> list[str]:
         "-monitor", "none",
         "-net", "none",
         "-no-reboot",
-        "-no-shutdown",
         "-snapshot",
         "-drive", f"if=pflash,format=raw,readonly=on,file={args.firmware}",
         "-drive", f"format=raw,file=fat:{args.esp}",
     ]
+    if not args.expect_clean_exit:
+        command.insert(command.index("-snapshot"), "-no-shutdown")
+    return command
 
 
 def qemu_version(binary: str) -> str:
@@ -497,7 +510,7 @@ def main() -> int:
     parser.add_argument("--external-payload-validation", type=Path)
     parser.add_argument(
         "--expected-payload-class",
-        choices=("fixture", "kernel", "linux-image"),
+        choices=("fixture", "kernel", "linux-image", "linux-efi"),
         required=True,
     )
     parser.add_argument("--expected-payload-sha256")
@@ -568,6 +581,12 @@ def main() -> int:
         or not args.expect_clean_exit
     ):
         preflight_error = "linux-runtime-contract-incomplete"
+    elif args.expected_payload_class == "linux-efi" and (
+        args.external_payload_validation is None
+        or not args.expect_clean_exit
+        or args.init_image is None
+    ):
+        preflight_error = "linux-efi-runtime-contract-incomplete"
     elif args.module_provenance is not None and args.product_manifest is None:
         preflight_error = "module-product-manifest-required"
     elif args.product_manifest is not None:
@@ -584,15 +603,29 @@ def main() -> int:
             )
             artifact = external_validation_report.get("artifact")
             placement = external_validation_report.get("placement")
-            if (
-                external_validation_report.get("schema") !=
+            raw_linux = (
+                isinstance(artifact, dict)
+                and
+                external_validation_report.get("schema") ==
                     "ribon-external-linux-image-validation-v1"
-                or not isinstance(artifact, dict)
+                and artifact.get("class") == "linux-aarch64-image"
+                and isinstance(placement, dict)
+                and placement.get("base") == args.preload_payload_address
+            )
+            efi_linux = (
+                isinstance(artifact, dict)
+                and
+                external_validation_report.get("schema") ==
+                    "ribon-external-linux-efi-validation-v1"
+                and artifact.get("class") == "linux-x86_64-efi-stub"
+                and external_validation_report.get("pe", {}).get("machine") == 0x8664
+                and external_validation_report.get("pe", {}).get("subsystem") == 10
+            )
+            if (
+                not isinstance(artifact, dict)
                 or artifact.get("sha256") != payload_hash
                 or artifact.get("size") != args.payload.stat().st_size
-                or artifact.get("class") != "linux-aarch64-image"
-                or not isinstance(placement, dict)
-                or placement.get("base") != args.preload_payload_address
+                or not (raw_linux or efi_linux)
             ):
                 raise ValueError("external validation does not bind payload")
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError):

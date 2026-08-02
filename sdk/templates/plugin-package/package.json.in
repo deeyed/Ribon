@@ -3,7 +3,7 @@
   "package_id": "@PACKAGE_ID@",
   "plugin_id": "@PLUGIN_ID@",
   "plugin_kind": "service",
-  "sdk_abi": 5,
+  "sdk_abi": 6,
   "public_headers": ["include/@PLUGIN_HEADER@"],
   "sources": ["src/plugin.c"],
   "tests": ["tests/contract.c"],

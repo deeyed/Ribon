@@ -10,7 +10,7 @@
 #define RIBON_PLUGIN_DESCRIPTOR_MAGIC 0x5242504cu
 
 /** @brief Plugin ABI major와 minor다. */
-#define RIBON_PLUGIN_ABI_MAJOR 5u
+#define RIBON_PLUGIN_ABI_MAJOR 6u
 #define RIBON_PLUGIN_ABI_MINOR 0u
 
 /** @brief Architecture compatibility mask다. */

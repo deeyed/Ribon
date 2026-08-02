@@ -626,6 +626,52 @@ UEFI_EXTERNAL_OBJS := $(UEFI_SRCS:%.c=$(UEFI_EXTERNAL_DIR)/obj/%.o)
 UEFI_EXTERNAL_OBJS += \
 	$(UEFI_EXTERNAL_DIR)/obj/generated/plugin_registry.o
 
+UEFI_LINUX_PRODUCT := x86_64-uefi-linux
+UEFI_LINUX_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_LINUX_PRODUCT)
+UEFI_LINUX_MANIFEST := products/bootmgr/manifests/x86_64-uefi-linux.json
+UEFI_LINUX_INPUT_DESCRIPTOR := external/inputs/linux-x86_64-openwrt-24.10.0.json
+UEFI_LINUX_CACHE := $(BUILD_ROOT)/external/linux/openwrt-24.10.0-x86_64/bzImage.efi
+UEFI_LINUX_EXTERNAL_VALIDATION := $(UEFI_LINUX_DIR)/results/external-linux-efi.json
+UEFI_LINUX_EXTERNAL_STAMP := $(UEFI_LINUX_DIR)/external-linux-efi.stamp
+UEFI_LINUX_REGISTRY_C := $(UEFI_LINUX_DIR)/generated/plugin_registry.c
+UEFI_LINUX_GRAPH := $(UEFI_LINUX_DIR)/results/object-graph.json
+UEFI_LINUX_INPUT_MANIFEST := $(UEFI_LINUX_DIR)/manifests/product.json
+UEFI_LINUX_APP := $(UEFI_LINUX_DIR)/BOOTX64.EFI
+UEFI_LINUX_ESP := $(UEFI_LINUX_DIR)/esp
+UEFI_LINUX_CONFIG := $(UEFI_LINUX_ESP)/RIBON/BOOT.CFG
+UEFI_LINUX_PAYLOAD := $(UEFI_LINUX_ESP)/RIBON/LINUX.EFI
+UEFI_LINUX_INIT_OBJ := $(UEFI_LINUX_DIR)/fixtures/init.o
+UEFI_LINUX_INIT_ELF := $(UEFI_LINUX_DIR)/fixtures/init
+UEFI_LINUX_INITRAMFS := $(UEFI_LINUX_ESP)/RIBON/INITRD.CPIO
+UEFI_LINUX_INITRAMFS_MANIFEST := $(UEFI_LINUX_DIR)/results/initramfs-components.json
+UEFI_LINUX_INITRAMFS_STAMP := $(UEFI_LINUX_DIR)/initramfs.stamp
+UEFI_LINUX_SRCS := \
+	src/core/arena.c \
+	src/core/context.c \
+	src/core/plugin.c \
+	src/core/registry.c \
+	src/core/service_directory.c \
+	src/core/memory.c \
+	src/config/boot_config.c \
+	src/common/environment.c \
+	src/common/protocol.c \
+	src/common/boot.c \
+	src/common/image.c \
+	src/common/port.c \
+	src/common/freestanding/string.c \
+	src/arch/common.c \
+	src/arch/x86_64/arch.c \
+	src/arch/x86_64/io.c \
+	src/modes/normal.c \
+	src/image-formats/pe_coff.c \
+	src/protocols/os/linux/efi.c \
+	src/environments/uefi-app/uefi_app.c \
+	src/environments/uefi-app/terminal_image.c \
+	ports/qemu/pc-x86_64/port.c \
+	targets/x86_64-uefi-app/entry.c
+UEFI_LINUX_OBJS := $(UEFI_LINUX_SRCS:%.c=$(UEFI_LINUX_DIR)/obj/%.o)
+UEFI_LINUX_OBJS += $(UEFI_LINUX_DIR)/obj/generated/plugin_registry.o
+
 UEFI_UPDATE_PRODUCT := x86_64-uefi-update-recovery
 UEFI_UPDATE_DIR := $(TARGET_BUILD_ROOT)/$(UEFI_UPDATE_PRODUCT)
 UEFI_UPDATE_MANIFEST := \
@@ -948,6 +994,8 @@ BIOS_PROVIDER_OBJS += $(BIOS_PROVIDER_DIR)/obj/generated/plugin_registry.o
 	qemu-riscv64-virt-rph1-fixture-smoke \
 	x86_64-uefi-parus-external x86_64-uefi-parus-external-product \
 	x86_64-uefi-parus-fixture-smoke x86_64-uefi-parus-external-smoke \
+	x86_64-uefi-linux-product x86_64-uefi-linux-smoke \
+	check-terminal-image-launch check-uefi-managed-image check-linux-x86_64-efi \
 	uefi-external-input-force rpi5-external-input-force \
 	bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-parus-package rpi5-aarch64-modules-fixture-package \
@@ -2346,6 +2394,7 @@ $(OS_PACKAGE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/protocol/os_package_tests.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/fdt.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/linux/efi.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/freebsd/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/zircon/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
@@ -2849,6 +2898,24 @@ $(UEFI_EXTERNAL_REGISTRY_C): \
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
 		--output $@ --report $(UEFI_EXTERNAL_GRAPH)
 
+$(UEFI_LINUX_REGISTRY_C): $(UEFI_LINUX_MANIFEST) tools/generate_plugin_registry.py
+	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
+		--output $@ --report $(UEFI_LINUX_GRAPH)
+
+$(UEFI_LINUX_INPUT_MANIFEST): $(UEFI_LINUX_MANIFEST)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(UEFI_LINUX_EXTERNAL_STAMP): $(UEFI_LINUX_INPUT_DESCRIPTOR) \
+		tools/prepare_external_linux_efi.py
+	$(PYTHON) tools/prepare_external_linux_efi.py \
+		--descriptor $(UEFI_LINUX_INPUT_DESCRIPTOR) --cache $(UEFI_LINUX_CACHE) \
+		--result $(UEFI_LINUX_EXTERNAL_VALIDATION) --allow-download
+	@touch $@
+
+$(UEFI_LINUX_EXTERNAL_VALIDATION): $(UEFI_LINUX_EXTERNAL_STAMP)
+	@test -f $@
+
 $(UEFI_FIXTURE_PAYLOAD_SOURCE): tools/make_elf64_fixture.py
 	@mkdir -p $(@D)
 	$(PYTHON) $< --arch x86_64 --base 0x200000 --entry-at-base --output $@
@@ -2858,6 +2925,10 @@ $(UEFI_FIXTURE_DIR)/obj/%.o: %.c Makefile
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(UEFI_EXTERNAL_DIR)/obj/%.o: %.c Makefile
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(UEFI_LINUX_DIR)/obj/%.o: %.c Makefile
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
@@ -2871,6 +2942,10 @@ $(UEFI_EXTERNAL_DIR)/obj/generated/plugin_registry.o: \
 	@mkdir -p $(@D)
 	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
+$(UEFI_LINUX_DIR)/obj/generated/plugin_registry.o: $(UEFI_LINUX_REGISTRY_C)
+	@mkdir -p $(@D)
+	/usr/bin/clang $(UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
 $(UEFI_FIXTURE_APP): $(UEFI_FIXTURE_OBJS)
 	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
 		/machine:x64 /map:$(UEFI_FIXTURE_DIR)/ribon.map /out:$@ \
@@ -2881,11 +2956,20 @@ $(UEFI_EXTERNAL_APP): $(UEFI_EXTERNAL_OBJS)
 		/machine:x64 /map:$(UEFI_EXTERNAL_DIR)/ribon.map /out:$@ \
 		$(UEFI_EXTERNAL_OBJS)
 
+$(UEFI_LINUX_APP): $(UEFI_LINUX_OBJS)
+	$(LLD_LINK) /Brepro /subsystem:efi_application /entry:efi_main /nodefaultlib \
+		/machine:x64 /map:$(UEFI_LINUX_DIR)/ribon.map /out:$@ \
+		$(UEFI_LINUX_OBJS)
+
 $(UEFI_FIXTURE_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_FIXTURE_APP)
 	@mkdir -p $(@D)
 	cp $< $@
 
 $(UEFI_EXTERNAL_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_EXTERNAL_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(UEFI_LINUX_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_LINUX_APP)
 	@mkdir -p $(@D)
 	cp $< $@
 
@@ -2900,6 +2984,35 @@ $(UEFI_EXTERNAL_CONFIG): tools/make_boot_config.py Makefile
 	$(PYTHON) $< --output $@ --entry primary --priority 100 \
 		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
 		--init-image /RIBON/INIT.IMG
+
+$(UEFI_LINUX_CONFIG): tools/make_boot_config.py Makefile
+	@mkdir -p $(@D)
+	$(PYTHON) $< --output $@ --entry primary --priority 100 \
+		--protocol protocol.linux-efi --image image.pe-coff \
+		--kernel /RIBON/LINUX.EFI \
+		--cmdline 'console=ttyS0 rdinit=/init panic=-1 initrd=\RIBON\INITRD.CPIO'
+
+$(UEFI_LINUX_PAYLOAD): $(UEFI_LINUX_EXTERNAL_STAMP)
+	@mkdir -p $(@D)
+	cp $(UEFI_LINUX_CACHE) $@
+
+$(UEFI_LINUX_INIT_OBJ): tests/fixtures/linux/x86_64/init.S
+	@mkdir -p $(@D)
+	/usr/bin/clang --target=x86_64-none-elf -c $< -o $@
+
+$(UEFI_LINUX_INIT_ELF): $(UEFI_LINUX_INIT_OBJ) tests/fixtures/linux/x86_64/init.ld
+	$(LD_LLD) -m elf_x86_64 -static -T tests/fixtures/linux/x86_64/init.ld \
+		-o $@ $(UEFI_LINUX_INIT_OBJ)
+
+$(UEFI_LINUX_INITRAMFS_STAMP): $(UEFI_LINUX_INIT_ELF) tools/build_linux_initramfs.py
+	$(PYTHON) tools/build_linux_initramfs.py --architecture x86_64 \
+		--init $(UEFI_LINUX_INIT_ELF) --output $(UEFI_LINUX_INITRAMFS) \
+		--component-manifest $(UEFI_LINUX_INITRAMFS_MANIFEST)
+	@touch $@
+
+$(UEFI_LINUX_INITRAMFS) $(UEFI_LINUX_INITRAMFS_MANIFEST): \
+		$(UEFI_LINUX_INITRAMFS_STAMP)
+	@test -f $@
 
 $(UEFI_FIXTURE_PAYLOAD): $(UEFI_FIXTURE_PAYLOAD_SOURCE)
 	@mkdir -p $(@D)
@@ -2945,6 +3058,12 @@ x86_64-uefi-parus-external:
 	$(MAKE) --no-print-directory \
 		UEFI_PARUS_PAYLOAD=$(abspath $(UEFI_PARUS_PAYLOAD)) \
 		x86_64-uefi-parus-external-product
+
+x86_64-uefi-linux-product: \
+		$(UEFI_LINUX_ESP)/EFI/BOOT/BOOTX64.EFI \
+		$(UEFI_LINUX_CONFIG) $(UEFI_LINUX_PAYLOAD) \
+		$(UEFI_LINUX_INITRAMFS) $(UEFI_LINUX_INPUT_MANIFEST) \
+		$(UEFI_LINUX_EXTERNAL_VALIDATION)
 
 $(UEFI_UPDATE_REGISTRY_C): \
 	$(UEFI_UPDATE_MANIFEST) tools/generate_plugin_registry.py
@@ -3226,6 +3345,36 @@ x86_64-uefi-parus-external-smoke:
 		--log $(UEFI_EXTERNAL_DIR)/results/qemu.log \
 		--result $(UEFI_EXTERNAL_DIR)/results/qemu.json
 
+x86_64-uefi-linux-smoke: x86_64-uefi-linux-product
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target x86_64-uefi-managed --qemu $(QEMU_X86_64) \
+		--esp $(UEFI_LINUX_ESP) --firmware $(X86_64_UEFI_FIRMWARE) \
+		--payload $(UEFI_LINUX_PAYLOAD) --expected-payload-class linux-efi \
+		--expected-payload-sha256 2a0deaeab7dd3edf23c68597e1c79e0bd0f1ad92381cc90b3abd0187e96f28fe \
+		--init-image $(UEFI_LINUX_INITRAMFS) \
+		--product-manifest $(UEFI_LINUX_MANIFEST) \
+		--external-payload-validation $(UEFI_LINUX_EXTERNAL_VALIDATION) \
+		--expect-clean-exit --timeout 60 \
+		--required-marker-anywhere RIBON:LINUX:X86_64:PID1:v1:OK \
+		--required-marker-anywhere 'reboot: Power down' \
+		--source-revision $(shell git rev-parse HEAD) \
+		--log $(UEFI_LINUX_DIR)/results/qemu.log \
+		--result $(UEFI_LINUX_DIR)/results/qemu.json
+
+check-terminal-image-launch: check-boot-lifecycle check-core-service
+	@echo "RIBON-R02-TERMINAL-IMAGE-LAUNCH-OK"
+
+check-uefi-managed-image: x86_64-uefi-linux-product x86_64-uefi-parus-fixture
+	@! grep -q ribon_uefi_app_terminal_image_launch_service_descriptor \
+		$(UEFI_FIXTURE_DIR)/ribon.map
+	@grep -q ribon_uefi_app_terminal_image_launch_service_descriptor \
+		$(UEFI_LINUX_DIR)/ribon.map
+	@echo "RIBON-R02-UEFI-MANAGED-IMAGE-OK"
+
+check-linux-x86_64-efi: x86_64-uefi-linux-smoke
+	$(PYTHON) tests/tools/external_linux_efi_tests.py
+	@echo "RIBON-R02-LINUX-X86_64-EFI-OK"
+
 $(BIOS_REGISTRY_C): $(BIOS_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
 		--output $@ --report $(BIOS_GRAPH)
@@ -3348,8 +3497,8 @@ sdk-install: lib ribosc ribos-verify ribos-run
 		--schemas qstar/schemas \
 		--templates sdk/templates \
 		--source-revision $(shell git rev-parse HEAD) \
-		--sdk-abi 5 --core-abi 6 \
-		--plugin-abi-major 5 --plugin-abi-minor 0 \
+		--sdk-abi 6 --core-abi 7 \
+		--plugin-abi-major 6 --plugin-abi-minor 0 \
 		--source-version 0.4.0
 
 check-sdk-surface: sdk-install
@@ -3384,7 +3533,7 @@ check-sdk-reproducible: lib ribosc ribos-verify ribos-run
 		--host-tool ribon-sign-policy=tools/sign_ribos_policy.py \
 		--schemas qstar/schemas --templates sdk/templates \
 		--source-revision $(shell git rev-parse HEAD) \
-		--sdk-abi 5 --core-abi 6 --plugin-abi-major 5 \
+		--sdk-abi 6 --core-abi 7 --plugin-abi-major 6 \
 		--plugin-abi-minor 0 --source-version 0.4.0
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_REPRO_SECOND) \
@@ -3400,7 +3549,7 @@ check-sdk-reproducible: lib ribosc ribos-verify ribos-run
 		--host-tool ribon-sign-policy=tools/sign_ribos_policy.py \
 		--schemas qstar/schemas --templates sdk/templates \
 		--source-revision $(shell git rev-parse HEAD) \
-		--sdk-abi 5 --core-abi 6 --plugin-abi-major 5 \
+		--sdk-abi 6 --core-abi 7 --plugin-abi-major 6 \
 		--plugin-abi-minor 0 --source-version 0.4.0
 	$(PYTHON) tools/check_reproducible_trees.py \
 		$(SDK_REPRO_FIRST) $(SDK_REPRO_SECOND)
@@ -3542,7 +3691,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	qemu-aarch64-virt-raw-fdt qemu-aarch64-virt-modules-fixture-product \
 	qemu-aarch64-virt-linux-product \
 	qemu-riscv64-virt-rph1-fixture-product x86_64-uefi-parus-fixture \
-	x86_64-uefi-network-update-recovery
+	x86_64-uefi-linux-product x86_64-uefi-network-update-recovery
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
 check-uefi-product-hermeticity:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove UEFI fixture/external products do not share mutable build outputs."""
+"""Prove UEFI fixture, external and Linux products have hermetic outputs."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ FIXTURE_PRODUCT = "x86_64-uefi-parus-fixture"
 EXTERNAL_PRODUCT = "x86_64-uefi-parus-external"
 FIXTURE_PRODUCT_ID = "bootmgr.x86_64-uefi-parus-fixture"
 EXTERNAL_PRODUCT_ID = "bootmgr.x86_64-uefi-parus-external"
+LINUX_PRODUCT = "x86_64-uefi-linux"
+LINUX_PRODUCT_ID = "bootmgr.x86_64-uefi-linux"
 CANONICAL_OUTPUTS = (
     "BOOTX64.EFI",
     "esp/EFI/BOOT/BOOTX64.EFI",
@@ -27,6 +29,18 @@ CANONICAL_OUTPUTS = (
     "generated/plugin_registry.c",
     "manifests/product.json",
     "results/object-graph.json",
+)
+LINUX_CANONICAL_OUTPUTS = (
+    "BOOTX64.EFI",
+    "esp/EFI/BOOT/BOOTX64.EFI",
+    "esp/RIBON/BOOT.CFG",
+    "esp/RIBON/LINUX.EFI",
+    "esp/RIBON/INITRD.CPIO",
+    "generated/plugin_registry.c",
+    "manifests/product.json",
+    "results/object-graph.json",
+    "results/external-linux-efi.json",
+    "results/initramfs-components.json",
 )
 
 
@@ -94,6 +108,7 @@ def run_make(
     target: str,
     log: Path,
     payload: Path | None = None,
+    linux_cache: Path | None = None,
     expect_success: bool = True,
 ) -> None:
     """Run one isolated Make target and preserve its complete output."""
@@ -101,6 +116,8 @@ def run_make(
     command = [make, "--no-print-directory", f"BUILD_ROOT={build_root}"]
     if payload is not None:
         command.append(f"UEFI_PARUS_PAYLOAD={payload}")
+    if linux_cache is not None:
+        command.append(f"UEFI_LINUX_CACHE={linux_cache}")
     command.append(target)
     environment = os.environ.copy()
     environment.pop("MAKEFLAGS", None)
@@ -137,12 +154,13 @@ def snapshot(
     product: str,
     expected_product_id: str,
     external_payload: Path | None = None,
+    canonical_outputs: tuple[str, ...] = CANONICAL_OUTPUTS,
 ) -> dict[str, str]:
     """Validate and hash one product's canonical reproducible outputs."""
 
     directory = product_root(build_root, product)
     outputs: dict[str, str] = {}
-    for relative in CANONICAL_OUTPUTS:
+    for relative in canonical_outputs:
         path = directory / relative
         if not path.is_file():
             raise HermeticityError(f"{product} is missing {relative}")
@@ -215,6 +233,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--work-root", type=Path, required=True)
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    linux_cache = root / "build/external/linux/openwrt-24.10.0-x86_64/bzImage.efi"
+    if not linux_cache.is_file():
+        raise SystemExit("validated Linux EFI cache is absent; build the Linux product first")
     work_root = args.work_root.resolve()
     work_root.mkdir(parents=True, exist_ok=True)
     log = work_root / "commands.log"
@@ -373,13 +394,86 @@ def main(argv: list[str]) -> int:
                 expect_success=False,
             )
 
+            run_make(
+                args.make,
+                root,
+                build_a,
+                "x86_64-uefi-linux-product",
+                log,
+                linux_cache=linux_cache,
+            )
+            linux_a = snapshot(
+                build_a,
+                LINUX_PRODUCT,
+                LINUX_PRODUCT_ID,
+                canonical_outputs=LINUX_CANONICAL_OUTPUTS,
+            )
+            require_equal(
+                fixture_a_initial,
+                snapshot(build_a, FIXTURE_PRODUCT, FIXTURE_PRODUCT_ID),
+                "fixture product after Linux build",
+            )
+            require_equal(
+                external_a_final,
+                snapshot(
+                    build_a,
+                    EXTERNAL_PRODUCT,
+                    EXTERNAL_PRODUCT_ID,
+                    probe_b,
+                ),
+                "external product after Linux build",
+            )
+
+            run_make(
+                args.make,
+                root,
+                build_b,
+                "x86_64-uefi-linux-product",
+                log,
+                linux_cache=linux_cache,
+            )
+            linux_b = snapshot(
+                build_b,
+                LINUX_PRODUCT,
+                LINUX_PRODUCT_ID,
+                canonical_outputs=LINUX_CANONICAL_OUTPUTS,
+            )
+            require_equal(
+                linux_a,
+                linux_b,
+                "Linux product across independent build roots",
+            )
+
+            all_paths = [
+                {
+                    str(product_root(build_a, FIXTURE_PRODUCT) / relative)
+                    for relative in CANONICAL_OUTPUTS
+                },
+                {
+                    str(product_root(build_a, EXTERNAL_PRODUCT) / relative)
+                    for relative in CANONICAL_OUTPUTS
+                },
+                {
+                    str(product_root(build_a, LINUX_PRODUCT) / relative)
+                    for relative in LINUX_CANONICAL_OUTPUTS
+                },
+            ]
+            if any(
+                all_paths[left] & all_paths[right]
+                for left in range(len(all_paths))
+                for right in range(left + 1, len(all_paths))
+            ):
+                raise HermeticityError("UEFI products share writable output paths")
+
             report = {
                 "schema": "ribon-uefi-product-hermeticity-v1",
                 "fixture_product": FIXTURE_PRODUCT_ID,
                 "external_product": EXTERNAL_PRODUCT_ID,
+                "linux_product": LINUX_PRODUCT_ID,
                 "fixture_digest": fixture_b["BOOTX64.EFI"],
                 "external_digest": external_b["BOOTX64.EFI"],
                 "external_payload_digest": sha256_file(probe_b),
+                "linux_payload_digest": linux_b["esp/RIBON/LINUX.EFI"],
                 "build_orders": [
                     "fixture-external-fixture",
                     "external-fixture",
@@ -398,7 +492,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "RIBON-UEFI-PRODUCT-HERMETICITY-OK "
-        "products=2 orders=2 roots=2 shared-outputs=0"
+        "products=3 orders=2 roots=2 shared-outputs=0"
     )
     return 0
 

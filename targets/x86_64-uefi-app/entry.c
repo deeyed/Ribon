@@ -11,7 +11,7 @@
 #define RIBON_UEFI_HANDOFF_CAPACITY 65536u
 #define RIBON_UEFI_ARENA_CAPACITY (256u * 1024u)
 #define RIBON_UEFI_CONFIG_CAPACITY 4096u
-#define RIBON_UEFI_PAYLOAD_CAPACITY (2u * 1024u * 1024u)
+#define RIBON_UEFI_PAYLOAD_CAPACITY (8u * 1024u * 1024u)
 
 static _Alignas(16) unsigned char raw_memory_map[RIBON_UEFI_MEMORY_MAP_CAPACITY];
 static struct RibonMemoryRegion environment_regions[RIBON_UEFI_REGION_CAPACITY];
@@ -259,15 +259,27 @@ EFI_STATUS EFIAPI efi_main(
             .payload_buffer_capacity = sizeof(payload_bytes),
             .source_name = selected_config->kernel_path,
             .validated_image = &validated_image,
-            .direct_load_plan = &layout,
-            .handoff_buffer = handoff_buffer,
-            .handoff_buffer_capacity = sizeof(handoff_buffer),
-            .handoff_artifact = &handoff,
+            .direct_load_plan = protocol->terminal_execution ==
+                    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ? &layout : 0,
+            .handoff_buffer = protocol->terminal_execution ==
+                    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ? handoff_buffer : 0,
+            .handoff_buffer_capacity = protocol->terminal_execution ==
+                    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ? sizeof(handoff_buffer) : 0u,
+            .handoff_artifact = protocol->terminal_execution ==
+                    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ? &handoff : 0,
         }) != RIBON_BOOT_STATUS_OK ||
-        ribon_uefi_app_place_payload(&native, &transaction.payload, &layout) !=
-            RIBON_UEFI_APP_STATUS_OK ||
+        (protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+         ribon_uefi_app_place_payload(&native, &transaction.payload, &layout) !=
+             RIBON_UEFI_APP_STATUS_OK) ||
         ribon_boot_transaction_commit_attempt(&transaction) != RIBON_BOOT_STATUS_OK) {
         return uefi_fail("boot-prepare");
+    }
+    if (protocol->terminal_execution ==
+        RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE) {
+        uefi_marker("RIBON-R02-UEFI-MANAGED-IMAGE-VALIDATED");
+        uefi_marker("RIBON-R02-UEFI-MANAGED-LAUNCH-ATTEMPT");
+        (void)ribon_boot_transaction_execute_terminal(&transaction);
+        return uefi_fail("managed-image-returned");
     }
     uefi_marker("RIBON-R4-PROTOCOL-HANDOFF-OK");
     uefi_marker("RIBON-R4-UEFI-PAYLOAD-LOADED");

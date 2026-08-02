@@ -1,0 +1,13 @@
+{
+  "schema": "ribon-external-linux-efi-v1",
+  "artifact": {
+    "architecture": "x86_64",
+    "class": "linux-x86_64-efi-stub",
+    "license": "GPL-2.0-only",
+    "maximum_size": 16777216,
+    "sha256": "2a0deaeab7dd3edf23c68597e1c79e0bd0f1ad92381cc90b3abd0187e96f28fe",
+    "size": 5739520,
+    "source": "https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-24.10.0-x86-64-generic-kernel.bin",
+    "version": "OpenWrt-24.10.0-linux-6.6.73"
+  }
+}

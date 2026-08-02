@@ -119,6 +119,22 @@ int main(void) {
         fputs("pe_coff_loader_tests: uncovered entry accepted\n", stderr);
         return 1;
     }
+    make_pe32_plus(bytes);
+    put_u64(bytes, 0x80u + 24u + 24u, 0u);
+    if (ops->analyze(&image, &validated, 0) != RIBON_LOADER_STATUS_OK ||
+        validated.format != RIBON_EXECUTABLE_FORMAT_PE_COFF) {
+        fputs("pe_coff_loader_tests: relocatable managed image rejected\n", stderr);
+        return 1;
+    }
+    layout = (struct RibonDirectLoadPlan){
+        .segments = segments,
+        .segment_capacity = 2u,
+    };
+    if (ops->analyze(&image, &validated, &layout) !=
+        RIBON_LOADER_STATUS_BAD_FORMAT) {
+        fputs("pe_coff_loader_tests: zero-base direct image accepted\n", stderr);
+        return 1;
+    }
     puts("RIBON-PE-COFF-LOADER-TESTS-OK");
     return 0;
 }

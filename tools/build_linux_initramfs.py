@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a deterministic newc initramfs around a static AArch64 PID 1."""
+"""Build a deterministic newc initramfs around one static typed PID 1."""
 
 from __future__ import annotations
 
@@ -10,21 +10,29 @@ from pathlib import Path
 
 
 ELF_MACHINE_AARCH64 = 183
+ELF_MACHINE_X86_64 = 62
 MAX_INITRAMFS_SIZE = 1024 * 1024
 
 
-def validate_init(data: bytes) -> None:
-    """Reject dynamic, non-AArch64, or malformed init executables."""
+def validate_init(data: bytes, architecture: str) -> None:
+    """Reject dynamic, wrong-machine, or malformed init executables."""
+
+    expected_machine = {
+        "aarch64": ELF_MACHINE_AARCH64,
+        "x86_64": ELF_MACHINE_X86_64,
+    }[architecture]
 
     if (
         len(data) < 64
         or data[:4] != b"\x7fELF"
         or data[4] != 2
         or data[5] != 1
-        or int.from_bytes(data[18:20], "little") != ELF_MACHINE_AARCH64
+        or int.from_bytes(data[18:20], "little") != expected_machine
         or int.from_bytes(data[24:32], "little") == 0
     ):
-        raise ValueError("PID 1 must be one static ELF64 little-endian AArch64 image")
+        raise ValueError(
+            f"PID 1 must be one static ELF64 little-endian {architecture} image"
+        )
     phoff = int.from_bytes(data[32:40], "little")
     phentsize = int.from_bytes(data[54:56], "little")
     phnum = int.from_bytes(data[56:58], "little")
@@ -82,12 +90,15 @@ def build_archive(init: bytes) -> bytes:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--init", type=Path, required=True)
+    parser.add_argument(
+        "--architecture", choices=("aarch64", "x86_64"), default="aarch64"
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--component-manifest", type=Path, required=True)
     args = parser.parse_args()
 
     init = args.init.read_bytes()
-    validate_init(init)
+    validate_init(init, args.architecture)
     archive = build_archive(init)
     digest = hashlib.sha256(archive).hexdigest()
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 
+#include <Ribon/boot/image.h>
 #include <Ribon/boot/source.h>
+#include <Ribon/boot/terminal.h>
 #include <Ribon/core/capability.h>
 #include <Ribon/plugin/descriptor.h>
 
@@ -17,7 +19,7 @@ struct RibonRecoveryNetworkResult;
 #define RIBON_SERVICE_DESCRIPTOR_MAGIC 0x52425356u
 
 /** @brief Service descriptor와 operation table ABI다. */
-#define RIBON_SERVICE_ABI_VERSION 3u
+#define RIBON_SERVICE_ABI_VERSION 4u
 
 /** @brief Caller-owned immutable service directory ABI다. */
 #define RIBON_SERVICE_DIRECTORY_ABI_VERSION 1u
@@ -54,6 +56,7 @@ enum RibonServiceKind {
     RIBON_SERVICE_KIND_MACHINE_DESCRIPTION = 11,
     RIBON_SERVICE_KIND_PAYLOAD_PLACEMENT = 12,
     RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE = 13,
+    RIBON_SERVICE_KIND_TERMINAL_IMAGE_LAUNCH = 14,
 };
 
 /** @brief Service directory 안에서 같은 role이 갖는 provider cardinality다. */
@@ -95,6 +98,44 @@ typedef int (*RibonServiceRandomFillFn)(void *, void *, uint64_t);
 typedef int (*RibonServiceDiagnosticWriteFn)(void *, const void *, uint64_t);
 typedef int (*RibonServiceDiagnosticInitializeFn)(void *);
 typedef int (*RibonServiceEnvironmentQuiesceFn)(void *);
+
+/** @brief Returned firmware-managed image attempt의 stable result다. */
+enum RibonTerminalImageLaunchResult {
+    RIBON_TERMINAL_IMAGE_LAUNCH_RESULT_NONE = 0,
+    RIBON_TERMINAL_IMAGE_LAUNCH_RESULT_LOAD_FAILED = 1,
+    RIBON_TERMINAL_IMAGE_LAUNCH_RESULT_START_RETURNED = 2,
+    RIBON_TERMINAL_IMAGE_LAUNCH_RESULT_INVALID_SOURCE = 3,
+    RIBON_TERMINAL_IMAGE_LAUNCH_RESULT_OPTIONS_REJECTED = 4,
+};
+
+/** @brief Core가 selected provider에 넘기는 OS-neutral terminal image 요청이다. */
+struct RibonTerminalImageLaunchRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    const void *image_data;
+    uint64_t image_size;
+    const struct RibonValidatedImage *validated_image;
+    const struct RibonBootSource *source;
+    const char *source_name;
+    enum RibonTerminalLoadOptionsKind load_options_kind;
+    uint32_t load_options_size;
+    const void *load_options;
+    uint64_t watchdog_timeout_ms;
+};
+
+/** @brief Native pointer 없이 남는 terminal image provider receipt다. */
+struct RibonTerminalImageLaunchReceipt {
+    uint32_t size;
+    uint32_t abi_version;
+    enum RibonTerminalImageLaunchResult result;
+    uint32_t reserved;
+    uint64_t provider_status;
+    uint64_t exit_data_size;
+};
+
+typedef int (*RibonServiceTerminalImageLaunchFn)(
+    void *, const struct RibonTerminalImageLaunchRequest *,
+    struct RibonTerminalImageLaunchReceipt *);
 
 /** @brief Boot-source role의 typed operation table이다. */
 struct RibonBootSourceServiceOperations {
@@ -195,6 +236,14 @@ struct RibonBootModuleBundleServiceOperations {
     const unsigned char *section_end; /**< Canonical linked section end다. */
 };
 
+/** @brief Validated image를 firmware-managed terminal path로 실행하는 authority다. */
+struct RibonTerminalImageLaunchServiceOperations {
+    uint32_t size;
+    uint32_t abi_version;
+    void *context;
+    RibonServiceTerminalImageLaunchFn launch;
+};
+
 struct RibonServiceDescriptor;
 
 /** @brief Kind-specific operation table의 service ABI 검증 callback이다. */
@@ -245,6 +294,10 @@ const char *ribon_service_kind_name(enum RibonServiceKind kind);
 
 /** @brief Service descriptor의 generic ABI와 typed operation table을 검사한다. */
 int ribon_service_descriptor_is_valid(const struct RibonServiceDescriptor *descriptor);
+
+/** @brief Terminal image launcher operation table의 exact typed ABI를 검사한다. */
+int ribon_terminal_image_launch_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor);
 
 /** @brief Product tuple, budget, authority/collection selection을 fail-closed로 검사한다. */
 int ribon_service_directory_validate(

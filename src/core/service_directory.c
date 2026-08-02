@@ -58,6 +58,8 @@ static uint64_t service_capabilities(enum RibonServiceKind kind) {
         return RIBON_CAP_PAYLOAD_PLACEMENT;
     case RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE:
         return RIBON_CAP_BOOT_MODULE_BUNDLE;
+    case RIBON_SERVICE_KIND_TERMINAL_IMAGE_LAUNCH:
+        return RIBON_CAP_TERMINAL_IMAGE_LAUNCH;
     default:
         return 0u;
     }
@@ -94,6 +96,8 @@ const char *ribon_service_kind_name(enum RibonServiceKind kind) {
         return "payload-placement";
     case RIBON_SERVICE_KIND_BOOT_MODULE_BUNDLE:
         return "boot-module-bundle";
+    case RIBON_SERVICE_KIND_TERMINAL_IMAGE_LAUNCH:
+        return "terminal-image-launch";
     default:
         return "unknown";
     }
@@ -179,7 +183,8 @@ int ribon_service_directory_validate(
         RIBON_CAP_ENVIRONMENT_QUIESCE |
         RIBON_CAP_MACHINE_DESCRIPTION |
         RIBON_CAP_PAYLOAD_PLACEMENT |
-        RIBON_CAP_BOOT_MODULE_BUNDLE;
+        RIBON_CAP_BOOT_MODULE_BUNDLE |
+        RIBON_CAP_TERMINAL_IMAGE_LAUNCH;
 
     if (directory == 0 || product == 0 ||
         directory->size != sizeof(*directory) ||
@@ -385,4 +390,21 @@ int ribon_payload_placement_service_operations_are_valid(
            operations->physical_base != 0u &&
            operations->physical_size != 0u &&
            operations->physical_base <= UINT64_MAX - operations->physical_size;
+}
+
+/** @brief Terminal image launcher service operation table의 exact typed ABI를 검사한다. */
+int ribon_terminal_image_launch_service_operations_are_valid(
+    const struct RibonServiceDescriptor *descriptor) {
+    const struct RibonTerminalImageLaunchServiceOperations *operations;
+    if (descriptor == 0 ||
+        descriptor->kind != RIBON_SERVICE_KIND_TERMINAL_IMAGE_LAUNCH ||
+        descriptor->provides != RIBON_CAP_TERMINAL_IMAGE_LAUNCH ||
+        descriptor->operations_size != sizeof(*operations) ||
+        descriptor->operations_abi != RIBON_SERVICE_ABI_VERSION) {
+        return 0;
+    }
+    operations = descriptor->operations;
+    return operations != 0 && operations->size == sizeof(*operations) &&
+           operations->abi_version == RIBON_SERVICE_ABI_VERSION &&
+           operations->launch != 0;
 }

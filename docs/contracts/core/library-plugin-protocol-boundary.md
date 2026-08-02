@@ -46,6 +46,7 @@ Library public operation은 다음 phase를 구분한다.
 | `boot_transaction_refresh_after_commit` | final platform fact로 handoff만 다시 만든다 |
 | `boot_transaction_quiesce_environment` | selected native closure authority를 실행한다 |
 | `boot_transaction_transfer` | architecture register ABI를 적용하고 반환하지 않는다 |
+| `boot_transaction_execute_terminal` | managed image를 selected environment launcher로 정확히 한 번 실행한다 |
 
 Transaction input의 environment, source, payload buffer, normalized memory map, image layout,
 handoff buffer와 artifact storage는 caller가 transfer까지 소유한다. Boot Library는 heap을
@@ -149,6 +150,7 @@ Library는 다음 service를 typed operation으로 소비한다.
 - network transport
 - cryptographic verify
 - watchdog와 reset reason
+- firmware-managed terminal image launch
 
 Service native handle은 typed operation context 안에 남는다. `RibonServiceDescriptor`는
 stable ID, role, capability, lifecycle phase, lifetime, compatibility mask, budget, operation
@@ -159,6 +161,10 @@ Authority role은 정확히 한 provider만 가진다. Collection role은 여러
 가질 수 있지만 둘 이상일 때 product manifest의 selection이 exact stable ID를 고정해야
 한다. Plugin capability dependency가 collection provider에 의존하면 같은 product selection
 없이는 ambiguous로 거부한다.
+
+Terminal launcher는 authority service다. Request는 exact validated source와 firmware-neutral
+load-option/watchdog 값만 가진다. Provider return은 terminal failure이며 Core는 같은 transaction의
+두 번째 호출을 거부한다. EFI handle, device path와 system table은 UEFI provider context에만 남는다.
 
 ## Allocation과 interrupt
 

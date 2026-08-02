@@ -141,6 +141,7 @@ struct RibonBootTransaction {
     const struct RibonServiceDescriptor *metadata; /**< Attempt metadata authority다. */
     const struct RibonServiceDescriptor *flush; /**< Metadata flush authority다. */
     const struct RibonServiceDescriptor *quiesce; /**< Environment closure authority다. */
+    const struct RibonServiceDescriptor *terminal_launcher; /**< Managed terminal authority다. */
     struct RibonBootEnvironment environment; /**< Frozen environment descriptor다. */
     struct RibonBootSource source; /**< Frozen selected source descriptor다. */
     struct RibonBootTransactionInput input; /**< Borrowed caller-owned transaction buffers다. */
@@ -187,6 +188,10 @@ int ribon_boot_transaction_refresh_after_commit(
 
 /** @brief Selected environment closure operation을 실행하고 service lifetime을 닫는다. */
 int ribon_boot_transaction_quiesce_environment(
+    struct RibonBootTransaction *transaction);
+
+/** @brief Committed firmware-managed image를 selected terminal provider에 넘긴다. */
+int ribon_boot_transaction_execute_terminal(
     struct RibonBootTransaction *transaction);
 
 /** @brief Prepared plan의 borrowed immutable view를 반환한다. */

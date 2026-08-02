@@ -34,6 +34,7 @@ static int registry_capability_is_service(uint64_t capability) {
     case RIBON_CAP_MACHINE_DESCRIPTION:
     case RIBON_CAP_PAYLOAD_PLACEMENT:
     case RIBON_CAP_BOOT_MODULE_BUNDLE:
+    case RIBON_CAP_TERMINAL_IMAGE_LAUNCH:
         return 1;
     default:
         return 0;
@@ -281,6 +282,13 @@ int ribon_plugin_registry_validate(
             uint32_t provider = 0u;
             int status;
             if ((required & capability) == 0u) {
+                continue;
+            }
+            if (registry_capability_is_service(capability) &&
+                (aggregate & capability) == 0u) {
+                if ((product->required_capabilities & capability) == 0u) {
+                    return RIBON_CORE_STATUS_MISSING_CAPABILITY;
+                }
                 continue;
             }
             status = registry_provider(registry, product, capability, &provider);

@@ -47,6 +47,8 @@ int main(void) {
         ribon_freebsd_protocol_plugin_descriptor.operations;
     const struct RibonBootProtocol *linux =
         ribon_linux_protocol_plugin_descriptor.operations;
+    const struct RibonBootProtocol *linux_efi =
+        ribon_linux_efi_protocol_plugin_descriptor.operations;
     const struct RibonComponentDescriptor linux_components[] = {
         {
             .role = RIBON_COMPONENT_ROLE_KERNEL,
@@ -77,6 +79,10 @@ int main(void) {
     };
     const struct RibonBootEnvironment uefi = {
         .kind = RIBON_ENVIRONMENT_UEFI,
+        .command_line = {
+            .text = "console=ttyS0 initrd=\\RIBON\\INITRD.CPIO",
+            .length = 41u,
+        },
     };
     const struct RibonBootPlan managed_plan = {
         .kernel_image = {
@@ -98,6 +104,9 @@ int main(void) {
         !descriptor_accepts_kernel(
             &ribon_freebsd_protocol_plugin_descriptor,
             "freebsd") ||
+        !descriptor_accepts_kernel(
+            &ribon_linux_efi_protocol_plugin_descriptor,
+            "linux-efi") ||
         !ribon_protocol_plugin_operations_are_valid(
             &ribon_zircon_protocol_plugin_descriptor) ||
         !ribon_zircon_zbi_is_valid(&zbi, sizeof(zbi)) ||
@@ -112,6 +121,19 @@ int main(void) {
             RIBON_PROTOCOL_STATUS_OK ||
         !ribon_terminal_request_is_valid(&terminal)) {
         fputs("os_package_tests: OS package contract rejected\n", stderr);
+        return 1;
+    }
+    terminal = (struct RibonTerminalRequest){0};
+    if (linux_efi->terminal_execution !=
+            RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE ||
+        linux_efi->ops->prepare_terminal(
+            &x86_64, &managed_plan, &uefi, 0, &terminal) !=
+            RIBON_PROTOCOL_STATUS_OK ||
+        !ribon_terminal_request_is_valid(&terminal) ||
+        terminal.managed_image.load_options != uefi.command_line.text ||
+        terminal.managed_image.load_options_size != uefi.command_line.length ||
+        terminal.managed_image.watchdog_timeout_ms != 30000u) {
+        fputs("os_package_tests: Linux EFI terminal contract rejected\n", stderr);
         return 1;
     }
     invalid_terminal = terminal;

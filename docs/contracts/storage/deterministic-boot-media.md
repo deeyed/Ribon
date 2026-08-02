@@ -104,7 +104,7 @@ handle과 Block I/O handle은 environment-private context에만 남는다. File 
 검증하고 source read는 exact seek/read만 성공으로 처리한다.
 
 UEFI source provider의 64 MiB input budget은 product-wide source-service 계약이다. x86_64
-consumer target은 그와 독립적으로 2 MiB static payload buffer를 가지며, 선택한 file이 그
+consumer target은 그와 독립적으로 8 MiB static payload buffer를 가지며, 선택한 file이 그
 target-local bound를 넘으면 transfer 전에 거부한다.
 
 UEFI target은 선택된 `init_image`와 `module` file을 exact-size
@@ -125,11 +125,15 @@ x86_64 UEFI boot manager의 ESP recipe는 application, configuration, external p
 Raw-FDT memory source는 별도 fixture/product 경계이며 UEFI file source의 compatibility alias가
 아니다.
 
-Fixture와 external-kernel UEFI product는 각각 독립 product ID, generated registry, object,
-link map, ESP, copied manifest와 result root를 가진다. External payload selector가 fixture
-product의 dependency나 output identity를 바꾸지 않으며 두 product는 공통 writable ESP를
+Fixture, external-kernel과 Linux EFI UEFI product는 각각 독립 product ID, generated registry,
+object, link map, ESP, copied manifest와 result root를 가진다. External payload selector가 fixture
+product의 dependency나 output identity를 바꾸지 않으며 어떤 product도 공통 writable ESP를
 사용하지 않는다. External product는 payload copy 전에 manifest tuple, ELF class/window와
 payload digest를 검증한다. Fixture marker를 포함한 input은 external product에서 거부한다.
+
+Linux EFI product도 별도 registry와 launcher object를 소유한다. Selected source의 canonical path와
+loaded-image device identity로 full device path를 만들며, exact validated source buffer만 firmware
+`LoadImage()`에 전달한다. Direct-entry UEFI products에는 launcher symbol이 링크되지 않는다.
 
 Normal product manifest와 final object graph에는 inactive-slot writer 또는 network transport
 authority가 없어야 한다. Recovery/network/update writer product는 별도 mode graph가 명시적으로

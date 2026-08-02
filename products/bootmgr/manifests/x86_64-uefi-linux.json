@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "product_id": "bootmgr.x86_64-uefi-linux",
+  "product_kind": "bootloader",
+  "target_id": "x86_64-uefi-linux",
+  "architecture": "x86_64",
+  "environment": "uefi",
+  "port": "qemu-pc-x86_64",
+  "mode": "normal",
+  "boot_protocols": [
+    "linux-efi"
+  ],
+  "policies": [
+    "normal"
+  ],
+  "image": {
+    "format": "pe-coff",
+    "recipe": "uefi-esp-read-only-config",
+    "artifact": "BOOTX64.EFI"
+  },
+  "evidence": {
+    "class": "qemu-runtime",
+    "claim": "Ribon x86_64 UEFI starts the pinned Linux EFI stub to PID1 and clean poweroff"
+  },
+  "max_plugins": 16,
+  "services": [
+    {
+      "id": "service.port.diagnostic-sink",
+      "kind": "diagnostic-sink",
+      "symbol": "ribon_port_diagnostic_sink_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.boot-source",
+      "kind": "boot-source",
+      "symbol": "ribon_uefi_app_boot_source_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.environment-quiesce",
+      "kind": "environment-quiesce",
+      "symbol": "ribon_uefi_app_environment_quiesce_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.monotonic-timer",
+      "kind": "monotonic-timer",
+      "symbol": "ribon_uefi_app_monotonic_timer_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.persistent-metadata",
+      "kind": "persistent-metadata",
+      "symbol": "ribon_uefi_app_persistent_metadata_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.storage-flush",
+      "kind": "storage-flush",
+      "symbol": "ribon_uefi_app_storage_flush_service_descriptor"
+    },
+    {
+      "id": "service.uefi-app.terminal-image-launch",
+      "kind": "terminal-image-launch",
+      "symbol": "ribon_uefi_app_terminal_image_launch_service_descriptor"
+    }
+  ],
+  "service_selections": [],
+  "plugin_selections": [
+    {
+      "id": "image.pe-coff",
+      "kind": "image-format"
+    },
+    {
+      "id": "protocol.linux-efi",
+      "kind": "boot-protocol"
+    }
+  ],
+  "required_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "IMAGE_PE_COFF",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH",
+    "TERMINAL_IMAGE_LAUNCH"
+  ],
+  "allowed_capabilities": [
+    "ARCHITECTURE",
+    "BOOT_CONFIRMATION",
+    "BOOT_PROTOCOL",
+    "BOOT_SOURCE_READ",
+    "DIAGNOSTIC_SINK",
+    "ENVIRONMENT_QUIESCE",
+    "IMAGE_PE_COFF",
+    "MONOTONIC_TIMER",
+    "PERSISTENT_METADATA",
+    "STORAGE_FLUSH",
+    "TERMINAL_IMAGE_LAUNCH"
+  ],
+  "limits": {
+    "max_memory_regions": 256,
+    "max_load_segments": 32,
+    "max_components": 32,
+    "max_retries": 2,
+    "max_input_bytes": 67108864,
+    "max_handoff_bytes": 65536,
+    "arena_bytes": 262144,
+    "operation_deadline_ms": 30000
+  },
+  "plugins": [
+    {
+      "id": "arch.x86_64",
+      "package": "ribon.arch.x86_64",
+      "symbol": "ribon_arch_plugin_descriptor"
+    },
+    {
+      "id": "environment.uefi-app",
+      "package": "ribon.environment.uefi-app",
+      "symbol": "ribon_uefi_app_environment_plugin_descriptor"
+    },
+    {
+      "id": "image.pe-coff",
+      "package": "ribon.image.pe-coff",
+      "symbol": "ribon_pe_coff_image_plugin_descriptor"
+    },
+    {
+      "id": "protocol.linux-efi",
+      "package": "ribon.protocol.linux-efi",
+      "symbol": "ribon_linux_efi_protocol_plugin_descriptor"
+    }
+  ]
+}

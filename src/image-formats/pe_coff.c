@@ -126,7 +126,7 @@ static int pe_coff_analyze(
     entry_rva = pe_read_u32(optional + 16u);
     image_base = pe_read_u64(optional + 24u);
     section_alignment = pe_read_u32(optional + 32u);
-    if (entry_rva == 0u || image_base == 0u ||
+    if (entry_rva == 0u || (out != 0 && image_base == 0u) ||
         section_alignment == 0u ||
         (section_alignment & (section_alignment - 1u)) != 0u) {
         return RIBON_LOADER_STATUS_BAD_FORMAT;

@@ -14,6 +14,7 @@
 
 static int failures;
 static unsigned char arena_storage[256u * 1024u];
+static uint32_t terminal_launch_calls;
 
 #define CHECK(condition) \
     do { \
@@ -537,6 +538,84 @@ static void test_managed_terminal_provider_absence(void) {
     CHECK(ribon_host_lifecycle_fixture_quiesce_count() == 0u);
 }
 
+/** @brief Hostile provider의 반환과 중복 호출을 lifecycle이 fail-closed하는지 검사한다. */
+static int returning_terminal_launch(
+    void *context,
+    const struct RibonTerminalImageLaunchRequest *request,
+    struct RibonTerminalImageLaunchReceipt *receipt) {
+    CHECK(context == &terminal_launch_calls);
+    CHECK(request != 0 && request->image_data != 0 && request->image_size == 16u);
+    CHECK(request != 0 && request->validated_image != 0 && request->source != 0);
+    CHECK(request != 0 && request->watchdog_timeout_ms == 30000u);
+    ++terminal_launch_calls;
+    *receipt = (struct RibonTerminalImageLaunchReceipt){
+        .size = sizeof(*receipt),
+        .abi_version = RIBON_SERVICE_ABI_VERSION,
+        .result = RIBON_TERMINAL_IMAGE_LAUNCH_RESULT_START_RETURNED,
+        .provider_status = 7u,
+        .exit_data_size = 11u,
+    };
+    return RIBON_SERVICE_STATUS_IO;
+}
+
+static void test_managed_terminal_return_is_terminal_failure(void) {
+    static const unsigned char image[16] = {'M', 'Z'};
+    static const struct RibonTerminalImageLaunchServiceOperations operations = {
+        .size = sizeof(operations),
+        .abi_version = RIBON_SERVICE_ABI_VERSION,
+        .context = &terminal_launch_calls,
+        .launch = returning_terminal_launch,
+    };
+    static const struct RibonServiceDescriptor launcher = {
+        .id = "service.test.returning-terminal-launcher",
+        .operations = &operations,
+    };
+    struct RibonBootTransaction transaction = {
+        .size = sizeof(transaction),
+        .abi_version = RIBON_CORE_ABI_VERSION,
+        .stage = RIBON_BOOT_STAGE_COMMIT_ATTEMPT,
+        .terminal_launcher = &launcher,
+        .source = {
+            .kind = RIBON_BOOT_MEDIA_FILE,
+            .source_id = 1u,
+            .size = sizeof(image),
+        },
+        .payload = {
+            .data = image,
+            .size = sizeof(image),
+            .source_name = "/RIBON/LINUX.EFI",
+        },
+        .validated_image = {
+            .size = sizeof(struct RibonValidatedImage),
+            .abi_version = RIBON_VALIDATED_IMAGE_ABI_VERSION,
+            .format = RIBON_EXECUTABLE_FORMAT_PE_COFF,
+            .machine = 0x8664u,
+            .execution_support = RIBON_IMAGE_EXECUTION_FIRMWARE_MANAGED,
+            .image_size = sizeof(image),
+            .validation_receipt = 1u,
+        },
+        .terminal_request = {
+            .size = sizeof(struct RibonTerminalRequest),
+            .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
+            .kind = RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE,
+            .managed_image = {
+                .load_options_kind = RIBON_TERMINAL_LOAD_OPTIONS_NONE,
+                .watchdog_timeout_ms = 30000u,
+            },
+        },
+    };
+    terminal_launch_calls = 0u;
+    CHECK(ribon_boot_transaction_execute_terminal(&transaction) ==
+          RIBON_BOOT_STATUS_PROVIDER_FAILURE);
+    CHECK(terminal_launch_calls == 1u);
+    CHECK(transaction.stage == RIBON_BOOT_STAGE_FAILED);
+    CHECK(transaction.receipt.stage == RIBON_BOOT_STAGE_EXECUTE_TERMINAL);
+    CHECK(transaction.receipt.reason == RIBON_BOOT_FAILURE_TERMINAL);
+    CHECK(ribon_boot_transaction_execute_terminal(&transaction) ==
+          RIBON_BOOT_STATUS_BAD_STATE);
+    CHECK(terminal_launch_calls == 1u);
+}
+
 int main(void) {
     test_success_path();
     test_source_retry_and_exhaustion();
@@ -544,6 +623,7 @@ int main(void) {
     test_quiesce_failure();
     test_boot_module_protocol_and_component_budget();
     test_managed_terminal_provider_absence();
+    test_managed_terminal_return_is_terminal_failure();
     if (failures != 0) {
         fprintf(stderr, "lifecycle_tests: %d failure(s)\n", failures);
         return 1;

@@ -5,6 +5,7 @@
 
 #include <Ribon/arch/ops.h>
 #include <Ribon/boot/image.h>
+#include <Ribon/boot/terminal.h>
 #include <Ribon/core/capability.h>
 #include <Ribon/protocol/confirmation.h>
 #include <Ribon/protocol/entry_contract.h>
@@ -15,10 +16,18 @@ struct RibonMutableMemoryMap;
 struct RibonPluginDescriptor;
 
 /** @brief Boot Protocol operation table ABI다. */
-#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 4u
+#define RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION 5u
 
 /** @brief Protocol terminal request ABI다. */
-#define RIBON_TERMINAL_REQUEST_ABI_VERSION 1u
+#define RIBON_TERMINAL_REQUEST_ABI_VERSION 2u
+
+/** @brief Protocol이 봉인하는 bounded firmware-managed image option이다. */
+struct RibonFirmwareManagedImageRequest {
+    enum RibonTerminalLoadOptionsKind load_options_kind; /**< Option byte 의미다. */
+    uint32_t load_options_size; /**< NUL을 제외한 byte 수다. */
+    const void *load_options; /**< Transaction lifetime의 immutable byte view다. */
+    uint64_t watchdog_timeout_ms; /**< Provider가 arm할 non-zero timeout이다. */
+};
 
 /** @brief OS-neutral terminal execution kind다. */
 enum RibonTerminalExecutionKind {
@@ -33,6 +42,7 @@ struct RibonTerminalRequest {
     enum RibonTerminalExecutionKind kind; /**< 요청한 terminal model이다. */
     uint32_t reserved; /**< 반드시 0이다. */
     struct RibonEntryInvocation direct_entry; /**< Direct model에서만 유효하다. */
+    struct RibonFirmwareManagedImageRequest managed_image; /**< Managed model에서만 유효하다. */
 };
 
 /** @brief Protocol이 environment에서 요구하거나 허용하는 input bit다. */

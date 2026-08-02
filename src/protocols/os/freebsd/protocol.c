@@ -64,6 +64,10 @@ static int freebsd_prepare_terminal(
         .size = sizeof(*out),
         .abi_version = RIBON_TERMINAL_REQUEST_ABI_VERSION,
         .kind = RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE,
+        .managed_image = {
+            .load_options_kind = RIBON_TERMINAL_LOAD_OPTIONS_NONE,
+            .watchdog_timeout_ms = 30000u,
+        },
     };
     return RIBON_PROTOCOL_STATUS_OK;
 }
@@ -109,9 +113,8 @@ const struct RibonPluginDescriptor ribon_freebsd_protocol_plugin_descriptor = {
     .id = "protocol.freebsd",
     .provides =
         RIBON_CAP_BOOT_PROTOCOL |
-        RIBON_CAP_ENTRY_CONTRACT |
         RIBON_CAP_BOOT_CONFIRMATION,
-    .requires = RIBON_CAP_IMAGE_PE_COFF,
+    .requires = RIBON_CAP_IMAGE_PE_COFF | RIBON_CAP_TERMINAL_IMAGE_LAUNCH,
     .architecture_mask = RIBON_ARCH_MASK_X86_64 | RIBON_ARCH_MASK_AARCH64,
     .environment_mask = RIBON_ENV_MASK_UEFI,
     .mode_mask = RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),

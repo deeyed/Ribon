@@ -152,6 +152,7 @@ adr/0050-recovery-only-bounded-network-update
 adr/0051-os-neutral-boot-confirmation
 adr/0052-linux-aarch64-raw-image-product
 adr/0053-dual-terminal-execution-model
+adr/0054-generic-terminal-image-launcher
 ```
 
 ```{toctree}
@@ -236,4 +237,5 @@ log/2026-08-01-d04-transactional-update-fault-closure
 log/2026-08-01-d05-bounded-recovery-network-update
 log/2026-08-02-d06-os-neutral-boot-confirmation
 log/2026-08-02-d08-deployment-closure
+log/2026-08-02-r02-generic-terminal-image-launch
 ```

@@ -16,6 +16,7 @@ code_paths:
   - products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
   - products/bootmgr/manifests/x86_64-uefi-parus-fixture.json
   - products/bootmgr/manifests/x86_64-uefi-parus-external.json
+  - products/bootmgr/manifests/x86_64-uefi-linux.json
   - tests/fixtures/riscv64/
   - tests/tools/qemu_target_smoke_tests.py
   - tests/tools/external_parus_payload_tests.py
@@ -29,6 +30,7 @@ tests:
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf QEMU_PARUS_MODULE_COMPONENT_MANIFEST=/path/to/components.json qemu-aarch64-virt-parus-modules-smoke
   - make x86_64-uefi-parus-fixture-smoke
   - make UEFI_PARUS_PAYLOAD=/path/to/parus.elf x86_64-uefi-parus-external-smoke
+  - make x86_64-uefi-linux-smoke
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
   - make qemu-riscv64-virt-rph1-fixture-smoke
 hardware:
@@ -100,8 +102,9 @@ artifact identity failure다.
 
 ## x86_64 UEFI product 격리
 
-`bootmgr.x86_64-uefi-parus-fixture`와
-`bootmgr.x86_64-uefi-parus-external`은 서로 다른 product root, registry, object, link map,
+`bootmgr.x86_64-uefi-parus-fixture`,
+`bootmgr.x86_64-uefi-parus-external`과 `bootmgr.x86_64-uefi-linux`는 서로 다른 product root,
+registry, object, link map,
 ESP와 result를 사용한다. Fixture→external→fixture와 그 역순의 증분 빌드는 이미 생성된
 반대 product output을 변경해서는 안 된다. 동일 input을 독립 build root에서 조합한
 canonical application과 ESP artifact는 byte-identical이어야 한다.
@@ -114,6 +117,18 @@ evidence는 별도의 실제 kernel payload, external product manifest와 Parus 
 UEFI QEMU 실행은 ESP directory를 read-only VVFAT base로 열고 QEMU의 transient block snapshot에
 firmware NvVars write를 격리한다. 따라서 실행에 필요한 firmware write는 허용하되 선택한 ESP
 input의 byte identity는 실행 전후 동일해야 한다.
+
+## x86_64 Linux EFI-stub 증거
+
+Linux product는 OpenWrt 24.10.0 x86/64 kernel의 exact size `5739520`과 SHA-256
+`2a0deaeab7dd3edf23c68597e1c79e0bd0f1ad92381cc90b3abd0187e96f28fe`를 고정한다. Build validator는
+PE32+, x86_64 machine과 EFI application subsystem을 확인한다. Ribon은 source를 PE/COFF parser로
+검증한 뒤 generic terminal launcher가 OVMF `LoadImage()`/`StartImage()`로 exact child를 실행한다.
+
+Success는 managed transaction launch marker, Linux PID 1 marker
+`RIBON:LINUX:X86_64:PID1:v1:OK`, `reboot: Power down`과 QEMU status 0을 요구한다. Result는 external
+validation, kernel, initramfs, product manifest, ESP, firmware와 raw serial hash를 분리해 보존한다.
+이 증거는 runtime network, physical hardware, Secure Boot나 모든 EFI-stub kernel 지원을 뜻하지 않는다.
 
 ## RISC-V RPH1 contract fixture
 

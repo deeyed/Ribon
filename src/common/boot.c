@@ -375,9 +375,16 @@ int ribon_boot_transaction_initialize(
         .metadata = boot_service_authority(services, RIBON_SERVICE_KIND_PERSISTENT_METADATA),
         .flush = boot_service_authority(services, RIBON_SERVICE_KIND_STORAGE_FLUSH),
         .quiesce = boot_service_authority(services, RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE),
+        .terminal_launcher = boot_service_authority(
+            services, RIBON_SERVICE_KIND_TERMINAL_IMAGE_LAUNCH),
     };
     if (out->boot_source == 0 || out->timer == 0 || out->metadata == 0 ||
-        out->flush == 0 || out->quiesce == 0) {
+        out->flush == 0 ||
+        (protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+         out->quiesce == 0) ||
+        (protocol->terminal_execution ==
+             RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE &&
+         out->terminal_launcher == 0)) {
         *out = (struct RibonBootTransaction){0};
         return RIBON_BOOT_STATUS_MISSING_CAPABILITY;
     }
@@ -660,6 +667,64 @@ int ribon_boot_transaction_quiesce_environment(
     }
     transaction->stage = RIBON_BOOT_STAGE_QUIESCE_ENVIRONMENT;
     return RIBON_BOOT_STATUS_OK;
+}
+
+/** @brief Committed managed image를 단 한 번 selected terminal provider에 넘긴다. */
+int ribon_boot_transaction_execute_terminal(
+    struct RibonBootTransaction *transaction) {
+    const struct RibonTerminalImageLaunchServiceOperations *operations;
+    struct RibonTerminalImageLaunchReceipt receipt = {
+        .size = sizeof(receipt),
+        .abi_version = RIBON_SERVICE_ABI_VERSION,
+    };
+    struct RibonTerminalImageLaunchRequest request;
+    int status;
+    if (transaction == 0 || transaction->stage != RIBON_BOOT_STAGE_COMMIT_ATTEMPT ||
+        transaction->terminal_request.kind !=
+            RIBON_TERMINAL_EXECUTION_FIRMWARE_MANAGED_IMAGE ||
+        transaction->terminal_launcher == 0) {
+        return boot_fail(transaction, RIBON_BOOT_STAGE_EXECUTE_TERMINAL,
+                         RIBON_BOOT_FAILURE_BAD_INPUT, 0,
+                         RIBON_BOOT_STATUS_BAD_STATE);
+    }
+    operations = transaction->terminal_launcher->operations;
+    if (operations == 0 || operations->size != sizeof(*operations) ||
+        operations->abi_version != RIBON_SERVICE_ABI_VERSION ||
+        operations->launch == 0) {
+        return boot_fail(transaction, RIBON_BOOT_STAGE_EXECUTE_TERMINAL,
+                         RIBON_BOOT_FAILURE_TERMINAL,
+                         transaction->terminal_launcher->id,
+                         RIBON_BOOT_STATUS_PROVIDER_FAILURE);
+    }
+    request = (struct RibonTerminalImageLaunchRequest){
+        .size = sizeof(request),
+        .abi_version = RIBON_SERVICE_ABI_VERSION,
+        .image_data = transaction->payload.data,
+        .image_size = transaction->payload.size,
+        .validated_image = &transaction->validated_image,
+        .source = &transaction->source,
+        .source_name = transaction->payload.source_name,
+        .load_options_kind =
+            transaction->terminal_request.managed_image.load_options_kind,
+        .load_options_size =
+            transaction->terminal_request.managed_image.load_options_size,
+        .load_options = transaction->terminal_request.managed_image.load_options,
+        .watchdog_timeout_ms =
+            transaction->terminal_request.managed_image.watchdog_timeout_ms,
+    };
+    transaction->stage = RIBON_BOOT_STAGE_EXECUTE_TERMINAL;
+    status = operations->launch(operations->context, &request, &receipt);
+    if (receipt.size != sizeof(receipt) ||
+        receipt.abi_version != RIBON_SERVICE_ABI_VERSION ||
+        receipt.result == RIBON_TERMINAL_IMAGE_LAUNCH_RESULT_NONE) {
+        status = RIBON_SERVICE_STATUS_IO;
+    }
+    return boot_fail(transaction, RIBON_BOOT_STAGE_EXECUTE_TERMINAL,
+                     RIBON_BOOT_FAILURE_TERMINAL,
+                     transaction->terminal_launcher->id,
+                     status == RIBON_SERVICE_STATUS_TIMEOUT ?
+                         RIBON_BOOT_STATUS_TIMEOUT :
+                         RIBON_BOOT_STATUS_PROVIDER_FAILURE);
 }
 
 /** @brief Prepared plan의 borrowed immutable view를 반환한다. */
