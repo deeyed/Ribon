@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-08-03
 code_paths:
   - src/arch/aarch64/
   - src/environments/raw-fdt/
@@ -56,6 +56,11 @@ Environment는 firmware register, FDT pointer, exception level, MMU/cache state�
 FDT의 `/memory`, `/reserved-memory`, `/chosen`, UART 후보를 bounded parser로 검증하고
 `RibonBootEnvironment`와 machine-description service가 소유하는 typed input으로
 정규화한다.
+
+RPi5 firmware DTB는 disabled NVRAM placeholder에 zero-size `reg`를 둘 수 있다. Generic FDT
+parser는 direct child를 node 종료까지 보류하고 `status = "disabled"`인 range를 publication하지
+않는다. Active child의 zero-size range는 계속 fail-closed한다. Capture 실패 시 target은 generic
+raw-FDT status와 내부 FDT parser status를 별도 UART marker로 남긴다.
 
 RAM 크기, UART base, reserved range를 generic Core 상수로 고정하지 않는다. Fallback이
 필요하면 RPi5 port service가 제공하고 runtime-discovered facts와 충돌할 때

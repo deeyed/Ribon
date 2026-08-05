@@ -1,4 +1,5 @@
 #include "../../src/environments/raw-fdt/raw_fdt.h"
+#include "../../src/common/sys/fdt/fdt.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -127,6 +128,7 @@ int main(void) {
     struct RibonMemoryRegion exact_regions[RIBON_RAW_FDT_MAX_MEMORY_REGIONS];
     struct RibonMemoryRegion short_regions[RIBON_RAW_FDT_MAX_MEMORY_REGIONS - 1u];
     struct RibonBootEnvironment environment;
+    struct RibonRawFdtCaptureDiagnostics diagnostics;
     struct RibonRawFdtEntry entry;
     uint32_t boot_modules = 0u;
     uint32_t firmware = 0u;
@@ -157,11 +159,13 @@ int main(void) {
         .reservation_count = RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS,
         .memory_regions = exact_regions,
         .memory_region_capacity = RIBON_RAW_FDT_MAX_MEMORY_REGIONS,
+        .diagnostics = &diagnostics,
     };
     if (ribon_raw_fdt_environment_capture(&entry, &environment) !=
             RIBON_RAW_FDT_STATUS_OK ||
-        environment.memory_map.region_count != RIBON_RAW_FDT_MAX_MEMORY_REGIONS) {
-        fputs("raw_fdt_capacity_tests: exact 23-region closure failed\n", stderr);
+        environment.memory_map.region_count != RIBON_RAW_FDT_MAX_MEMORY_REGIONS ||
+        diagnostics.fdt_status != RIBON_FDT_STATUS_OK) {
+        fputs("raw_fdt_capacity_tests: exact 39-region closure failed\n", stderr);
         return 1;
     }
     for (uint32_t index = 0u;
@@ -189,6 +193,14 @@ int main(void) {
     }
     entry.memory_regions = exact_regions;
     entry.memory_region_capacity = RIBON_RAW_FDT_MAX_MEMORY_REGIONS;
+    put_be32(fdt, 0u, 0u);
+    if (ribon_raw_fdt_environment_capture(&entry, &environment) !=
+            RIBON_RAW_FDT_STATUS_BAD_FDT ||
+        diagnostics.fdt_status != RIBON_FDT_STATUS_BAD_HEADER) {
+        fputs("raw_fdt_capacity_tests: parser diagnostics were lost\n", stderr);
+        return 1;
+    }
+    put_be32(fdt, 0u, 0xd00dfeedu);
     entry.reservation_count = RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS + 1u;
     if (ribon_raw_fdt_environment_capture(&entry, &environment) !=
             RIBON_RAW_FDT_STATUS_BAD_RESERVATION) {

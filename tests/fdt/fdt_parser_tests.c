@@ -41,18 +41,22 @@ static void append_property(
     *cursor += (size + 3u) & ~3u;
 }
 
-static uint32_t make_fdt(unsigned char bytes[512]) {
+static uint32_t make_fdt(
+    unsigned char bytes[512],
+    int disabled_zero_reservation) {
     static const char strings[] =
-        "#address-cells\0#size-cells\0reg\0bootargs\0";
+        "#address-cells\0#size-cells\0reg\0bootargs\0status\0";
     const uint32_t address_name = 0u;
     const uint32_t size_name = 15u;
     const uint32_t reg_name = 27u;
     const uint32_t bootargs_name = 31u;
+    const uint32_t status_name = 40u;
     const uint32_t structure_offset = 56u;
     uint32_t cursor = structure_offset;
     unsigned char cells[16];
     unsigned char two[4] = {0u, 0u, 0u, 2u};
     static const char arguments[] = "console=ttyAMA0";
+    static const char disabled[] = "disabled";
     uint32_t structure_size;
     uint32_t strings_offset;
     uint32_t total_size;
@@ -77,6 +81,18 @@ static uint32_t make_fdt(unsigned char bytes[512]) {
     put_be32(cells, 8u, 0u);
     put_be32(cells, 12u, 0x00010000u);
     append_property(bytes, &cursor, reg_name, cells, sizeof(cells));
+    append_u32(bytes, &cursor, END_NODE);
+    append_node(bytes, &cursor, "nvram@0");
+    memset(cells, 0, sizeof(cells));
+    append_property(bytes, &cursor, reg_name, cells, sizeof(cells));
+    if (disabled_zero_reservation) {
+        append_property(
+            bytes,
+            &cursor,
+            status_name,
+            disabled,
+            (uint32_t)sizeof(disabled));
+    }
     append_u32(bytes, &cursor, END_NODE);
     append_u32(bytes, &cursor, END_NODE);
     append_node(bytes, &cursor, "chosen");
@@ -110,7 +126,7 @@ static uint32_t make_fdt(unsigned char bytes[512]) {
 int main(void) {
     unsigned char blob[512];
     struct RibonFdtFacts facts;
-    uint32_t size = make_fdt(blob);
+    uint32_t size = make_fdt(blob, 1);
     if (ribon_fdt_parse(blob, size, &facts) != RIBON_FDT_STATUS_OK ||
         facts.total_size != size ||
         facts.memory_base != 0x40000000u ||
@@ -123,6 +139,13 @@ int main(void) {
         fputs("fdt_parser_tests: valid fixture rejected\n", stderr);
         return 1;
     }
+    size = make_fdt(blob, 0);
+    if (ribon_fdt_parse(blob, size, &facts) !=
+        RIBON_FDT_STATUS_BAD_STRUCTURE) {
+        fputs("fdt_parser_tests: active zero reservation accepted\n", stderr);
+        return 1;
+    }
+    size = make_fdt(blob, 1);
     put_be32(blob, 4u, size + 1u);
     if (ribon_fdt_parse(blob, size, &facts) != RIBON_FDT_STATUS_BAD_HEADER) {
         fputs("fdt_parser_tests: oversized blob accepted\n", stderr);

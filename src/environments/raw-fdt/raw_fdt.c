@@ -428,6 +428,9 @@ int ribon_raw_fdt_environment_capture(
     struct RibonFdtFacts facts;
     uint32_t region_count;
     int status;
+    if (entry != 0 && entry->diagnostics != 0) {
+        entry->diagnostics->fdt_status = RIBON_FDT_STATUS_BAD_ARGUMENT;
+    }
     if (entry == 0 || out == 0 || entry->fdt == 0 ||
         entry->arch_ops == 0 || entry->payload == 0 ||
         entry->payload_size == 0u || entry->timer_frequency_hz == 0u ||
@@ -436,6 +439,9 @@ int ribon_raw_fdt_environment_capture(
         return RIBON_RAW_FDT_STATUS_BAD_ARGUMENT;
     }
     status = ribon_fdt_parse(entry->fdt, entry->fdt_capacity, &facts);
+    if (entry->diagnostics != 0) {
+        entry->diagnostics->fdt_status = status;
+    }
     if (status != RIBON_FDT_STATUS_OK) {
         return RIBON_RAW_FDT_STATUS_BAD_FDT;
     }

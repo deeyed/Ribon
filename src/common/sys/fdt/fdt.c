@@ -113,10 +113,15 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
     uint32_t memory_depth = UINT32_MAX;
     uint32_t reserved_memory_depth = UINT32_MAX;
     uint32_t reserved_child_depth = UINT32_MAX;
+    struct RibonFdtReservation
+        reserved_child_reservations[RIBON_FDT_RESERVATION_CAPACITY];
+    uint32_t reserved_child_reservation_count = 0u;
     uint32_t address_cells = 2u;
     uint32_t size_cells = 2u;
     uint32_t reserved_address_cells = 2u;
     uint32_t reserved_size_cells = 2u;
+    int reserved_child_has_zero_size = 0;
+    int reserved_child_disabled = 0;
     int saw_end = 0;
 
     if (bytes == 0 || out == 0 || capacity < RIBON_FDT_HEADER_SIZE) {
@@ -199,6 +204,9 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
             } else if (reserved_memory_depth != UINT32_MAX &&
                        depth == reserved_memory_depth + 1u) {
                 reserved_child_depth = depth;
+                reserved_child_reservation_count = 0u;
+                reserved_child_has_zero_size = 0;
+                reserved_child_disabled = 0;
             }
             cursor += aligned_name;
             continue;
@@ -214,7 +222,24 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
                 memory_depth = UINT32_MAX;
             }
             if (reserved_child_depth == depth) {
+                if (!reserved_child_disabled) {
+                    if (reserved_child_has_zero_size ||
+                        reserved_child_reservation_count >
+                            RIBON_FDT_RESERVATION_CAPACITY -
+                                out->reservation_count) {
+                        return RIBON_FDT_STATUS_BAD_STRUCTURE;
+                    }
+                    for (uint32_t index = 0u;
+                         index < reserved_child_reservation_count;
+                         ++index) {
+                        out->reservations[out->reservation_count++] =
+                            reserved_child_reservations[index];
+                    }
+                }
                 reserved_child_depth = UINT32_MAX;
+                reserved_child_reservation_count = 0u;
+                reserved_child_has_zero_size = 0;
+                reserved_child_disabled = 0;
             }
             if (reserved_memory_depth == depth) {
                 reserved_memory_depth = UINT32_MAX;
@@ -306,9 +331,7 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
                      offset += tuple_size) {
                     uint64_t base;
                     uint64_t size;
-                    if (out->reservation_count >=
-                            RIBON_FDT_RESERVATION_CAPACITY ||
-                        !fdt_cells(
+                    if (!fdt_cells(
                             value + offset,
                             value_size - offset,
                             reserved_address_cells,
@@ -318,15 +341,32 @@ int ribon_fdt_parse(const void *blob, uint64_t capacity, struct RibonFdtFacts *o
                             value_size - offset - reserved_address_cells * 4u,
                             reserved_size_cells,
                             &size) ||
-                        size == 0u || base > UINT64_MAX - size) {
+                        base > UINT64_MAX - size) {
                         return RIBON_FDT_STATUS_BAD_STRUCTURE;
                     }
-                    out->reservations[out->reservation_count++] =
+                    if (size == 0u) {
+                        reserved_child_has_zero_size = 1;
+                        continue;
+                    }
+                    if (reserved_child_reservation_count >=
+                        RIBON_FDT_RESERVATION_CAPACITY) {
+                        return RIBON_FDT_STATUS_BAD_STRUCTURE;
+                    }
+                    reserved_child_reservations[
+                        reserved_child_reservation_count++] =
                         (struct RibonFdtReservation){
                             .base = base,
                             .size = size,
                         };
                 }
+            } else if (reserved_child_depth == depth &&
+                       fdt_streq(property_name, property_name_size, "status")) {
+                uint32_t text_size;
+                if (!fdt_string_length(value, value_size, &text_size)) {
+                    return RIBON_FDT_STATUS_BAD_STRUCTURE;
+                }
+                reserved_child_disabled =
+                    fdt_streq((const char *)value, text_size, "disabled");
             }
             cursor += aligned_value;
             continue;

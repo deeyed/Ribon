@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-31
+last_verified: 2026-08-03
 code_paths:
   - include/Ribon/boot/module_bundle.h
   - include/Ribon/firmware/environment.h
@@ -158,14 +158,20 @@ input이다. raw-FDT capture 뒤 boot media, command line과 module list를
 raw-FDT target reservation 상한은 magic number가 아니라 다음 식이다.
 
 ```text
-target reservations = bootloader 1 + kernel placement 1 + modules 8 = 10
-all reservations    = target reservations 10 + FDT 1 = 11
-worst normalized regions for one memory bank = 2 * 11 + 1 = 23
+target reservations   = bootloader 1 + kernel placement 1 + modules 8 = 10
+firmware reservations = FDT reserve map과 active /reserved-memory 최대 8
+all reservations      = target 10 + firmware 8 + FDT blob 1 = 19
+worst normalized regions for one memory bank = 2 * 19 + 1 = 39
 ```
 
-23-entry storage는 이 최악 case를 수용해야 하고 22-entry storage는 deterministic
+39-entry storage는 이 최악 case를 수용해야 하고 38-entry storage는 deterministic
 `OUT_OF_CAPACITY`를 반환해야 한다. Zero-size, wrapping 또는 서로 겹치는 reservation은
 capture 전에 실패한다.
+
+`/reserved-memory` direct child의 `status = "disabled"`는 runtime reservation authority가
+아니다. Parser는 property 순서와 무관하게 child node가 닫힐 때까지 `reg`를 보류하고 disabled
+child의 range를 publication하지 않는다. Active 또는 status가 생략된 child의 zero-size `reg`는
+계속 malformed input으로 거부한다.
 
 ## Protocol projection
 

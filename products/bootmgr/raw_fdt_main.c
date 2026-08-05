@@ -188,6 +188,7 @@ _Noreturn void ribon_raw_fdt_boot_main(
     struct RibonRawFdtReservation
         reservations[RIBON_RAW_FDT_MAX_TARGET_RESERVATIONS];
     struct RibonRawFdtEntry native_entry;
+    struct RibonRawFdtCaptureDiagnostics capture_diagnostics;
     struct RibonBootEnvironment environment;
     struct RibonArena arena;
     struct RibonCoreContext core;
@@ -310,9 +311,13 @@ _Noreturn void ribon_raw_fdt_boot_main(
         .reservation_count = reservation_count,
         .memory_regions = environment_regions,
         .memory_region_capacity = RIBON_BOOTMGR_MAX_MEMORY_REGIONS,
+        .diagnostics = &capture_diagnostics,
     };
     status = ribon_raw_fdt_environment_capture(&native_entry, &environment);
     if (status != RIBON_RAW_FDT_STATUS_OK) {
+        bootmgr_hex(
+            "RIBON-R4-FDT-STATUS=",
+            (uint64_t)(int64_t)capture_diagnostics.fdt_status);
         bootmgr_fail("environment-capture", status);
     }
     persistent_inputs = (struct RibonBootEnvironmentPersistentInputs){

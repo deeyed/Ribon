@@ -26,6 +26,11 @@ struct RibonRawFdtReservation {
     enum RibonMemoryRegionKind kind; /**< Ribon memory-map 분류다. */
 };
 
+/** @brief raw-FDT capture가 보존하는 parser first-divergence다. */
+struct RibonRawFdtCaptureDiagnostics {
+    int fdt_status; /**< 가장 최근 bounded FDT parser 결과다. */
+};
+
 /**
  * @brief Native entry와 target image recipe가 raw-FDT consumer에 제공하는 입력이다.
  *
@@ -45,6 +50,7 @@ struct RibonRawFdtEntry {
     uint32_t reservation_count; /**< Reservation element 수다. */
     struct RibonMemoryRegion *memory_regions; /**< Caller-owned normalized-input storage다. */
     uint32_t memory_region_capacity; /**< Region storage element 수다. */
+    struct RibonRawFdtCaptureDiagnostics *diagnostics; /**< Optional caller-owned 진단이다. */
 };
 
 /** @brief raw-FDT environment consumer의 결과다. */

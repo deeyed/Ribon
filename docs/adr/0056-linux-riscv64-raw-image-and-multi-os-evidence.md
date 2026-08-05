@@ -2,7 +2,7 @@
 doc_type: adr
 status: accepted
 authority: normative
-last_verified: 2026-08-02
+last_verified: 2026-08-03
 code_paths:
   - src/image-formats/linux_riscv64.c
   - src/protocols/os/linux/
@@ -39,10 +39,11 @@ architecture별로 생성한다. RISC-V route는 environment가 검증한 bootst
 `a0=hartid`, `a1=FDT`, argument count 2, translation disabled를 선언한다. Architecture backend가
 S-mode terminal transfer에서 interrupt를 mask하고 `satp=0` 상태를 보장한다.
 
-Raw-FDT normalization은 header reserve map과 `/reserved-memory` direct child의 bounded `reg` tuple을
-모두 firmware-owned range로 가져온다. FDT blob 자체도 별도 firmware range다. Zero, wrapping, partial
-memory-bank overlap, 중복 또는 capacity 초과는 transfer 전에 거부한다. 이 규칙은 OpenSBI 전용
-분기가 아니라 모든 raw-FDT product에 적용된다.
+Raw-FDT normalization은 header reserve map과 active `/reserved-memory` direct child의 bounded
+`reg` tuple을 모두 firmware-owned range로 가져온다. FDT blob 자체도 별도 firmware range다.
+`status = "disabled"` child는 property 순서와 무관하게 range authority에서 제외한다. Active child의
+zero-size, wrapping, partial memory-bank overlap, 중복 또는 capacity 초과는 transfer 전에 거부한다.
+이 규칙은 OpenSBI나 RPi5 전용 분기가 아니라 모든 raw-FDT product에 적용된다.
 
 외부 kernel은 Debian 13 installer RISC-V64 artifact의 versioned URL, exact size와 SHA-256를 tracked
 descriptor로 고정한다. Binary는 저장소에 넣지 않고 product-scoped build cache에서 매번 재검증한다.
