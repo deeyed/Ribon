@@ -50,12 +50,15 @@ generic bounded retry gate
         v
 recovery-only UEFI transport service
         |
-        +-- exact-one PXE Base Code MTFTP, if present
-        `-- exact-one SNP + minimal ARP/IPv4/UDP/TFTP, only if PXE is absent
+        +-- exact-one usable IPv4 PXE Base Code MTFTP, if present
+        `-- exact-one SNP + minimal ARP/IPv4/UDP/TFTP, if usable IPv4 PXE is absent
 ```
 
 PXE provider가 여러 개이거나 malformed인 경우 SNP로 우회하지 않는다. PXE protocol이
-`EFI_NOT_FOUND`일 때만 SNP fallback을 탐색하며 SNP도 exact-one authority여야 한다.
+IPv4 MTFTP 계약을 만족하는 PXE provider가 없을 때만 SNP fallback을 탐색하며 SNP도
+exact-one authority여야 한다. 한 NIC의 IPv4와 IPv6 child handle이 함께 보이는 것은
+허용하지만 usable IPv4 provider가 둘 이상이면 복수 NIC 또는 모호한 authority로 보고
+fail-closed한다. Handle enumeration은 고정 용량이며 상한 초과도 모호성으로 거부한다.
 
 ## Generic fetch ABI
 

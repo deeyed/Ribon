@@ -13,6 +13,9 @@
 /** @brief D05 product가 허용하는 service output byte 상한이다. */
 #define RIBON_UEFI_NETWORK_OUTPUT_BUDGET (64ull * 1024ull)
 
+/** @brief Firmware protocol enumeration이 사용할 고정 handle 상한이다. */
+#define RIBON_UEFI_NETWORK_HANDLE_CAPACITY 8u
+
 /** @brief Ethernet frame과 bounded TFTP block을 담는 고정 buffer byte 수다. */
 #define RIBON_UEFI_SNP_FRAME_CAPACITY 1536u
 
@@ -125,6 +128,74 @@ static int locate_one_protocol(
     return RIBON_UEFI_RECOVERY_NETWORK_OK;
 }
 
+/** @brief MTFTP에 필요한 PXE Base Code 표면이 완전한지 검사한다. */
+static int pxe_protocol_surface_is_valid(
+    const EFI_PXE_BASE_CODE_PROTOCOL *pxe)
+{
+    return pxe != NULL && pxe->Mode != NULL &&
+        pxe->Revision >= EFI_PXE_BASE_CODE_PROTOCOL_REVISION &&
+        pxe->Start != NULL && pxe->SetStationIp != NULL &&
+        pxe->Mtftp != NULL;
+}
+
+/**
+ * @brief Bounded handle set에서 exact-one usable IPv4 PXE provider를 고른다.
+ *
+ * EDK2는 한 NIC에 IPv4와 IPv6 PXE child handle을 함께 게시할 수 있다. Protocol
+ * handle 수가 아니라 product의 IPv4 MTFTP 계약을 만족하는 provider 수를 세며, 실제
+ * 복수 NIC처럼 usable IPv4 provider가 둘 이상이면 계속 fail-closed한다.
+ */
+static int locate_one_ipv4_pxe(
+    EFI_BOOT_SERVICES *boot_services,
+    EFI_PXE_BASE_CODE_PROTOCOL **protocol)
+{
+    EFI_HANDLE handles[RIBON_UEFI_NETWORK_HANDLE_CAPACITY];
+    EFI_PXE_BASE_CODE_PROTOCOL *selected = NULL;
+    UINTN size = sizeof(handles);
+    UINTN index;
+    EFI_STATUS status;
+    if (boot_services == NULL || protocol == NULL) {
+        return RIBON_UEFI_RECOVERY_NETWORK_BAD_ARGUMENT;
+    }
+    *protocol = NULL;
+    memset(handles, 0, sizeof(handles));
+    status = boot_services->LocateHandle(
+        ByProtocol, &pxe_base_code_guid, NULL, &size, handles);
+    if (status == EFI_BUFFER_TOO_SMALL) {
+        return RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS;
+    }
+    if (status == EFI_NOT_FOUND) {
+        return RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND;
+    }
+    if (EFI_ERROR(status) || size == 0u || size > sizeof(handles) ||
+        size % sizeof(handles[0]) != 0u) {
+        return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
+    }
+    for (index = 0u; index < size / sizeof(handles[0]); ++index) {
+        EFI_PXE_BASE_CODE_PROTOCOL *candidate = NULL;
+        status = boot_services->HandleProtocol(
+            handles[index], &pxe_base_code_guid, (void **)&candidate);
+        if (EFI_ERROR(status) || candidate == NULL) {
+            return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
+        }
+        if (!pxe_protocol_surface_is_valid(candidate)) {
+            return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
+        }
+        if (candidate->Mode->UsingIpv6) {
+            continue;
+        }
+        if (selected != NULL) {
+            return RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS;
+        }
+        selected = candidate;
+    }
+    if (selected == NULL) {
+        return RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND;
+    }
+    *protocol = selected;
+    return RIBON_UEFI_RECOVERY_NETWORK_OK;
+}
+
 /** @brief Product-selected static client address로 started IPv4 PXE session을 고정한다. */
 static int configure_pxe(
     struct RibonUefiRecoveryNetworkContext *context,
@@ -133,10 +204,8 @@ static int configure_pxe(
     EFI_IP_ADDRESS station;
     EFI_IP_ADDRESS subnet;
     EFI_STATUS status;
-    if (context->pxe->Mode == NULL ||
-        context->pxe->Revision < EFI_PXE_BASE_CODE_PROTOCOL_REVISION ||
-        context->pxe->Start == NULL || context->pxe->SetStationIp == NULL ||
-        context->pxe->Mtftp == NULL) {
+    if (!pxe_protocol_surface_is_valid(context->pxe) ||
+        context->pxe->Mode->UsingIpv6) {
         return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
     }
     memset(&station, 0, sizeof(station));
@@ -731,6 +800,7 @@ int ribon_uefi_recovery_network_open(
     const struct RibonRecoveryNetworkProductBinding *binding)
 {
     void *protocol = NULL;
+    EFI_PXE_BASE_CODE_PROTOCOL *pxe_protocol = NULL;
     int status;
     memset(&network_context, 0, sizeof(network_context));
     if (boot_services == NULL ||
@@ -744,9 +814,9 @@ int ribon_uefi_recovery_network_open(
     }
     network_context.boot_services = boot_services;
     network_context.binding = binding;
-    status = locate_one_protocol(boot_services, &pxe_base_code_guid, &protocol);
+    status = locate_one_ipv4_pxe(boot_services, &pxe_protocol);
     if (status == RIBON_UEFI_RECOVERY_NETWORK_OK) {
-        network_context.pxe = protocol;
+        network_context.pxe = pxe_protocol;
         status = configure_pxe(&network_context, binding);
         if (status == RIBON_UEFI_RECOVERY_NETWORK_OK) {
             network_context.backend =

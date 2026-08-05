@@ -31,8 +31,10 @@ firmware NIC, packet parser, TFTP, transactional install의 실제 경계를 증
 
 Network은 recovery/provisioning product가 exact service로 선택하는 outbound object transport로만
 제공한다. Generic 계층은 endpoint/path/size/retry/deadline을 고정한 fetch ABI와 TFTP packet
-guard를 소유한다. UEFI 계층은 exact-one PXE Base Code를 우선하고, protocol이 없을 때만
-exact-one SNP의 minimal ARP/IPv4/UDP/TFTP adapter로 fallback한다.
+guard를 소유한다. UEFI 계층은 exact-one usable IPv4 PXE Base Code를 우선하고, 해당
+provider가 없을 때만 exact-one SNP의 minimal ARP/IPv4/UDP/TFTP adapter로 fallback한다.
+EDK2가 한 NIC에 IPv4와 IPv6 PXE child handle을 함께 게시하는 것은 허용하지만 usable
+IPv4 provider가 둘 이상이면 모호한 authority로 fail-closed한다.
 
 Downloaded bytes에는 신뢰를 부여하지 않는다. Manifest signature, product identity, rollback
 sequence, component digest가 모두 성공한 뒤에만 inactive-slot writer와 `PENDING` transaction을

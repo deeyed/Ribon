@@ -22,7 +22,7 @@ enum RibonUefiRecoveryNetworkBackend {
 };
 
 /**
- * @brief Product-selected 단일 PXE Base Code handle을 static IPv4 TFTP에 결합한다.
+ * @brief Product-selected exact-one usable IPv4 PXE provider를 static TFTP에 결합한다.
  *
  * Boot Services가 열린 recovery/provisioning phase에서만 호출한다. 함수는 caller allocation을
  * 요구하지 않으며, 성공 뒤 generated network service의 borrowed context가 유효해진다.
