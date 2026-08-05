@@ -15,11 +15,11 @@ jobs:
   host:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm openssl python3
+          sudo apt-get install -y clang lld llvm openssl python3 ripgrep
       - name: Install pinned QStar
         run: |
           git clone --branch "$QSTAR_TAG" --depth 1 --recurse-submodules \
@@ -32,13 +32,13 @@ jobs:
   targets-and-qemu:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install target and emulator dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld llvm opensbi openssl ovmf python3 \
-            qemu-system-arm qemu-system-misc qemu-system-x86
-      - uses: actions/cache@v4
+            qemu-system-arm qemu-system-misc qemu-system-x86 ripgrep
+      - uses: actions/cache@v5
         with:
           path: build/external
           key: ribon-external-${{ hashFiles('external/inputs/*.json') }}
@@ -50,11 +50,11 @@ jobs:
   docs:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install documentation dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen graphviz python3 python3-pip
+          sudo apt-get install -y doxygen graphviz python3 python3-pip ripgrep
           python3 -m pip install --break-system-packages -r docs/requirements.txt
       - name: Build documentation
         run: make ci-docs

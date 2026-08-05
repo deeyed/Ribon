@@ -18,6 +18,7 @@ FIRMWARE_LAYOUTS = {
     ),
     "uefi-x86_64": (
         "share/qemu/edk2-x86_64-code.fd",
+        "share/OVMF/OVMF_CODE_4M.fd",
         "share/qemu/OVMF_CODE.fd",
         "share/OVMF/OVMF_CODE.fd",
         "share/ovmf/OVMF_CODE.fd",

@@ -33,8 +33,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ribon-build-tools-") as directory:
         prefix = Path(directory)
         opensbi = prefix / "share/qemu/opensbi-riscv64-generic-fw_dynamic.bin"
-        ovmf = prefix / "share/qemu/edk2-x86_64-code.fd"
+        ovmf = prefix / "share/OVMF/OVMF_CODE_4M.fd"
         opensbi.parent.mkdir(parents=True)
+        ovmf.parent.mkdir(parents=True)
         opensbi.write_bytes(b"opensbi")
         ovmf.write_bytes(b"ovmf")
         fake_bin = prefix / "bin"
