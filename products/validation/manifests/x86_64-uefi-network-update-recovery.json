@@ -127,7 +127,7 @@
     "server_ipv4": [10, 0, 2, 2],
     "station_ipv4": [10, 0, 2, 15],
     "subnet_mask_ipv4": [255, 255, 255, 0],
-    "block_size": 512,
+    "block_size": 1468,
     "retry_count": 0,
     "absolute_deadline_ms": 30000,
     "objects": [
