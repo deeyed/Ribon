@@ -80,6 +80,11 @@ Firmware resolver는 선택한 QEMU executable의 install prefix와 FHS data roo
 OVMF/OpenSBI를 찾는다. 발견 결과가 없으면 임의 파일을 선택하지 않는다. QEMU lane은
 `doctor-qemu`에서 missing firmware를 fail-closed로 보고한다.
 
+CI의 QStar는 release version 문자열이 아니라 `.github/workflows/ci.yml`의 exact
+`QSTAR_REVISION`으로 가져온다. Ribon graph가 사용하는 `qstar.test_suite`를 포함한 DSL
+surface와 실행 binary가 같은 source identity여야 하며 moving branch나 오래된 동명
+version binary를 허용하지 않는다.
+
 ## 공개 target
 
 - `make all`, `make lib`, `make host-reference`: host build

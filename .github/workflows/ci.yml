@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  QSTAR_TAG: v0.7.19-beta
+  QSTAR_REVISION: 49d4b04b05ae7a7f6ed10d0c363fadcfac6b8387
 
 jobs:
   host:
@@ -23,8 +23,12 @@ jobs:
             qemu-system-arm qemu-system-misc qemu-system-x86 ripgrep
       - name: Install pinned QStar
         run: |
-          git clone --branch "$QSTAR_TAG" --depth 1 --recurse-submodules \
-            https://github.com/deeyed/qstar.git "$RUNNER_TEMP/qstar"
+          git init "$RUNNER_TEMP/qstar"
+          git -C "$RUNNER_TEMP/qstar" remote add origin \
+            https://github.com/deeyed/qstar.git
+          git -C "$RUNNER_TEMP/qstar" fetch --depth 1 origin "$QSTAR_REVISION"
+          git -C "$RUNNER_TEMP/qstar" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/qstar" submodule update --init --recursive --depth 1
           make -C "$RUNNER_TEMP/qstar" all
           echo "$RUNNER_TEMP/qstar/build/bin" >> "$GITHUB_PATH"
       - name: Host and cross-compile aggregate
