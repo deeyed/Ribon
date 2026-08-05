@@ -29,6 +29,16 @@ jobs:
           echo "$RUNNER_TEMP/qstar/build/bin" >> "$GITHUB_PATH"
       - name: Host and cross-compile aggregate
         run: make ci-host CC=clang
+      - name: Preserve host failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ribon-host-failure-${{ github.sha }}
+          path: |
+            build/**/*.json
+            build/**/*.log
+            build/**/*.txt
+          if-no-files-found: ignore
 
   targets-and-qemu:
     runs-on: ubuntu-24.04

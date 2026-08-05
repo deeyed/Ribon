@@ -112,6 +112,10 @@ def inspect(
 def require_markers(output: bytes, boot: str) -> str:
     """Require one capability and one receipt for every fetched object."""
 
+    capability_counts = {
+        transport: output.count(marker)
+        for marker, transport in CAPABILITY_MARKERS.items()
+    }
     selected = [
         transport for marker, transport in CAPABILITY_MARKERS.items()
         if output.count(marker) == 1
@@ -119,7 +123,11 @@ def require_markers(output: bytes, boot: str) -> str:
     if len(selected) != 1 or any(
         output.count(marker) > 1 for marker in CAPABILITY_MARKERS
     ):
-        raise ValueError(f"{boot} does not have one exact transport marker")
+        tail = output[-2048:].decode("utf-8", errors="replace")
+        raise ValueError(
+            f"{boot} does not have one exact transport marker: "
+            f"counts={capability_counts}, tail={tail!r}"
+        )
     for marker in FETCH_MARKERS:
         if output.count(marker) != 1:
             raise ValueError(
