@@ -49,7 +49,7 @@ check-build-system:
 		--doctor $(BUILD_DOCTOR) --firmware-resolver $(FIRMWARE_RESOLVER) \
 		--llvm-tool-resolver $(LLVM_TOOL_RESOLVER)
 
-ci-host: doctor-host doctor-targets check
+ci-host: doctor-host doctor-qemu check
 
 ci-targets: doctor-targets check-target-builds
 
