@@ -293,21 +293,20 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--make", default="make")
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--work-root", type=Path, required=True)
+    parser.add_argument("--linux-cache", type=Path, required=True)
+    parser.add_argument("--freebsd-compressed-cache", type=Path, required=True)
+    parser.add_argument("--freebsd-raw-cache", type=Path, required=True)
     args = parser.parse_args(argv)
     root = args.root.resolve()
-    linux_cache = root / "build/external/linux/openwrt-24.10.0-x86_64/bzImage.efi"
+    linux_cache = args.linux_cache.resolve()
     if not linux_cache.is_file():
-        raise SystemExit("validated Linux EFI cache is absent; build the Linux product first")
-    freebsd_cache = root / "build/external/freebsd/15.1-amd64"
-    freebsd_compressed_cache = (
-        freebsd_cache / "FreeBSD-15.1-RELEASE-amd64-mini-memstick.img.xz"
-    )
-    freebsd_raw_cache = (
-        freebsd_cache / "FreeBSD-15.1-RELEASE-amd64-mini-memstick.img"
-    )
+        raise SystemExit(f"validated Linux EFI cache is absent: {linux_cache}")
+    freebsd_compressed_cache = args.freebsd_compressed_cache.resolve()
+    freebsd_raw_cache = args.freebsd_raw_cache.resolve()
     if not freebsd_compressed_cache.is_file() or not freebsd_raw_cache.is_file():
         raise SystemExit(
-            "validated FreeBSD caches are absent; build the FreeBSD product first"
+            "validated FreeBSD caches are absent: "
+            f"{freebsd_compressed_cache}, {freebsd_raw_cache}"
         )
     work_root = args.work_root.resolve()
     work_root.mkdir(parents=True, exist_ok=True)

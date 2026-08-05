@@ -23,10 +23,14 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	x86_64-uefi-network-update-recovery
 	$(PYTHON) tools/lint/target_object_graph_lint.py $(TARGET_BUILD_ROOT)
 
-check-uefi-product-hermeticity:
+check-uefi-product-hermeticity: $(UEFI_LINUX_EXTERNAL_STAMP) \
+		$(UEFI_FREEBSD_EXTERNAL_STAMP)
 	$(PYTHON) tools/check_uefi_product_hermeticity.py \
 		--make $(MAKE) --root $(ROOT) \
-		--work-root $(BUILD_ROOT)/tests/uefi-product-hermeticity
+		--work-root $(BUILD_ROOT)/tests/uefi-product-hermeticity \
+		--linux-cache $(UEFI_LINUX_CACHE) \
+		--freebsd-compressed-cache $(UEFI_FREEBSD_COMPRESSED_CACHE) \
+		--freebsd-raw-cache $(UEFI_FREEBSD_RAW_CACHE)
 
 check: check-build-system legacy-hard-cut check-public-api check-frontends check-loader \
 	check-ribos-parser-pilot check-ribos-semantics check-ribos-schema \
