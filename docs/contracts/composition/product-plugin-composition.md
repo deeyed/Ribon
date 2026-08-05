@@ -4,6 +4,8 @@ status: accepted
 authority: normative
 last_verified: 2026-08-01
 code_paths:
+  - Makefile
+  - make/
   - include/Ribon/policy/ribos.h
   - qstar.lua
   - qstar/
@@ -33,6 +35,11 @@ Source-owned product manifest는 Ribon component graph의 정본 tuple이다. QS
 tuple과 target closure를 검사하고, Makefile target recipe는 같은 manifest에서 생성한
 registry를 링크한다. C source list가 product identity를 암묵적으로 새로 정의해서는 안
 된다.
+
+Make는 공개 checkout의 build, test, package, QEMU와 documentation 실행 frontend다.
+QStar는 같은 source-owned manifest를 소비하는 composition/object graph verifier로 유지한다.
+양쪽은 서로 다른 product tuple이나 security authority를 정의할 수 없으며, Make의
+모듈 경계와 도구 탐지 계약은 {doc}`../tooling/portable-make-orchestration`을 따른다.
 
 ## Metadata 계층
 

@@ -1,6 +1,6 @@
 PROJECT_NAME           = "Ribon"
 PROJECT_BRIEF          = "Generic deterministic boot and recovery framework"
-OUTPUT_DIRECTORY       = build/docs/doxygen
+OUTPUT_DIRECTORY       = $(RIBON_BUILD_ROOT)/docs/doxygen
 INPUT                  = include/Ribon src
 RECURSIVE              = YES
 FILE_PATTERNS          = *.h *.c *.S

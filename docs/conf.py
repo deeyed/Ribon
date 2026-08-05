@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 project = "Ribon"
@@ -5,6 +6,7 @@ author = "Ribon contributors"
 copyright = "2026, Ribon contributors"
 
 root_dir = Path(__file__).resolve().parents[1]
+build_root = Path(os.environ.get("RIBON_BUILD_ROOT", root_dir / "build"))
 
 extensions = [
     "myst_parser",
@@ -23,7 +25,7 @@ html_theme = "furo"
 html_static_path = ["_static"]
 
 breathe_projects = {
-    "Ribon": str(root_dir / "build" / "docs" / "doxygen" / "xml"),
+    "Ribon": str(build_root / "docs" / "doxygen" / "xml"),
 }
 breathe_default_project = "Ribon"
 

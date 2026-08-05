@@ -107,7 +107,7 @@ def main() -> int:
                 fail(f"normal product links writer service: {path.relative_to(ROOT)}")
     if checked == 0:
         fail("no normal bootloader product was inspected")
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    makefile = (ROOT / "make" / "model.mk").read_text(encoding="utf-8")
     normal_uefi = make_variable(makefile, "UEFI_SRCS")
     recovery_uefi = make_variable(makefile, "UEFI_UPDATE_SRCS")
     update_sources = {

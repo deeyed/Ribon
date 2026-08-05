@@ -31,7 +31,19 @@ Package 존재와 실제 runtime support는
 
 ## Build와 검증
 
+GNU Make가 공개 build, test, package, QEMU와 documentation frontend다. QStar는
+product/plugin composition graph 검증기로 유지되며 `make qstar-check`와 aggregate
+`make check`에서 실행된다. 루트 Makefile은 `make/`의 기능별 모듈만 include한다.
+
+필수 host 도구는 C compiler, Python 3, LLVM `clang`/`lld`/`llvm-objcopy`/`llvm-ar`,
+QStar다. QEMU runtime에는 `qemu-system-aarch64`, `qemu-system-x86_64`,
+`qemu-system-riscv64`, OVMF와 OpenSBI가 필요하고, 문서에는 Doxygen과
+`docs/requirements.txt`의 Python package가 필요하다. 설치 위치는 고정하지 않는다.
+PATH 탐지를 쓰며 모든 도구와 firmware는 Make 변수로 덮어쓸 수 있다.
+
 ```sh
+make help
+make doctor
 make lib
 make sdk-install
 make check-sdk-surface
@@ -54,6 +66,19 @@ make check-uefi-product-hermeticity
 make qstar-check
 make docs
 ```
+
+일반적인 override 예시는 다음과 같다.
+
+```sh
+make CROSS_CC=clang-18 LD_LLD=ld.lld-18 check-target-builds
+make X86_64_UEFI_FIRMWARE=/path/to/OVMF_CODE.fd \
+     RISCV64_OPENSBI_FIRMWARE=/path/to/fw_dynamic.bin ci-qemu
+make BUILD_ROOT=/tmp/ribon-build check
+```
+
+GitHub Actions는 Ubuntu에서 host aggregate, target build, 세 architecture QEMU
+fixture와 documentation lane을 각각 실행한다. QEMU 성공은 physical RPi5 evidence가
+아니다.
 
 Ribos language project는 `language/ribos/` 아래에서 `frontend`, versioned product
 `schema`, VM 독립 Policy `ir`, canonical bytecode `artifact`와 향후 `vm` 계층을

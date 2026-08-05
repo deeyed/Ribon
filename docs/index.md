@@ -50,6 +50,7 @@ canonical/language/ribos-language-model
 :caption: Library와 Plugin 계약
 
 contracts/core/library-plugin-protocol-boundary
+contracts/tooling/portable-make-orchestration
 contracts/composition/product-plugin-composition
 contracts/security/signed-object-trust-v1
 contracts/security/signature-provider-v1
@@ -155,6 +156,7 @@ adr/0053-dual-terminal-execution-model
 adr/0054-generic-terminal-image-launcher
 adr/0055-freebsd-amd64-uefi-product
 adr/0056-linux-riscv64-raw-image-and-multi-os-evidence
+adr/0057-portable-modular-make-orchestration
 ```
 
 ```{toctree}
