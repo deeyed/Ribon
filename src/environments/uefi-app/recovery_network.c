@@ -801,6 +801,7 @@ int ribon_uefi_recovery_network_open(
 {
     void *protocol = NULL;
     EFI_PXE_BASE_CODE_PROTOCOL *pxe_protocol = NULL;
+    int pxe_discovery_status;
     int status;
     memset(&network_context, 0, sizeof(network_context));
     if (boot_services == NULL ||
@@ -815,6 +816,7 @@ int ribon_uefi_recovery_network_open(
     network_context.boot_services = boot_services;
     network_context.binding = binding;
     status = locate_one_ipv4_pxe(boot_services, &pxe_protocol);
+    pxe_discovery_status = status;
     if (status == RIBON_UEFI_RECOVERY_NETWORK_OK) {
         network_context.pxe = pxe_protocol;
         status = configure_pxe(&network_context, binding);
@@ -822,7 +824,8 @@ int ribon_uefi_recovery_network_open(
             network_context.backend =
                 RIBON_UEFI_RECOVERY_NETWORK_BACKEND_PXE_BASE_CODE;
         }
-    } else if (status == RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND) {
+    } else if (status == RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND ||
+            status == RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS) {
         protocol = NULL;
         status = locate_one_protocol(
             boot_services, &simple_network_guid, &protocol);
@@ -833,6 +836,9 @@ int ribon_uefi_recovery_network_open(
                 network_context.backend =
                     RIBON_UEFI_RECOVERY_NETWORK_BACKEND_SIMPLE_NETWORK;
             }
+        } else if (status == RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND &&
+                pxe_discovery_status == RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS) {
+            status = RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS;
         }
     }
     if (status != RIBON_UEFI_RECOVERY_NETWORK_OK) {

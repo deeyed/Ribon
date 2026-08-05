@@ -55,10 +55,12 @@ recovery-only UEFI transport service
 ```
 
 PXE provider가 여러 개이거나 malformed인 경우 SNP로 우회하지 않는다. PXE protocol이
-IPv4 MTFTP 계약을 만족하는 PXE provider가 없을 때만 SNP fallback을 탐색하며 SNP도
-exact-one authority여야 한다. 한 NIC의 IPv4와 IPv6 child handle이 함께 보이는 것은
-허용하지만 usable IPv4 provider가 둘 이상이면 복수 NIC 또는 모호한 authority로 보고
-fail-closed한다. Handle enumeration은 고정 용량이며 상한 초과도 모호성으로 거부한다.
+IPv4 MTFTP 계약을 만족하는 PXE provider가 없거나 PXE child cardinality만으로 authority를
+정할 수 없을 때 SNP fallback을 탐색한다. SNP는 exact-one physical transport authority여야
+한다. 한 NIC의 IPv4와 IPv6 또는 중복 PXE child handle이 함께 보이더라도 exact-one SNP가
+그 NIC를 고정하면 bounded SNP backend를 선택할 수 있다. PXE와 SNP 모두 모호하거나
+malformed PXE surface가 보이면 fail-closed한다. Handle enumeration은 고정 용량이며 상한
+초과도 모호성으로 거부한다.
 
 ## Generic fetch ABI
 
