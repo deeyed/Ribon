@@ -155,7 +155,10 @@ def main() -> int:
     parser.add_argument("--inspector", type=Path, required=True)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--results", type=Path, required=True)
-    parser.add_argument("--timeout", type=float, default=30.0)
+    # The supervisor includes firmware boot time around the target-owned 30 s
+    # network deadline; it must not terminate QEMU before the target can emit a
+    # fail-closed receipt for that deadline.
+    parser.add_argument("--timeout", type=float, default=60.0)
     args = parser.parse_args()
     supervisor = load_supervisor()
     try:
