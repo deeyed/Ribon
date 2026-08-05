@@ -58,9 +58,10 @@ PXE provider가 여러 개이거나 malformed인 경우 SNP로 우회하지 않�
 IPv4 MTFTP 계약을 만족하는 PXE provider가 없거나 PXE child cardinality만으로 authority를
 정할 수 없을 때 SNP fallback을 탐색한다. SNP는 exact-one physical transport authority여야
 한다. 한 NIC의 IPv4와 IPv6 또는 중복 PXE child handle이 함께 보이더라도 exact-one SNP가
-그 NIC를 고정하면 bounded SNP backend를 선택할 수 있다. PXE와 SNP 모두 모호하거나
-malformed PXE surface가 보이면 fail-closed한다. Handle enumeration은 고정 용량이며 상한
-초과도 모호성으로 거부한다.
+그 NIC를 고정하면 bounded SNP backend를 선택할 수 있다. 동일 MAC identity의 중복 SNP
+child handle은 한 physical authority로 축약하지만 서로 다른 MAC이 하나라도 보이면 복수
+NIC로 거부한다. PXE와 SNP 모두 모호하거나 malformed PXE/SNP surface가 보이면
+fail-closed한다. Handle enumeration은 고정 용량이며 상한 초과도 모호성으로 거부한다.
 
 ## Generic fetch ABI
 

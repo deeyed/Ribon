@@ -76,6 +76,7 @@ def command(
         "-display", "none",
         "-serial", "stdio",
         "-monitor", "none",
+        "-nodefaults",
         "-no-reboot",
         "-no-shutdown",
         "-drive", f"if=pflash,format=raw,file={pflash}",

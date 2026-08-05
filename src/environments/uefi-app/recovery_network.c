@@ -96,35 +96,100 @@ static int fetch_status(EFI_STATUS status)
     return RIBON_RECOVERY_NETWORK_STATUS_IO;
 }
 
-/** @brief Caller buffer로 exact-one protocol handle을 찾아 allocation을 피한다. */
-static int locate_one_protocol(
-    EFI_BOOT_SERVICES *boot_services,
-    EFI_GUID *guid,
-    void **protocol)
+/** @brief SNP surface가 bounded Ethernet backend에 충분한지 검사한다. */
+static int snp_protocol_surface_is_valid(
+    const EFI_SIMPLE_NETWORK_PROTOCOL *snp)
 {
-    EFI_HANDLE handle = NULL;
-    UINTN size = sizeof(handle);
+    return snp != NULL && snp->Mode != NULL &&
+        snp->Revision >= EFI_SIMPLE_NETWORK_PROTOCOL_REVISION &&
+        snp->Start != NULL && snp->Initialize != NULL &&
+        snp->ReceiveFilters != NULL && snp->GetStatus != NULL &&
+        snp->Transmit != NULL && snp->Receive != NULL &&
+        snp->Mode->HwAddressSize == 6u &&
+        snp->Mode->MediaHeaderSize == RIBON_ETHERNET_HEADER_SIZE &&
+        snp->Mode->MaxPacketSize >= 1500u;
+}
+
+/** @brief SNP의 active link identity를 고정 6-byte MAC으로 얻는다. */
+static int snp_link_identity(
+    const EFI_SIMPLE_NETWORK_PROTOCOL *snp,
+    const uint8_t **identity)
+{
+    static const uint8_t zero_mac[6] = {0};
+    if (!snp_protocol_surface_is_valid(snp) || identity == NULL) {
+        return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
+    }
+    if (memcmp(snp->Mode->CurrentAddress.Addr, zero_mac, sizeof(zero_mac)) != 0) {
+        *identity = snp->Mode->CurrentAddress.Addr;
+        return RIBON_UEFI_RECOVERY_NETWORK_OK;
+    }
+    if (memcmp(snp->Mode->PermanentAddress.Addr, zero_mac, sizeof(zero_mac)) != 0) {
+        *identity = snp->Mode->PermanentAddress.Addr;
+        return RIBON_UEFI_RECOVERY_NETWORK_OK;
+    }
+    return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
+}
+
+/**
+ * @brief Bounded SNP handle set을 exact-one physical link identity로 축약한다.
+ *
+ * Firmware가 같은 NIC의 child handle을 중복 게시해도 MAC identity가 같으면 하나의
+ * authority다. 서로 다른 MAC이 하나라도 보이면 복수 NIC로 보고 fail-closed한다.
+ */
+static int locate_one_snp_link(
+    EFI_BOOT_SERVICES *boot_services,
+    EFI_SIMPLE_NETWORK_PROTOCOL **protocol)
+{
+    EFI_HANDLE handles[RIBON_UEFI_NETWORK_HANDLE_CAPACITY];
+    EFI_SIMPLE_NETWORK_PROTOCOL *selected = NULL;
+    const uint8_t *selected_identity = NULL;
+    UINTN size = sizeof(handles);
+    UINTN index;
     EFI_STATUS status;
-    if (boot_services == NULL || guid == NULL || protocol == NULL) {
+    if (boot_services == NULL || protocol == NULL) {
         return RIBON_UEFI_RECOVERY_NETWORK_BAD_ARGUMENT;
     }
     *protocol = NULL;
+    memset(handles, 0, sizeof(handles));
     status = boot_services->LocateHandle(
-        ByProtocol, guid, NULL, &size, &handle);
-    if (status == EFI_BUFFER_TOO_SMALL && size > sizeof(handle)) {
+        ByProtocol, &simple_network_guid, NULL, &size, handles);
+    if (status == EFI_BUFFER_TOO_SMALL) {
         return RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS;
     }
     if (status == EFI_NOT_FOUND) {
         return RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND;
     }
-    if (EFI_ERROR(status) || size != sizeof(handle) || handle == NULL) {
+    if (EFI_ERROR(status) || size == 0u || size > sizeof(handles) ||
+        size % sizeof(handles[0]) != 0u) {
         return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
     }
-    status = boot_services->HandleProtocol(handle, guid, protocol);
-    if (EFI_ERROR(status) || *protocol == NULL) {
-        *protocol = NULL;
-        return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
+    for (index = 0u; index < size / sizeof(handles[0]); ++index) {
+        EFI_SIMPLE_NETWORK_PROTOCOL *candidate = NULL;
+        const uint8_t *candidate_identity = NULL;
+        status = boot_services->HandleProtocol(
+            handles[index], &simple_network_guid, (void **)&candidate);
+        if (EFI_ERROR(status) || candidate == NULL ||
+            snp_link_identity(candidate, &candidate_identity) !=
+                RIBON_UEFI_RECOVERY_NETWORK_OK) {
+            return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
+        }
+        if (selected == NULL) {
+            selected = candidate;
+            selected_identity = candidate_identity;
+            continue;
+        }
+        if (memcmp(selected_identity, candidate_identity, 6u) != 0) {
+            return RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS;
+        }
+        if (candidate->Mode->State > selected->Mode->State) {
+            selected = candidate;
+            selected_identity = candidate_identity;
+        }
     }
+    if (selected == NULL) {
+        return RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND;
+    }
+    *protocol = selected;
     return RIBON_UEFI_RECOVERY_NETWORK_OK;
 }
 
@@ -234,11 +299,7 @@ static int configure_snp(struct RibonUefiRecoveryNetworkContext *context)
     EFI_STATUS status;
     uint32_t filters = EFI_SIMPLE_NETWORK_RECEIVE_UNICAST |
         EFI_SIMPLE_NETWORK_RECEIVE_BROADCAST;
-    if (snp->Mode == NULL ||
-        snp->Revision < EFI_SIMPLE_NETWORK_PROTOCOL_REVISION ||
-        snp->Start == NULL || snp->Initialize == NULL ||
-        snp->ReceiveFilters == NULL || snp->GetStatus == NULL ||
-        snp->Transmit == NULL || snp->Receive == NULL) {
+    if (!snp_protocol_surface_is_valid(snp)) {
         return RIBON_UEFI_RECOVERY_NETWORK_FIRMWARE_ERROR;
     }
     if (snp->Mode->State == EfiSimpleNetworkStopped) {
@@ -799,7 +860,6 @@ int ribon_uefi_recovery_network_open(
     EFI_BOOT_SERVICES *boot_services,
     const struct RibonRecoveryNetworkProductBinding *binding)
 {
-    void *protocol = NULL;
     EFI_PXE_BASE_CODE_PROTOCOL *pxe_protocol = NULL;
     int pxe_discovery_status;
     int status;
@@ -826,11 +886,10 @@ int ribon_uefi_recovery_network_open(
         }
     } else if (status == RIBON_UEFI_RECOVERY_NETWORK_NOT_FOUND ||
             status == RIBON_UEFI_RECOVERY_NETWORK_AMBIGUOUS) {
-        protocol = NULL;
-        status = locate_one_protocol(
-            boot_services, &simple_network_guid, &protocol);
+        EFI_SIMPLE_NETWORK_PROTOCOL *snp_protocol = NULL;
+        status = locate_one_snp_link(boot_services, &snp_protocol);
         if (status == RIBON_UEFI_RECOVERY_NETWORK_OK) {
-            network_context.snp = protocol;
+            network_context.snp = snp_protocol;
             status = configure_snp(&network_context);
             if (status == RIBON_UEFI_RECOVERY_NETWORK_OK) {
                 network_context.backend =

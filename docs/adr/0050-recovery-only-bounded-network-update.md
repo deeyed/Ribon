@@ -35,7 +35,8 @@ guard를 소유한다. UEFI 계층은 exact-one usable IPv4 PXE Base Code를 우
 provider가 없거나 PXE child cardinality가 모호할 때 exact-one SNP의 minimal
 ARP/IPv4/UDP/TFTP adapter로 fallback한다. EDK2가 한 NIC에 여러 PXE child handle을
 게시하더라도 exact-one SNP가 physical transport authority를 고정할 수 있다. SNP도
-복수이거나 PXE surface 자체가 malformed이면 fail-closed한다.
+서로 다른 MAC identity를 노출하거나 PXE/SNP surface 자체가 malformed이면
+fail-closed한다. 동일 MAC의 중복 SNP child는 같은 physical authority로 축약한다.
 
 Downloaded bytes에는 신뢰를 부여하지 않는다. Manifest signature, product identity, rollback
 sequence, component digest가 모두 성공한 뒤에만 inactive-slot writer와 `PENDING` transaction을
