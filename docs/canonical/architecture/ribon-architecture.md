@@ -289,11 +289,12 @@ registry에 의존하지 않는다.
 firmware personality service directory를 제공한다. Architecture, environment, boot
 protocol, port implementation은 해당 archive에 포함하지 않는다.
 
-`include/Ribon/policy/ribos.h`는 generic product adapter ABI를 공개하지만
-`libribon-policy-ribos.a`는 현재 source product graph의 선택 archive다. Installed SDK
-archive 집합으로 승격하는 packaging 결정은 후속 작업이다. Adapter와 target-core
-VM의 cross-target 실행은 별도 diagnostic product evidence이며 SDK packaging
-compatibility를 자동으로 열지 않는다.
+`include/Ribon/policy/ribos.h`와 `ribos_extension.h`는 generic product adapter 및 typed
+extension ABI를 공개한다. Installed SDK는 `libribon-policy-ribos.a`,
+`libribos-target-core.a`와 target-safe `include/ribos/` tree를 함께 제공한다. Extension의
+semantic schema와 execution descriptor는 canonical digest에 들어가지만 product-local
+callback pointer는 들어가지 않는다. Adapter와 target-core VM의 cross-target 실행은 별도
+diagnostic product evidence이며 hardware compatibility를 자동으로 열지 않는다.
 
 ## Plugin graph 불변식
 

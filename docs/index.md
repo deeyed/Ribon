@@ -73,6 +73,7 @@ contracts/language/ribos-resource-closure-v1
 contracts/language/ribos-bytecode-artifact-v1
 contracts/language/ribos-bytecode-verifier-v1
 contracts/language/ribos-host-target-boundary
+contracts/language/ribos-typed-extension-sdk-v1
 contracts/language/ribos-vm-runtime-v1
 contracts/language/ribos-prepared-program-v1
 contracts/language/ribos-runtime-storage-v1
@@ -157,6 +158,7 @@ adr/0054-generic-terminal-image-launcher
 adr/0055-freebsd-amd64-uefi-product
 adr/0056-linux-riscv64-raw-image-and-multi-os-evidence
 adr/0057-portable-modular-make-orchestration
+adr/0058-installed-ribos-typed-extension-sdk
 ```
 
 ```{toctree}

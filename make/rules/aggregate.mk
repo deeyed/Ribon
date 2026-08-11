@@ -67,7 +67,7 @@ check: check-build-system legacy-hard-cut check-public-api check-frontends check
 	check-library-embed check-composition-schemas \
 	check-qemu-evidence check-uefi-product-hermeticity \
 	check-sdk-surface check-sdk-embed check-sdk-reproducible \
-	check-external-plugin check-firmware-personalities \
+	check-external-plugin check-ribos-extension-sdk check-firmware-personalities \
 	check-firmware-object-graphs check-object-graphs check-normal-media-surface qstar-check
 	@for arch in $(RIBON_ARCHES); do \
 		$(MAKE) --no-print-directory RIBON_ARCH=$$arch check-one || exit $$?; \

@@ -38,7 +38,7 @@ def main() -> int:
         for line in run("ar", "t", str(args.adapter)).splitlines()
         if line and not line.startswith("__.SYMDEF")
     }
-    if adapter_members != {"adapter.o"}:
+    if adapter_members != {"adapter.o", "extension.o"}:
         raise RuntimeError(f"unexpected Ribos adapter members: {adapter_members}")
     vm_symbols = symbols(args.vm_core)
     adapter_symbols = symbols(args.adapter)
@@ -48,6 +48,7 @@ def main() -> int:
         "ribon_ribos_policy_execute",
         "ribon_ribos_policy_helper_dispatch",
         "ribon_ribos_policy_plugin_descriptor",
+        "ribon_ribos_extension_validate_v1",
     )
     if any(symbol not in adapter_symbols for symbol in required):
         raise RuntimeError("Ribon adapter archive omits required symbols")

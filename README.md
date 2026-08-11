@@ -109,9 +109,8 @@ make ribos-parser-regenerate-check RIBOS_PEGEN_ROOT=/path/to/cpython/Tools/peg_g
 
 `make check`는 public API layout, legacy ABI hard cut, plugin graph negative tests,
 protocol-free embed, Ribos parser·semantic·schema·Policy IR·resource-closure·artifact
-corpus,
-SDK install
-reproducibility, external package, firmware reference provider, host-reference plan,
+corpus, 여섯 target archive의 SDK install reproducibility, installed-only typed Ribos
+extension, external plugin package, firmware reference provider, host-reference plan,
 architecture matrix와 object graph를 검사한다.
 QEMU smoke는 x86_64 UEFI consumer와 AArch64 raw-FDT target의 runtime evidence다.
 RISC-V RPH1 fixture smoke는 OpenSBI, Ribon lifecycle, RPH1 `BOOT_CPU`와

@@ -89,6 +89,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--public-include", type=Path, required=True)
+    parser.add_argument(
+        "--public-ribos-include", type=Path, action="append", default=[]
+    )
     parser.add_argument("--library", type=Path, action="append", required=True)
     parser.add_argument("--host-tool", type=named_path, action="append", default=[])
     parser.add_argument("--schemas", type=Path, required=True)
@@ -109,6 +112,12 @@ def main() -> int:
     tool_destination = root / "bin"
     share_destination = root / "share" / "ribon"
     shutil.copytree(args.public_include, include_destination)
+    ribos_include_destination = root / "include" / "ribos"
+    for public_include in args.public_ribos_include:
+        source = public_include / "ribos"
+        if not source.is_dir():
+            raise ValueError(f"public Ribos include root is invalid: {public_include}")
+        shutil.copytree(source, ribos_include_destination, dirs_exist_ok=True)
     library_destination.mkdir(parents=True)
     for library in args.library:
         shutil.copy2(library, library_destination / library.name)
@@ -151,7 +160,8 @@ def main() -> int:
         "Description: Deterministic boot and firmware plugin SDK\n"
         "Version: 0.4.0\n"
         "Cflags: -I${includedir}\n"
-        "Libs: -L${libdir} -lribon-update -lribon-sdk -lribon-boot -lribon-core\n",
+        "Libs: -L${libdir} -lribon-policy-ribos -lribon-update "
+        "-lribon-sdk -lribon-boot -lribon-core -lribos-target-core\n",
         encoding="utf-8",
     )
 

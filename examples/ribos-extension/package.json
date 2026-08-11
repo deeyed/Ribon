@@ -1,0 +1,6 @@
+{
+  "abi_version": 1,
+  "helper_ids": [1001],
+  "package_id": "example.ribos.board-inspect.v1",
+  "schema": "ribon-ribos-extension-package-v1"
+}

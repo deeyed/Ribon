@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-08-02
+last_verified: 2026-08-11
 code_paths:
   - include/Ribon/sdk/
   - src/plugins/sdk.c
@@ -25,15 +25,20 @@ supersedes:
 
 # SDK 설치와 외부 Plugin Package 계약
 
-Ribon SDK는 source checkout 내부 include path를 요구하지 않는 네 target library,
+Ribon SDK는 source checkout 내부 include path를 요구하지 않는 여섯 target library,
 public header surface와 명시적인 host-only tool 집합이다.
 
 ```text
 include/Ribon/
+include/ribos/schema/
+include/ribos/artifact/
+include/ribos/vm/
 lib/libribon-core.a
 lib/libribon-boot.a
 lib/libribon-sdk.a
 lib/libribon-update.a
+lib/libribon-policy-ribos.a
+lib/libribos-target-core.a
 lib/pkgconfig/ribon-sdk.pc
 bin/ribosc
 bin/ribos-verify
@@ -64,7 +69,7 @@ host tool class와 다음 boundary를 기록한다.
 
 - host tool은 target-linkable이 아니다.
 - 설치 tree에는 private key material이 없다.
-- target library 집합은 네 archive로 exact-match한다.
+- target library 집합은 여섯 archive로 exact-match한다.
 
 설치된 tool은 product registry 생성, Ribos compile·독립 verify·host replay, update layout과
 manifest 조립·검사, offline policy signing을 담당한다. Product template는 설치 tree의
@@ -106,10 +111,9 @@ native ABI, MMIO, interrupt와 image 실행은 해당 target의 독립 evidence�
 같은 public header, archive, schema와 template 입력은 서로 다른 clean build root에서도
 byte-identical install tree와 동일한 SHA-256 file manifest를 생성해야 한다. Compiler debug
 path, archive timestamp, generated report의 source 절대 경로와 Darwin UUID는 canonical release
-identity에 들어가지 않는다. SDK ABI 5는 Core ABI 6, Plugin ABI major 5,
-Image-format ops ABI 3, Architecture ops ABI 4, Protocol ops ABI 4와 dual terminal
-boot transaction 및 typed service directory public header를 함께 고정한다. Install manifest에는 timestamp,
-checkout 절대 경로와 host-specific 작업 directory를 기록하지 않는다.
+identity에 들어가지 않는다. SDK ABI 6은 Core ABI 7, Plugin ABI major 6과 typed Ribos
+extension surface를 함께 고정한다. Install manifest에는 timestamp, checkout 절대 경로와
+host-specific 작업 directory를 기록하지 않는다.
 
 `sdk/templates/deployment-consumer`의 recovery/update product는 설치된 tool, schema, public
 header와 archive만 사용해 out-of-tree에서 product graph, `.rbs` artifact, update manifest와

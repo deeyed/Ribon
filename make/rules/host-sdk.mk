@@ -94,14 +94,24 @@ check-qemu-evidence:
 	$(PYTHON) tests/tools/external_linux_riscv64_image_tests.py
 	$(PYTHON) tests/tools/multi_os_runtime_tests.py
 
+RIBOS_SDK_INCLUDE_ARGS := \
+	--public-ribos-include language/ribos/schema/include \
+	--public-ribos-include language/ribos/artifact/include \
+	--public-ribos-include language/ribos/vm/include
+RIBOS_SDK_LIBRARY_ARGS := \
+	--library $(RIBOS_POLICY_LIB) \
+	--library $(RIBOS_TARGET_CORE_LIB)
+
 sdk-install: lib ribosc ribos-verify ribos-run
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_INSTALL_ROOT) \
 		--public-include include/Ribon \
+		$(RIBOS_SDK_INCLUDE_ARGS) \
 		--library $(CORE_LIB) \
 		--library $(BOOT_LIB) \
 		--library $(SDK_LIB) \
 		--library $(SDK_UPDATE_LIB) \
+		$(RIBOS_SDK_LIBRARY_ARGS) \
 		--host-tool ribosc=$(RIBOS_PARSER_PILOT) \
 		--host-tool ribos-verify=$(RIBOS_VERIFIER) \
 		--host-tool ribos-run=$(RIBOS_RUNNER) \
@@ -137,8 +147,10 @@ check-sdk-reproducible: lib ribosc ribos-verify ribos-run
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_REPRO_FIRST) \
 		--public-include include/Ribon \
+		$(RIBOS_SDK_INCLUDE_ARGS) \
 		--library $(CORE_LIB) --library $(BOOT_LIB) --library $(SDK_LIB) \
 		--library $(SDK_UPDATE_LIB) \
+		$(RIBOS_SDK_LIBRARY_ARGS) \
 		--host-tool ribosc=$(RIBOS_PARSER_PILOT) \
 		--host-tool ribos-verify=$(RIBOS_VERIFIER) \
 		--host-tool ribos-run=$(RIBOS_RUNNER) \
@@ -153,8 +165,10 @@ check-sdk-reproducible: lib ribosc ribos-verify ribos-run
 	$(PYTHON) tools/install_sdk.py \
 		--root $(SDK_REPRO_SECOND) \
 		--public-include include/Ribon \
+		$(RIBOS_SDK_INCLUDE_ARGS) \
 		--library $(CORE_LIB) --library $(BOOT_LIB) --library $(SDK_LIB) \
 		--library $(SDK_UPDATE_LIB) \
+		$(RIBOS_SDK_LIBRARY_ARGS) \
 		--host-tool ribosc=$(RIBOS_PARSER_PILOT) \
 		--host-tool ribos-verify=$(RIBOS_VERIFIER) \
 		--host-tool ribos-run=$(RIBOS_RUNNER) \
@@ -194,6 +208,29 @@ $(EXTERNAL_PLUGIN_TEST): sdk-install $(EXTERNAL_PLUGIN_REGISTRY_C) \
 
 check-external-plugin: $(EXTERNAL_PLUGIN_TEST)
 	$(EXTERNAL_PLUGIN_TEST)
+
+$(RIBOS_EXTENSION_SDK_TEST): sdk-install \
+		$(RIBOS_EXTENSION_SDK_ROOT)/extension.c \
+		$(RIBOS_EXTENSION_SDK_ROOT)/contract.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(WARNFLAGS) \
+		-I$(SDK_INSTALL_ROOT)/include \
+		$(RIBOS_EXTENSION_SDK_ROOT)/extension.c \
+		$(RIBOS_EXTENSION_SDK_ROOT)/contract.c \
+		$(SDK_INSTALL_ROOT)/lib/libribon-policy-ribos.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-update.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-sdk.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-boot.a \
+		$(SDK_INSTALL_ROOT)/lib/libribon-core.a \
+		$(SDK_INSTALL_ROOT)/lib/libribos-target-core.a \
+		-o $@
+
+check-ribos-extension-sdk: $(RIBOS_EXTENSION_SDK_TEST)
+	$(RIBOS_EXTENSION_SDK_TEST)
+	$(RIBOS_PARSER_PILOT) $(RIBOS_EXTENSION_SDK_ROOT)/policy.rbs
+	$(PYTHON) tools/lint/ribos_extension_sdk_lint.py \
+		--install-root $(SDK_INSTALL_ROOT) \
+		--example-root $(RIBOS_EXTENSION_SDK_ROOT)
 
 check-sdk-deployment-consumer: sdk-install
 	$(PYTHON) tools/check_sdk_deployment_consumer.py \

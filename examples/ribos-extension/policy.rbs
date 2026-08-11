@@ -1,0 +1,5 @@
+@policy
+def boot(ctx: BootContext) -> BootAction {
+    let revision: u32 = board.revision_code()
+    return boot.recovery(RecoveryReason.INVALID_IMAGE)
+}

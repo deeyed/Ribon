@@ -9,6 +9,7 @@
 	check-linux-external-input \
 	check-library-embed check-object-graphs check-public-api \
 	check-composition-schemas check-sdk-surface check-sdk-embed \
+	check-ribos-extension-sdk \
 	check-qemu-evidence \
 	check-uefi-product-hermeticity \
 	check-sdk-reproducible check-external-plugin check-firmware-personalities \
@@ -121,9 +122,17 @@ $(eval $(call RIBOS_TARGET_OBJECT,runtime_helpers,language/ribos/vm/src/runtime/
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_interpreter,language/ribos/vm/src/runtime/interpreter.c))
 $(eval $(call RIBOS_TARGET_OBJECT,runtime_terminal,language/ribos/vm/src/runtime/terminal.c))
 
-$(RIBOS_POLICY_OBJ): src/plugins/policy/ribos/adapter.c \
+$(BUILD_DIR)/obj/src/plugins/policy/ribos/adapter.o: \
+		src/plugins/policy/ribos/adapter.c \
 		include/Ribon/policy/ribos.h include/Ribon/security/key_policy.h \
 		include/Ribon/security/protected_state.h $(RIBOS_HEADERS) $(RIBON_MAKEFILES)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) \
+		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
+
+$(BUILD_DIR)/obj/src/plugins/policy/ribos/extension.o: \
+		src/plugins/policy/ribos/extension.c \
+		include/Ribon/policy/ribos_extension.h $(RIBOS_HEADERS) $(RIBON_MAKEFILES)
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNFLAGS) $(DEPFLAGS) \
 		$(RIBOS_TARGET_INCLUDE_FLAGS) -c $< -o $@
@@ -161,10 +170,10 @@ $(RIBOS_TARGET_CORE_LIB): $(RIBOS_TARGET_CORE_OBJS) $(RIBON_MAKEFILES)
 	$(RM) $@
 	$(AR) rcs $@ $(RIBOS_TARGET_CORE_OBJS)
 
-$(RIBOS_POLICY_LIB): $(RIBOS_POLICY_OBJ) $(RIBON_MAKEFILES)
+$(RIBOS_POLICY_LIB): $(RIBOS_POLICY_OBJS) $(RIBON_MAKEFILES)
 	@mkdir -p $(@D)
 	$(RM) $@
-	$(AR) rcs $@ $(RIBOS_POLICY_OBJ)
+	$(AR) rcs $@ $(RIBOS_POLICY_OBJS)
 
 $(RIBOS_HOST_SUPPORT_LIB): $(RIBOS_HOST_SUPPORT_OBJS) $(RIBON_MAKEFILES)
 	@mkdir -p $(@D)

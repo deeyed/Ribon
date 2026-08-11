@@ -1,0 +1,5 @@
+{
+  "product_id": "example.board-inspect-product.v1",
+  "ribos_extensions": ["example.ribos.board-inspect.v1"],
+  "schema": "ribon-ribos-extension-selection-v1"
+}

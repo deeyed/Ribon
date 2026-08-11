@@ -62,8 +62,10 @@ def main() -> int:
     required_archives = {
         "libribon-core.a",
         "libribon-boot.a",
+        "libribon-policy-ribos.a",
         "libribon-sdk.a",
         "libribon-update.a",
+        "libribos-target-core.a",
     }
     archives = {path.name for path in (root / "lib").glob("*.a")}
     if archives != required_archives:
@@ -73,6 +75,8 @@ def main() -> int:
         )
     if (root / "include" / "Ribon").is_dir() is False:
         fail("installed public include/Ribon tree is missing")
+    if (root / "include" / "ribos" / "vm" / "runtime.h").is_file() is False:
+        fail("installed public Ribos target headers are missing")
     if any((root / "include").rglob("reference.h")):
         fail("source-private reference header leaked into SDK")
 
@@ -163,7 +167,7 @@ def main() -> int:
         text = path.read_text(encoding="utf-8")
         if PRIVATE_INCLUDE.search(text):
             fail(f"example crosses source-private include boundary: {path.relative_to(ROOT)}")
-    print("RIBON-D08-SDK-INSTALL-SURFACE-OK tools=7 target-libraries=4 signer=host-only")
+    print("RIBON-R01-SDK-INSTALL-SURFACE-OK tools=7 target-libraries=6 signer=host-only")
     return 0
 
 

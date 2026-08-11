@@ -38,6 +38,31 @@ qstar.custom_target "ribon_external_plugin_contract" {
   description = qstar.status("Building external Ribon plugin contract"),
 }
 
+qstar.custom_target "ribon_ribos_extension_sdk_contract" {
+  toolset = "//qstar/policies:host",
+  inputs = {
+    "Makefile",
+    "include/Ribon/policy/ribos_extension.h",
+    "examples/ribos-extension/package.json",
+    "examples/ribos-extension/product.json",
+    "examples/ribos-extension/extension.c",
+    "examples/ribos-extension/contract.c",
+    "examples/ribos-extension/policy.rbs",
+  },
+  outputs = {
+    qstar.output(
+      "build/qstar/generated/r5/sdk/examples/ribos-extension/contract"
+    ),
+  },
+  command = qstar.cli {
+    "make",
+    "--no-print-directory",
+    "BUILD_ROOT=build/qstar/generated/r5",
+    "check-ribos-extension-sdk",
+  },
+  description = qstar.status("Building installed Ribos extension SDK contract"),
+}
+
 qstar.custom_target "ribon_sdk_deployment_consumer" {
   toolset = "//qstar/policies:host",
   inputs = {
@@ -68,6 +93,7 @@ qstar.group "ribon_sdk_products" {
   deps = {
     ":ribon_sdk_install",
     ":ribon_external_plugin_contract",
+    ":ribon_ribos_extension_sdk_contract",
     ":ribon_sdk_deployment_consumer",
   },
 }

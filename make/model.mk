@@ -3,7 +3,9 @@ BOOT_LIB := $(BUILD_DIR)/libribon-boot.a
 SDK_LIB := $(BUILD_DIR)/libribon-sdk.a
 SDK_UPDATE_LIB := $(BUILD_DIR)/libribon-update.a
 RIBOS_POLICY_LIB := $(BUILD_DIR)/libribon-policy-ribos.a
-RIBOS_POLICY_OBJ := $(BUILD_DIR)/obj/src/plugins/policy/ribos/adapter.o
+RIBOS_POLICY_OBJS := \
+	$(BUILD_DIR)/obj/src/plugins/policy/ribos/adapter.o \
+	$(BUILD_DIR)/obj/src/plugins/policy/ribos/extension.o
 HOST_REFERENCE := $(BUILD_DIR)/ribon-host-reference
 KERNEL_FIXTURE := $(BUILD_DIR)/fixtures/kernel.elf
 HOST_MANIFEST := qstar/manifests/host-reference.json
@@ -272,6 +274,8 @@ EXTERNAL_PLUGIN_REGISTRY_C := $(EXTERNAL_PLUGIN_DIR)/generated/plugin_registry.c
 EXTERNAL_PLUGIN_REPORT := $(EXTERNAL_PLUGIN_DIR)/results/object-graph.json
 EXTERNAL_PLUGIN_TEST := $(EXTERNAL_PLUGIN_DIR)/external-diagnostic-sink-contract
 EXTERNAL_PLUGIN_ROOT := examples/plugins/diagnostic-sink
+RIBOS_EXTENSION_SDK_TEST := $(BUILD_ROOT)/sdk/examples/ribos-extension/contract
+RIBOS_EXTENSION_SDK_ROOT := examples/ribos-extension
 MODE_DESCRIPTOR_TESTS := \
 	$(TEST_BUILD_DIR)/mode_descriptor_normal_tests \
 	$(TEST_BUILD_DIR)/mode_descriptor_recovery_tests \
