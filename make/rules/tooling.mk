@@ -54,6 +54,6 @@ ci-host: doctor-host doctor-qemu check
 ci-targets: doctor-targets check-target-builds
 
 ci-qemu: doctor-qemu qemu-aarch64-virt-modules-fixture-smoke \
-	qemu-riscv64-virt-rph1-fixture-smoke x86_64-uefi-parus-fixture-smoke
+	qemu-riscv64-virt-rlh1-fixture-smoke x86_64-uefi-parus-fixture-smoke
 
 ci-docs: doctor-docs docs

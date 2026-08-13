@@ -81,7 +81,7 @@ QEMU machine 또는 mandatory platform profile을 요구하지 않는다.
 
 OS package는 공식 wire/entry 계약을 소유한다.
 
-- Parus: RPH1 build/parse와 Parus register invocation
+- Parus: RLH1 build/parse와 Parus register invocation
 - Linux: Linux boot protocol validation과 architecture별 native argument
 - FreeBSD: EFI chainload 또는 architecture별 loader metadata
 - Zircon: bounded ZBI validation과 kernel entry invocation

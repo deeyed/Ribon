@@ -15,7 +15,7 @@ code_paths:
   - targets/rpi5-aarch64-raw-fdt/linker.ld
 tests:
   - make check-boot-modules
-  - make check-rph1
+  - make check-rlh1
   - make qemu-aarch64-virt-modules-fixture-smoke
   - make qemu-aarch64-virt-parus-modules-smoke
   - make check-target-builds
@@ -104,7 +104,7 @@ generated/boot-modules/boot-module-components/000.bin ... 007.bin
 results/boot-modules.json
 ```
 
-Manifest 순서가 descriptor, section ordinal, provenance와 최종 RPH1 entry 순서다. Assembly는
+Manifest 순서가 descriptor, section ordinal, provenance와 최종 RLH1 entry 순서다. Assembly는
 각 snapshot을 `.ribon.boot_modules.NNN` read-only input section에 `.incbin`하고 각 slot의
 시작과 끝을 4 KiB에 정렬한다. Descriptor는 exact byte span과 semantic role만 publication하며
 raw path, OS 이름과 protocol flag를 포함하지 않는다.
@@ -179,9 +179,9 @@ Generic boot transaction은 module이 존재할 때 selected protocol이
 `RIBON_PROTOCOL_ALLOW_BOOT_MODULES`를 선언하지 않으면 거부한다. Component budget은 kernel
 segment와 boot module 수를 함께 계산한다.
 
-`protocol.parus`는 새 wire protocol을 만들지 않고 기존 RPH1 `BOOT_MODULES` section을
+`protocol.luca`는 새 wire protocol을 만들지 않고 기존 RLH1 `BOOT_MODULES` section을
 생성한다. `initial-image`는 entry flag bit 0, `auxiliary`는 0으로 투영된다. Reserved와
-name-digest field는 RPH1 v1.0 계약대로 0이다. Parser와 producer는 count, entry size, flags,
+name-digest field는 RLH1 v1.0 계약대로 0이다. Parser와 producer는 count, entry size, flags,
 singleton, range와 overlap을 독립적으로 재검사한다.
 
 다른 Boot Protocol은 같은 `RibonBootEnvironment.boot_modules`를 자기 wire 계약으로

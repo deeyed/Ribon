@@ -17,7 +17,7 @@ code_paths:
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-modules.json
   - products/bootmgr/manifests/qemu-aarch64-virt-modules-fixture.json
   - products/bootmgr/manifests/qemu-aarch64-virt-parus-external.json
-  - products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
+  - products/bootmgr/manifests/qemu-riscv64-virt-rlh1-fixture.json
   - products/bootmgr/manifests/qemu-riscv64-virt-linux.json
   - products/bootmgr/manifests/x86_64-uefi-parus-fixture.json
   - products/bootmgr/manifests/x86_64-uefi-parus-external.json
@@ -42,7 +42,7 @@ tests:
   - make x86_64-uefi-linux-smoke
   - make x86_64-uefi-freebsd-smoke
   - make QEMU_PARUS_PAYLOAD=/path/to/parus.elf qemu-aarch64-virt-parus-smoke
-  - make qemu-riscv64-virt-rph1-fixture-smoke
+  - make qemu-riscv64-virt-rlh1-fixture-smoke
   - make qemu-riscv64-virt-linux-smoke
   - make check-multi-os-runtime
 hardware:
@@ -64,7 +64,7 @@ artifact와 선택적 firmware다. Payload bytes에서 ELF identity와 fixture m
 검사해 observed payload class를 별도로 기록한다. Expected class 선언은 observed
 class를 덮어쓰지 않는다.
 
-AArch64 actual product는 `arm64-rph1-v1`, AArch64 ELF64, load window
+AArch64 actual product는 `arm64-rlh1-v1`, AArch64 ELF64, load window
 `[0x41000000, 0x42000000)`를 manifest로 고정한다. Product build 전 검증은 모든
 `PT_LOAD`의 file/memory bound, 비중첩, W^X, executable entry와 실행 중 payload
 immutability를 확인한다. Fixture target은 별도 build directory와 generated fixture를
@@ -155,22 +155,22 @@ Harness는 official loader marker를 `freebsd-efi` observed class로 독립 분�
 QEMU process group을 bounded cleanup하며 forced kill은 허용하지 않는다. 이는 clean guest shutdown,
 login, installer, runtime network, physical hardware 또는 PGP signature verification 증거가 아니다.
 
-## RISC-V RPH1 contract fixture
+## RISC-V RLH1 contract fixture
 
-`bootmgr.qemu-riscv64-virt-rph1-fixture`는 external-kernel product와 다른 manifest,
+`bootmgr.qemu-riscv64-virt-rlh1-fixture`는 external-kernel product와 다른 manifest,
 build directory와 marker graph를 사용한다. Fixture ELF는 Ribon tree가 소유하며 다음
 경계를 독립 소비한다.
 
 - OpenSBI `fw_dynamic`의 S-mode entry와 bootstrap hart 0
 - Ribon raw-FDT lifecycle과 payload placement
-- `a0=RPH1`, `a1=RPH1 flag` register ABI
+- `a0=RLH1`, `a1=RLH1 flag` register ABI
 - terminal entry의 `satp=0`과 masked `sstatus.SIE`
-- RPH1 magic, version, bounded table와 CRC32C
+- RLH1 magic, version, bounded table와 CRC32C
 - RISC-V provenance와 required singleton `BOOT_CPU`
 
 Harness는 fixture provenance를 external kernel과 구분한다. Success marker는
-`RIBON-RPH1-RISCV64-FIXTURE-OK`이고 `PARUS:*` runtime marker를 요구하지 않는다.
-`RIBON-RPH1-RISCV64-FIXTURE-FAIL:`은 timeout을 기다리지 않는 terminal fixture
+`RIBON-RLH1-RISCV64-FIXTURE-OK`이고 `PARUS:*` runtime marker를 요구하지 않는다.
+`RIBON-RLH1-RISCV64-FIXTURE-FAIL:`은 timeout을 기다리지 않는 terminal fixture
 failure다.
 
 ## RISC-V64 Linux raw Image 증거
@@ -192,7 +192,7 @@ RISC-V UEFI, SBI HSM SMP, production firmware 또는 모든 RISC-V Linux image �
 ## Multi-OS runtime matrix
 
 `check-multi-os-runtime`은 AArch64 Linux raw-FDT, x86_64 Linux EFI stub, FreeBSD amd64 UEFI와 RISC-V64
-Linux OpenSBI를 `qemu-runtime`으로 기록한다. AArch64·x86_64·RISC-V64 Parus protocol fixture는
+Linux OpenSBI를 `qemu-runtime`으로 기록한다. AArch64·x86_64·RISC-V64 LUCA protocol fixture는
 `qemu-contract-fixture`로 별도 기록한다. 모든 row는 동일 source revision, exact payload class,
 tuple-specific terminal, immutable payload/composed artifact, raw serial hash, cleanup complete와
 forced kill false를 요구한다. Matrix summary는 physical hardware를 `not-run`, production firmware를

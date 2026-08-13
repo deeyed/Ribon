@@ -37,7 +37,7 @@ enum RibonEntryTranslationRequirement {
  * @brief Boot Protocol이 완성하고 Architecture Backend가 소비하는 entry invocation이다.
  *
  * `arguments`의 의미는 protocol이 소유한다. Architecture Backend는 `register_abi`에 따라
- * word를 native register에 배치할 뿐 RPH1, DTB, ZBI 같은 wire 의미를 해석하지 않는다.
+ * word를 native register에 배치할 뿐 RLH1, DTB, ZBI 같은 wire 의미를 해석하지 않는다.
  */
 struct RibonEntryInvocation {
     uint32_t size; /**< Descriptor byte 크기다. */

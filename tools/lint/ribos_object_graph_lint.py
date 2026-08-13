@@ -52,7 +52,13 @@ def main() -> int:
     )
     if any(symbol not in adapter_symbols for symbol in required):
         raise RuntimeError("Ribon adapter archive omits required symbols")
-    forbidden = ("ribon_host_", "ribon_parus_", "ribon_network_", "ribon_flash_")
+    forbidden = (
+        "ribon_host_",
+        "ribon_luca_",
+        "ribon_parus_",
+        "ribon_network_",
+        "ribon_flash_",
+    )
     if any(
         symbol.startswith(prefix)
         for symbol in adapter_symbols

@@ -43,7 +43,7 @@ EXPECTED = {
         "map": "ribon.map",
         "optional": True,
         "product_id": "bootmgr.qemu-riscv64-virt-parus-external",
-        "payload_entry_abi": "riscv-rph1-v1",
+        "payload_entry_abi": "riscv-rlh1-v1",
         "boot_module_bundle": False,
         "needles": (
             "src/arch/riscv64/arch",
@@ -56,12 +56,12 @@ EXPECTED = {
             "ports/qemu/virt-aarch64/port",
         ),
     },
-    "qemu-riscv64-virt-rph1-fixture": {
+    "qemu-riscv64-virt-rlh1-fixture": {
         "architecture": "riscv64",
         "environment": "raw-fdt",
         "port": "qemu-virt-riscv64",
         "map": "ribon.map",
-        "product_id": "bootmgr.qemu-riscv64-virt-rph1-fixture",
+        "product_id": "bootmgr.qemu-riscv64-virt-rlh1-fixture",
         "boot_module_bundle": False,
         "needles": (
             "src/arch/riscv64/arch",
@@ -98,7 +98,7 @@ EXPECTED = {
             "src/arch/aarch64/arch",
             "src/image-formats/elf64.o",
             "src/image-formats/linux_aarch64.o",
-            "src/protocols/os/parus/",
+            "src/protocols/os/luca/",
             "generated/embedded_payload.o",
         ),
     },
@@ -109,7 +109,7 @@ EXPECTED = {
         "map": "ribon.map",
         "optional": True,
         "product_id": "bootmgr.qemu-aarch64-virt-parus-external",
-        "payload_entry_abi": "arm64-rph1-v1",
+        "payload_entry_abi": "arm64-rlh1-v1",
         "boot_module_bundle": False,
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
@@ -137,7 +137,7 @@ EXPECTED = {
         ),
         "forbidden": (
             "src/image-formats/elf64.o",
-            "src/protocols/os/parus/",
+            "src/protocols/os/luca/",
             "generated/embedded_payload.o",
         ),
     },
@@ -148,7 +148,7 @@ EXPECTED = {
         "map": "ribon.map",
         "optional": True,
         "product_id": "bootmgr.qemu-aarch64-virt-parus-modules",
-        "payload_entry_abi": "arm64-rph1-v1",
+        "payload_entry_abi": "arm64-rlh1-v1",
         "boot_module_bundle": True,
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
@@ -214,7 +214,7 @@ EXPECTED = {
         "map": "ribon.map",
         "optional": True,
         "product_id": "bootmgr.rpi5-aarch64-parus-modules",
-        "payload_entry_abi": "arm64-rph1-v1",
+        "payload_entry_abi": "arm64-rlh1-v1",
         "boot_module_bundle": True,
         "needles": (
             "src/environments/raw-fdt/raw_fdt",
@@ -242,7 +242,7 @@ EXPECTED = {
         "map": "ribon.map",
         "optional": True,
         "product_id": "bootmgr.x86_64-uefi-parus-external",
-        "payload_entry_abi": "amd64-rph1-v1",
+        "payload_entry_abi": "amd64-rlh1-v1",
         "needles": (
             "uefi_app.o",
             "boot_config.o",
@@ -264,7 +264,7 @@ EXPECTED = {
         ),
         "forbidden": (
             "ribon_linux_efi_protocol_plugin_descriptor",
-            "ribon_parus_protocol_plugin_descriptor",
+            "ribon_luca_protocol_plugin_descriptor",
         ),
     },
     "x86-bios-client": {

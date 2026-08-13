@@ -126,7 +126,7 @@ provenance 변조는 package checker가 거부한다.
 ## Boot Protocol
 
 RPi5 target은 Parus, Linux 또는 다른 protocol을 선택할 수 있다. RPi5 port는
-RPH1이나 특정 OS command line 의미론을 알지 않는다.
+RLH1이나 특정 OS command line 의미론을 알지 않는다.
 
 Permanent higher-half와 runtime page table은 booted OS가 소유한다.
 

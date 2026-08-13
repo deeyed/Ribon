@@ -121,13 +121,13 @@ $(UEFI_LINUX_ESP)/EFI/BOOT/BOOTX64.EFI: $(UEFI_LINUX_APP)
 $(UEFI_FIXTURE_CONFIG): tools/make_boot_config.py $(RIBON_MAKEFILES)
 	@mkdir -p $(@D)
 	$(PYTHON) $< --output $@ --entry primary --priority 100 \
-		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
+		--protocol protocol.luca --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
 		--init-image /RIBON/INIT.IMG
 
 $(UEFI_EXTERNAL_CONFIG): tools/make_boot_config.py $(RIBON_MAKEFILES)
 	@mkdir -p $(@D)
 	$(PYTHON) $< --output $@ --entry primary --priority 100 \
-		--protocol protocol.parus --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
+		--protocol protocol.luca --image image.elf64 --kernel /RIBON/PAYLOAD.ELF \
 		--init-image /RIBON/INIT.IMG
 
 $(UEFI_LINUX_CONFIG): tools/make_boot_config.py $(RIBON_MAKEFILES)

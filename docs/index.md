@@ -94,7 +94,7 @@ api/public-c-api
 :maxdepth: 2
 :caption: Boot와 복구 계약
 
-contracts/handoff/parus-handoff-v1
+contracts/handoff/luca-handoff-v1
 contracts/boot/generic-entry-and-port-services
 contracts/protocols/os-package-support-matrix
 contracts/entry/os-entry-ownership
@@ -168,6 +168,7 @@ adr/0058-installed-ribos-typed-extension-sdk
 adr/0001-legacy-os-semantic-hard-cut
 adr/0002-core-profile-platform-boundary
 adr/0003-parus-handoff-v1
+adr/0059-rlh1-luca-handoff-hard-cut
 adr/0004-kernel-owned-higher-half
 adr/0005-split-ota-authority
 adr/0006-reboot-time-overseer
@@ -205,7 +206,7 @@ references/update-and-platform-standards
 :caption: 역사적 개발 기록
 
 log/2026-07-26-r0-documentation-hard-cut
-log/2026-07-26-r1-parus-profile-and-rph1
+log/2026-07-26-r1-parus-profile-and-rlh1
 log/2026-07-26-r2-core-service-boundary
 log/2026-07-26-r3-library-plugin-protocol-hard-cut
 log/2026-07-26-r4-environment-protocol-targets
@@ -213,7 +214,7 @@ log/2026-07-26-r5-sdk-firmware-composition
 log/2026-07-27-r6-typed-service-graph
 log/2026-07-27-r7-bounded-boot-lifecycle
 log/2026-07-27-r8-deterministic-boot-media
-log/2026-07-29-w3-riscv64-rph1-fixture
+log/2026-07-29-w3-riscv64-rlh1-fixture
 log/2026-07-30-ribos-parser-pilot
 log/2026-07-30-ribos-project-hierarchy
 log/2026-07-30-ribos-typed-front-end

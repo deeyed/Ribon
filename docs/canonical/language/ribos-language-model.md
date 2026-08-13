@@ -336,7 +336,7 @@ Ribos Core Language
     + product capability manifest
 ```
 
-Parus overseer policy는 Parus protocol companion package에 속한다. Generic boot slot,
+Parus overseer policy는 LUCA protocol companion package에 속한다. Generic boot slot,
 verified image와 update transaction type은 Ribon generic package에 속한다.
 
 ## Shell 관계

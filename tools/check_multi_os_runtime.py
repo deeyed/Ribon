@@ -38,26 +38,26 @@ EXPECTED_ROWS = {
         "evidence_class": "qemu-runtime",
         "claim": "Linux RISC-V64 PID 1 and clean poweroff",
     },
-    "parus-aarch64-rph1-fixture": {
+    "parus-aarch64-rlh1-fixture": {
         "payload_class": "fixture",
         "target": "aarch64-virt-raw-fdt",
         "terminal": "required-evidence-observed",
         "evidence_class": "qemu-contract-fixture",
         "claim": "AArch64 Parus protocol entry regression fixture",
     },
-    "parus-x86_64-rph1-fixture": {
+    "parus-x86_64-rlh1-fixture": {
         "payload_class": "fixture",
         "target": "x86_64-uefi",
         "terminal": "required-evidence-observed",
         "evidence_class": "qemu-contract-fixture",
         "claim": "x86_64 Parus protocol entry regression fixture",
     },
-    "parus-riscv64-rph1-fixture": {
+    "parus-riscv64-rlh1-fixture": {
         "payload_class": "fixture",
         "target": "riscv64-virt-opensbi",
         "terminal": "required-evidence-observed",
         "evidence_class": "qemu-contract-fixture",
-        "claim": "RISC-V64 RPH1 and bootstrap-hart regression fixture",
+        "claim": "RISC-V64 RLH1 and bootstrap-hart regression fixture",
     },
 }
 

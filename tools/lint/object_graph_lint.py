@@ -29,12 +29,14 @@ SDK_MEMBERS = {
 CORE_FORBIDDEN_SYMBOLS = (
     "ribon_arch_",
     "ribon_boot_protocol_",
+    "ribon_luca_",
     "ribon_parus_",
     "ribon_uefi_",
     "ribon_rpi_",
 )
 BOOT_FORBIDDEN_SYMBOLS = (
     "ribon_generated_boot_module_",
+    "ribon_luca_",
     "ribon_parus_",
     "ribon_uefi_",
     "ribon_bios_",

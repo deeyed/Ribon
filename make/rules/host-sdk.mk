@@ -18,8 +18,8 @@ check-pe-coff: $(PE_COFF_TEST)
 check-fdt: $(FDT_TEST)
 	$(FDT_TEST)
 
-check-rph1: $(RPH1_TEST)
-	$(RPH1_TEST)
+check-rlh1: $(RLH1_TEST)
+	$(RLH1_TEST)
 
 check-arch-x86_64: $(ARCH_X86_64_TEST)
 	$(ARCH_X86_64_TEST)
@@ -68,8 +68,8 @@ check-plugin-descriptors: $(PLUGIN_DESCRIPTOR_TEST)
 check-protocol-contract: $(PROTOCOL_CONTRACT_TEST)
 	$(PROTOCOL_CONTRACT_TEST)
 
-check-parus-entry-contract: $(PARUS_ENTRY_CONTRACT_TEST)
-	$(PARUS_ENTRY_CONTRACT_TEST)
+check-luca-entry-contract: $(LUCA_ENTRY_CONTRACT_TEST)
+	$(LUCA_ENTRY_CONTRACT_TEST)
 
 check-os-packages: $(OS_PACKAGE_TEST)
 	$(OS_PACKAGE_TEST)

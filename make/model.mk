@@ -246,7 +246,7 @@ LOADER_TEST := $(TEST_BUILD_DIR)/elf64_loader_tests
 PE_COFF_TEST := $(TEST_BUILD_DIR)/pe_coff_loader_tests
 FDT_TEST := $(TEST_BUILD_DIR)/fdt_parser_tests
 RAW_FDT_CAPACITY_TEST := $(TEST_BUILD_DIR)/raw_fdt_capacity_tests
-RPH1_TEST := $(TEST_BUILD_DIR)/rph1_builder_tests
+RLH1_TEST := $(TEST_BUILD_DIR)/rlh1_builder_tests
 ARCH_X86_64_TEST := $(TEST_BUILD_DIR)/x86_64_direct_high_tests
 ARCH_AARCH64_TEST := $(TEST_BUILD_DIR)/aarch64_direct_high_tests
 ARCH_OPS_TESTS := $(RIBON_ARCHES:%=$(TEST_BUILD_DIR)/arch_ops_%_tests)
@@ -258,7 +258,7 @@ BOOT_MODULE_BUNDLE_TEST := $(TEST_BUILD_DIR)/boot_module_bundle_tests
 MEDIA_PIPELINE_TEST := $(TEST_BUILD_DIR)/media_pipeline_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
-PARUS_ENTRY_CONTRACT_TEST := $(TEST_BUILD_DIR)/parus_entry_contract_tests
+LUCA_ENTRY_CONTRACT_TEST := $(TEST_BUILD_DIR)/luca_entry_contract_tests
 OS_PACKAGE_TEST := $(TEST_BUILD_DIR)/os_package_tests
 LINUX_BOOT_TEST := $(TEST_BUILD_DIR)/linux_boot_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
@@ -284,9 +284,9 @@ MODE_DESCRIPTOR_TESTS := \
 
 RAW_IMAGE_FORMAT_SRCS ?= src/image-formats/elf64.c
 RAW_PROTOCOL_SRCS ?= \
-	src/protocols/os/parus/protocol.c \
-	src/protocols/os/parus/rph1_builder.c \
-	src/protocols/os/parus/rph1_parser.c
+	src/protocols/os/luca/protocol.c \
+	src/protocols/os/luca/rlh1_builder.c \
+	src/protocols/os/luca/rlh1_parser.c
 
 RAW_COMMON_SRCS := \
 	src/core/arena.c \
@@ -459,17 +459,17 @@ QEMU_RISCV64_LINUX_IMAGE := $(QEMU_RISCV64_LINUX_DIR)/ribon.bin
 QEMU_RISCV64_LINUX_MODULE_PROVENANCE := \
 	$(QEMU_RISCV64_LINUX_DIR)/results/boot-modules.json
 
-QEMU_RISCV64_RPH1_FIXTURE_DIR := \
-	$(TARGET_BUILD_ROOT)/qemu-riscv64-virt-rph1-fixture
-QEMU_RISCV64_RPH1_FIXTURE_MANIFEST := \
-	products/bootmgr/manifests/qemu-riscv64-virt-rph1-fixture.json
-QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD := \
-	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/payload.elf
-QEMU_RISCV64_RPH1_FIXTURE_IMAGE := \
-	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/ribon.bin
-QEMU_RISCV64_RPH1_FIXTURE_OBJS := \
-	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer.o \
-	$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer_entry.o
+QEMU_RISCV64_RLH1_FIXTURE_DIR := \
+	$(TARGET_BUILD_ROOT)/qemu-riscv64-virt-rlh1-fixture
+QEMU_RISCV64_RLH1_FIXTURE_MANIFEST := \
+	products/bootmgr/manifests/qemu-riscv64-virt-rlh1-fixture.json
+QEMU_RISCV64_RLH1_FIXTURE_PAYLOAD := \
+	$(QEMU_RISCV64_RLH1_FIXTURE_DIR)/payload.elf
+QEMU_RISCV64_RLH1_FIXTURE_IMAGE := \
+	$(QEMU_RISCV64_RLH1_FIXTURE_DIR)/ribon.bin
+QEMU_RISCV64_RLH1_FIXTURE_OBJS := \
+	$(QEMU_RISCV64_RLH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rlh1_consumer.o \
+	$(QEMU_RISCV64_RLH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rlh1_consumer_entry.o
 
 RPI5_DIR := $(TARGET_BUILD_ROOT)/rpi5-aarch64-raw-fdt
 RPI5_MANIFEST := products/bootmgr/manifests/rpi5-aarch64-parus.json
@@ -580,9 +580,9 @@ UEFI_SRCS := \
 	src/arch/x86_64/io.c \
 	src/modes/normal.c \
 	src/image-formats/elf64.c \
-	src/protocols/os/parus/protocol.c \
-	src/protocols/os/parus/rph1_builder.c \
-	src/protocols/os/parus/rph1_parser.c \
+	src/protocols/os/luca/protocol.c \
+	src/protocols/os/luca/rlh1_builder.c \
+	src/protocols/os/luca/rlh1_parser.c \
 	src/environments/uefi-app/uefi_app.c \
 	ports/qemu/pc-x86_64/port.c \
 	targets/x86_64-uefi-app/entry.c

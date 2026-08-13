@@ -91,13 +91,13 @@ class ExternalParusPayloadTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.validator = load_validator()
 
-    def test_accepts_aarch64_rph1_payload_in_product_window(self) -> None:
+    def test_accepts_aarch64_rlh1_payload_in_product_window(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             payload = Path(raw) / "parus.elf"
             write_elf(payload)
             report = self.validator.validate(ARM64_MANIFEST, payload)
             self.assertTrue(report["success"])
-            self.assertEqual(report["entry_abi"], "arm64-rph1-v1")
+            self.assertEqual(report["entry_abi"], "arm64-rlh1-v1")
             self.assertEqual(report["payload"]["class"], "external-kernel")
             self.assertEqual(report["payload"]["format"], "elf64")
             self.assertEqual(
@@ -117,14 +117,14 @@ class ExternalParusPayloadTests(unittest.TestCase):
                 "bootmgr.qemu-aarch64-virt-parus-modules",
             )
 
-    def test_accepts_riscv64_rph1_payload_in_product_window(self) -> None:
+    def test_accepts_riscv64_rlh1_payload_in_product_window(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             payload = Path(raw) / "parus.elf"
             write_elf(payload, machine=243, base=0x80400000)
             report = self.validator.validate(RISCV64_MANIFEST, payload)
             self.assertTrue(report["success"])
             self.assertEqual(report["architecture"], "riscv64")
-            self.assertEqual(report["entry_abi"], "riscv-rph1-v1")
+            self.assertEqual(report["entry_abi"], "riscv-rlh1-v1")
             self.assertTrue(report["payload"]["immutable"])
 
     def test_accepts_rpi5_aarch64_payload_in_product_window(self) -> None:
@@ -233,7 +233,7 @@ class ExternalParusPayloadTests(unittest.TestCase):
             document = json.loads(ARM64_MANIFEST.read_text(encoding="utf-8"))
             document["payload"]["entry_abi"] = "arm64-fdt-v1"
             manifest.write_text(json.dumps(document), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "RPH1 tuple"):
+            with self.assertRaisesRegex(ValueError, "RLH1 tuple"):
                 self.validator.validate(manifest, payload)
 
     def test_rejects_fixture_marker_for_external_product(self) -> None:

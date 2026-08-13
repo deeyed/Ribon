@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#include <Ribon/protocols/os/parus/rph1.h>
+#include <Ribon/protocols/os/luca/rlh1.h>
 
 #define FIXTURE_UART_BASE 0x10000000ull
 #define FIXTURE_UART_THR 0u
@@ -12,7 +12,7 @@
 
 static const char fixture_provenance[]
     __attribute__((used, section(".rodata.fixture"))) =
-        "RIBON-RISCV64-RPH1-FIXTURE-V1";
+        "RIBON-RISCV64-RLH1-FIXTURE-V1";
 
 /** @brief QEMU virt 16550 UART에 한 byte를 bounded polling으로 기록한다. */
 static int fixture_putc(unsigned char value) {
@@ -38,7 +38,7 @@ static void fixture_write(const char *text) {
 
 /** @brief Stable failure receipt를 기록하고 terminal wait로 전환한다. */
 static _Noreturn void fixture_fail(const char *reason) {
-    fixture_write("RIBON-RPH1-RISCV64-FIXTURE-FAIL:");
+    fixture_write("RIBON-RLH1-RISCV64-FIXTURE-FAIL:");
     fixture_write(reason);
     fixture_write("\r\n");
     for (;;) {
@@ -69,13 +69,27 @@ static uint64_t fixture_read_u64(const unsigned char *bytes, uint64_t offset) {
     return value;
 }
 
-/** @brief RPH1 CRC field를 0으로 간주해 독립 CRC32C를 계산한다. */
+/** @brief RLH1 domain separator를 Ribon producer와 독립적으로 검증한다. */
+static int fixture_domain_is_valid(const unsigned char *bytes) {
+    static const unsigned char expected[RIBON_LUCA_RLH1_DOMAIN_SIZE] = {
+        'R', 'I', 'B', 'O', 'N', '_', 'L', 'U',
+        'C', 'A', '_', 'R', 'L', 'H', '1', '\0',
+    };
+    for (uint32_t index = 0u; index < RIBON_LUCA_RLH1_DOMAIN_SIZE; ++index) {
+        if (bytes[RIBON_LUCA_RLH1_HEADER_DOMAIN_OFFSET + index] != expected[index]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/** @brief RLH1 CRC field를 0으로 간주해 독립 CRC32C를 계산한다. */
 static uint32_t fixture_crc32c(const unsigned char *bytes, uint32_t size) {
     uint32_t crc = UINT32_MAX;
     for (uint32_t index = 0u; index < size; ++index) {
         unsigned char value = bytes[index];
-        if (index >= RIBON_PARUS_RPH1_HEADER_CRC32C_OFFSET &&
-            index < RIBON_PARUS_RPH1_HEADER_CRC32C_OFFSET + 4u) {
+        if (index >= RIBON_LUCA_RLH1_HEADER_CRC32C_OFFSET &&
+            index < RIBON_LUCA_RLH1_HEADER_CRC32C_OFFSET + 4u) {
             value = 0u;
         }
         crc ^= value;
@@ -87,61 +101,62 @@ static uint32_t fixture_crc32c(const unsigned char *bytes, uint32_t size) {
     return ~crc;
 }
 
-/** @brief RPH1 header와 section table의 bounded shape를 검증한다. */
+/** @brief RLH1 header와 section table의 bounded shape를 검증한다. */
 static void fixture_validate_header(
     const unsigned char *bytes,
     uint32_t *total_size_out,
     uint32_t *table_offset_out,
     uint16_t *section_count_out) {
     const uint32_t total_size =
-        fixture_read_u32(bytes, RIBON_PARUS_RPH1_HEADER_TOTAL_SIZE_OFFSET);
+        fixture_read_u32(bytes, RIBON_LUCA_RLH1_HEADER_TOTAL_SIZE_OFFSET);
     const uint32_t table_offset =
         fixture_read_u32(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_SECTION_TABLE_OFFSET);
+            RIBON_LUCA_RLH1_HEADER_SECTION_TABLE_OFFSET);
     const uint16_t section_count =
         fixture_read_u16(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_SECTION_COUNT_OFFSET);
+            RIBON_LUCA_RLH1_HEADER_SECTION_COUNT_OFFSET);
     const uint64_t table_end =
         (uint64_t)table_offset +
-        ((uint64_t)section_count * RIBON_PARUS_RPH1_SECTION_ENTRY_SIZE);
+        ((uint64_t)section_count * RIBON_LUCA_RLH1_SECTION_ENTRY_SIZE);
 
-    if (fixture_read_u32(bytes, RIBON_PARUS_RPH1_HEADER_MAGIC_OFFSET) !=
-            RIBON_PARUS_RPH1_MAGIC ||
+    if (fixture_read_u32(bytes, RIBON_LUCA_RLH1_HEADER_MAGIC_OFFSET) !=
+            RIBON_LUCA_RLH1_MAGIC ||
         fixture_read_u16(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_VERSION_MAJOR_OFFSET) !=
-            RIBON_PARUS_RPH1_VERSION_MAJOR ||
+            RIBON_LUCA_RLH1_HEADER_VERSION_MAJOR_OFFSET) !=
+            RIBON_LUCA_RLH1_VERSION_MAJOR ||
         fixture_read_u16(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_VERSION_MINOR_OFFSET) >
-            RIBON_PARUS_RPH1_VERSION_MINOR ||
-        fixture_read_u16(bytes, RIBON_PARUS_RPH1_HEADER_SIZE_OFFSET) !=
-            RIBON_PARUS_RPH1_HEADER_SIZE ||
+            RIBON_LUCA_RLH1_HEADER_VERSION_MINOR_OFFSET) >
+            RIBON_LUCA_RLH1_VERSION_MINOR ||
+        fixture_read_u16(bytes, RIBON_LUCA_RLH1_HEADER_SIZE_OFFSET) !=
+            RIBON_LUCA_RLH1_HEADER_SIZE ||
         fixture_read_u16(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_SECTION_ENTRY_SIZE_OFFSET) !=
-            RIBON_PARUS_RPH1_SECTION_ENTRY_SIZE ||
+            RIBON_LUCA_RLH1_HEADER_SECTION_ENTRY_SIZE_OFFSET) !=
+            RIBON_LUCA_RLH1_SECTION_ENTRY_SIZE ||
         section_count == 0u ||
-        section_count > RIBON_PARUS_RPH1_MAX_SECTIONS ||
-        total_size < RIBON_PARUS_RPH1_HEADER_SIZE ||
-        total_size > RIBON_PARUS_RPH1_MAX_TOTAL_SIZE ||
-        table_offset < RIBON_PARUS_RPH1_HEADER_SIZE ||
-        (table_offset % RIBON_PARUS_RPH1_PAYLOAD_ALIGNMENT) != 0u ||
+        section_count > RIBON_LUCA_RLH1_MAX_SECTIONS ||
+        total_size < RIBON_LUCA_RLH1_HEADER_SIZE ||
+        total_size > RIBON_LUCA_RLH1_MAX_TOTAL_SIZE ||
+        table_offset < RIBON_LUCA_RLH1_HEADER_SIZE ||
+        (table_offset % RIBON_LUCA_RLH1_PAYLOAD_ALIGNMENT) != 0u ||
         table_end > total_size ||
         fixture_read_u16(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_RESERVED0_OFFSET) != 0u ||
+            RIBON_LUCA_RLH1_HEADER_RESERVED0_OFFSET) != 0u ||
         fixture_read_u32(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_RESERVED1_OFFSET) != 0u ||
+            RIBON_LUCA_RLH1_HEADER_RESERVED1_OFFSET) != 0u ||
+        !fixture_domain_is_valid(bytes) ||
         fixture_read_u64(
             bytes,
-            RIBON_PARUS_RPH1_HEADER_RESERVED2_OFFSET) != 0u) {
+            RIBON_LUCA_RLH1_HEADER_RESERVED2_OFFSET) != 0u) {
         fixture_fail("header");
     }
-    if (fixture_read_u32(bytes, RIBON_PARUS_RPH1_HEADER_CRC32C_OFFSET) !=
+    if (fixture_read_u32(bytes, RIBON_LUCA_RLH1_HEADER_CRC32C_OFFSET) !=
         fixture_crc32c(bytes, total_size)) {
         fixture_fail("crc32c");
     }
@@ -163,69 +178,69 @@ static uint64_t fixture_validate_sections(
     for (uint16_t index = 0u; index < section_count; ++index) {
         const unsigned char *section =
             bytes + table_offset +
-            ((uint64_t)index * RIBON_PARUS_RPH1_SECTION_ENTRY_SIZE);
+            ((uint64_t)index * RIBON_LUCA_RLH1_SECTION_ENTRY_SIZE);
         const uint32_t type =
-            fixture_read_u32(section, RIBON_PARUS_RPH1_SECTION_TYPE_OFFSET);
+            fixture_read_u32(section, RIBON_LUCA_RLH1_SECTION_TYPE_OFFSET);
         const uint32_t flags =
-            fixture_read_u32(section, RIBON_PARUS_RPH1_SECTION_FLAGS_OFFSET);
+            fixture_read_u32(section, RIBON_LUCA_RLH1_SECTION_FLAGS_OFFSET);
         const uint64_t offset =
             fixture_read_u64(
                 section,
-                RIBON_PARUS_RPH1_SECTION_PAYLOAD_OFFSET);
+                RIBON_LUCA_RLH1_SECTION_PAYLOAD_OFFSET);
         const uint64_t length =
             fixture_read_u64(
                 section,
-                RIBON_PARUS_RPH1_SECTION_LENGTH_OFFSET);
+                RIBON_LUCA_RLH1_SECTION_LENGTH_OFFSET);
         const uint32_t alignment =
             fixture_read_u32(
                 section,
-                RIBON_PARUS_RPH1_SECTION_ALIGNMENT_OFFSET);
+                RIBON_LUCA_RLH1_SECTION_ALIGNMENT_OFFSET);
         const unsigned char *payload;
 
         if (offset > total_size ||
             length > (uint64_t)total_size - offset ||
-            alignment != RIBON_PARUS_RPH1_PAYLOAD_ALIGNMENT ||
+            alignment != RIBON_LUCA_RLH1_PAYLOAD_ALIGNMENT ||
             (offset % alignment) != 0u ||
             fixture_read_u32(
                 section,
-                RIBON_PARUS_RPH1_SECTION_RESERVED_OFFSET) != 0u) {
+                RIBON_LUCA_RLH1_SECTION_RESERVED_OFFSET) != 0u) {
             fixture_fail("section-bounds");
         }
         payload = bytes + offset;
-        if (type == RIBON_PARUS_RPH1_SECTION_PROVENANCE) {
+        if (type == RIBON_LUCA_RLH1_SECTION_PROVENANCE) {
             ++provenance_count;
-            if (flags != RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND ||
-                length != RIBON_PARUS_RPH1_PROVENANCE_SIZE ||
+            if (flags != RIBON_LUCA_RLH1_SECTION_REQUIRED_TO_UNDERSTAND ||
+                length != RIBON_LUCA_RLH1_PROVENANCE_SIZE ||
                 fixture_read_u32(payload, 4u) !=
                     FIXTURE_RISCV64_PROVENANCE_ARCH ||
                 fixture_read_u32(payload, 20u) != 0u ||
                 fixture_read_u64(payload, 24u) != 0u) {
                 fixture_fail("provenance");
             }
-        } else if (type == RIBON_PARUS_RPH1_SECTION_BOOT_CPU) {
+        } else if (type == RIBON_LUCA_RLH1_SECTION_BOOT_CPU) {
             ++boot_cpu_count;
-            if (flags != RIBON_PARUS_RPH1_SECTION_REQUIRED_TO_UNDERSTAND ||
-                length != RIBON_PARUS_RPH1_BOOT_CPU_SIZE ||
+            if (flags != RIBON_LUCA_RLH1_SECTION_REQUIRED_TO_UNDERSTAND ||
+                length != RIBON_LUCA_RLH1_BOOT_CPU_SIZE ||
                 fixture_read_u32(
                     payload,
-                    RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_OFFSET) !=
-                    RIBON_PARUS_RPH1_BOOT_CPU_NAMESPACE_RISCV_HART_ID ||
+                    RIBON_LUCA_RLH1_BOOT_CPU_NAMESPACE_OFFSET) !=
+                    RIBON_LUCA_RLH1_BOOT_CPU_NAMESPACE_RISCV_HART_ID ||
                 fixture_read_u32(
                     payload,
-                    RIBON_PARUS_RPH1_BOOT_CPU_FLAGS_OFFSET) !=
-                    RIBON_PARUS_RPH1_BOOT_CPU_FLAG_BOOTSTRAP ||
+                    RIBON_LUCA_RLH1_BOOT_CPU_FLAGS_OFFSET) !=
+                    RIBON_LUCA_RLH1_BOOT_CPU_FLAG_BOOTSTRAP ||
                 fixture_read_u64(
                     payload,
-                    RIBON_PARUS_RPH1_BOOT_CPU_RESERVED0_OFFSET) != 0u ||
+                    RIBON_LUCA_RLH1_BOOT_CPU_RESERVED0_OFFSET) != 0u ||
                 fixture_read_u64(
                     payload,
-                    RIBON_PARUS_RPH1_BOOT_CPU_RESERVED1_OFFSET) != 0u) {
+                    RIBON_LUCA_RLH1_BOOT_CPU_RESERVED1_OFFSET) != 0u) {
                 fixture_fail("boot-cpu-shape");
             }
             boot_cpu_id =
                 fixture_read_u64(
                     payload,
-                    RIBON_PARUS_RPH1_BOOT_CPU_ID_OFFSET);
+                    RIBON_LUCA_RLH1_BOOT_CPU_ID_OFFSET);
         }
     }
     if (provenance_count != 1u) {
@@ -238,15 +253,15 @@ static uint64_t fixture_validate_sections(
 }
 
 /**
- * @brief Ribon의 RISC-V Parus entry ABI와 RPH1 artifact를 QEMU에서 소비한다.
+ * @brief Ribon의 RISC-V LUCA entry ABI와 RLH1 artifact를 QEMU에서 소비한다.
  *
- * 이 fixture는 실제 Parus kernel이 아니며 Ribon 소유 contract acceptance만 제공한다.
+ * 이 fixture는 실제 LUCA kernel이 아니며 Ribon 소유 contract acceptance만 제공한다.
  */
-_Noreturn void ribon_rph1_fixture_main(
-    uint64_t rph1_address,
+_Noreturn void ribon_rlh1_fixture_main(
+    uint64_t rlh1_address,
     uint64_t entry_flags) {
     const unsigned char *bytes =
-        (const unsigned char *)(uintptr_t)rph1_address;
+        (const unsigned char *)(uintptr_t)rlh1_address;
     uint64_t satp;
     uint64_t sstatus;
     uint32_t total_size;
@@ -255,10 +270,10 @@ _Noreturn void ribon_rph1_fixture_main(
     uint64_t boot_cpu_id;
 
     (void)fixture_provenance;
-    fixture_write("RIBON-RPH1-RISCV64-FIXTURE-ENTRY\r\n");
-    if (rph1_address == 0u ||
-        (rph1_address % RIBON_PARUS_RPH1_PAYLOAD_ALIGNMENT) != 0u ||
-        entry_flags != RIBON_PARUS_ENTRY_FLAG_RPH1) {
+    fixture_write("RIBON-RLH1-RISCV64-FIXTURE-ENTRY\r\n");
+    if (rlh1_address == 0u ||
+        (rlh1_address % RIBON_LUCA_RLH1_PAYLOAD_ALIGNMENT) != 0u ||
+        entry_flags != RIBON_LUCA_ENTRY_FLAG_RLH1) {
         fixture_fail("entry-abi");
     }
     __asm__ __volatile__("csrr %0, satp" : "=r"(satp));
@@ -266,14 +281,14 @@ _Noreturn void ribon_rph1_fixture_main(
     if (satp != 0u || (sstatus & FIXTURE_SSTATUS_SIE) != 0u) {
         fixture_fail("entry-state");
     }
-    fixture_write("RIBON-RPH1-RISCV64-FIXTURE-MMU-OFF\r\n");
+    fixture_write("RIBON-RLH1-RISCV64-FIXTURE-MMU-OFF\r\n");
 
     fixture_validate_header(
         bytes,
         &total_size,
         &table_offset,
         &section_count);
-    fixture_write("RIBON-RPH1-RISCV64-FIXTURE-RPH1-OK\r\n");
+    fixture_write("RIBON-RLH1-RISCV64-FIXTURE-RLH1-OK\r\n");
     boot_cpu_id = fixture_validate_sections(
         bytes,
         total_size,
@@ -282,8 +297,8 @@ _Noreturn void ribon_rph1_fixture_main(
     if (boot_cpu_id != 0u) {
         fixture_fail("boot-hart-id");
     }
-    fixture_write("RIBON-RPH1-RISCV64-FIXTURE-BOOT-CPU-OK\r\n");
-    fixture_write("RIBON-RPH1-RISCV64-FIXTURE-OK\r\n");
+    fixture_write("RIBON-RLH1-RISCV64-FIXTURE-BOOT-CPU-OK\r\n");
+    fixture_write("RIBON-RLH1-RISCV64-FIXTURE-OK\r\n");
     for (;;) {
         __asm__ __volatile__("wfi");
     }

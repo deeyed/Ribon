@@ -259,24 +259,24 @@ static int test_fat32(void) {
 static int test_config(void) {
     static const unsigned char valid[] =
         "version=1\n"
-        "entry=backup\npriority=10\nprotocol=parus\nimage=elf64\n"
+        "entry=backup\npriority=10\nprotocol=luca\nimage=elf64\n"
         "kernel=/RIBON/BACKUP.ELF\nend\n"
-        "entry=primary\npriority=100\nprotocol=parus\nimage=elf64\n"
+        "entry=primary\npriority=100\nprotocol=luca\nimage=elf64\n"
         "kernel=/RIBON/PAYLOAD.ELF\ninit_image=/RIBON/INIT.IMG\n"
         "module=/RIBON/EXTRA.IMG\ncmdline=console=ttyS0\nend\n";
     static const unsigned char duplicate_init[] =
-        "version=1\nentry=bad\npriority=1\nprotocol=parus\nimage=elf64\n"
+        "version=1\nentry=bad\npriority=1\nprotocol=luca\nimage=elf64\n"
         "kernel=/RIBON/PAYLOAD.ELF\ninit_image=/RIBON/A.IMG\n"
         "init_image=/RIBON/B.IMG\nend\n";
     static const unsigned char traversal[] =
-        "version=1\nentry=bad\npriority=1\nprotocol=parus\nimage=elf64\n"
+        "version=1\nentry=bad\npriority=1\nprotocol=luca\nimage=elf64\n"
         "kernel=/RIBON/../PAYLOAD.ELF\nend\n";
     static const unsigned char unknown[] =
-        "version=1\nentry=bad\npriority=1\nprotocol=parus\nimage=elf64\n"
+        "version=1\nentry=bad\npriority=1\nprotocol=luca\nimage=elf64\n"
         "kernel=/RIBON/PAYLOAD.ELF\nrequired-unknown=x\nend\n";
     static const unsigned char tied[] =
-        "version=1\nentry=a\npriority=1\nprotocol=parus\nimage=elf64\nkernel=/A\nend\n"
-        "entry=b\npriority=1\nprotocol=parus\nimage=elf64\nkernel=/B\nend\n";
+        "version=1\nentry=a\npriority=1\nprotocol=luca\nimage=elf64\nkernel=/A\nend\n"
+        "entry=b\npriority=1\nprotocol=luca\nimage=elf64\nkernel=/B\nend\n";
     struct RibonBootConfiguration configuration;
     const struct RibonBootConfigEntry *selected = 0;
     const int valid_parse = ribon_boot_configuration_parse(valid, sizeof(valid) - 1u, &configuration);
@@ -329,7 +329,7 @@ static int test_fuzz_smoke(void) {
         .partition_capacity = 4u,
     };
     static const unsigned char config[] =
-        "version=1\nentry=primary\npriority=1\nprotocol=parus\nimage=elf64\n"
+        "version=1\nentry=primary\npriority=1\nprotocol=luca\nimage=elf64\n"
         "kernel=/RIBON/PAYLOAD.ELF\nend\n";
     for (uint32_t index = 0u; index < 64u; ++index) {
         build_gpt_fixture(0);

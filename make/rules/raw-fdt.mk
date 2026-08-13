@@ -284,24 +284,24 @@ $(QEMU_RISCV64_DIR)/obj/targets/qemu-riscv64-virt-opensbi/entry.o: \
 	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
 		-mabi=lp64d -mcmodel=medany -c $< -o $@
 
-$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer.o: \
-	tests/fixtures/riscv64/rph1_consumer.c
+$(QEMU_RISCV64_RLH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rlh1_consumer.o: \
+	tests/fixtures/riscv64/rlh1_consumer.c
 	@mkdir -p $(@D)
 	$(RISCV64_CC) $(RISCV64_FLAGS) $(DEPFLAGS) -c $< -o $@
 
-$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rph1_consumer_entry.o: \
-	tests/fixtures/riscv64/rph1_consumer_entry.S
+$(QEMU_RISCV64_RLH1_FIXTURE_DIR)/obj/tests/fixtures/riscv64/rlh1_consumer_entry.o: \
+	tests/fixtures/riscv64/rlh1_consumer_entry.S
 	@mkdir -p $(@D)
 	$(RISCV64_CC) --target=riscv64-none-elf -march=rv64gc \
 		-mabi=lp64d -mcmodel=medany -c $< -o $@
 
-$(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD): \
-	$(QEMU_RISCV64_RPH1_FIXTURE_OBJS) \
-	tests/fixtures/riscv64/rph1_consumer.ld
+$(QEMU_RISCV64_RLH1_FIXTURE_PAYLOAD): \
+	$(QEMU_RISCV64_RLH1_FIXTURE_OBJS) \
+	tests/fixtures/riscv64/rlh1_consumer.ld
 	$(LD_LLD) -m elf64lriscv \
-		-T tests/fixtures/riscv64/rph1_consumer.ld \
-		-Map=$(QEMU_RISCV64_RPH1_FIXTURE_DIR)/payload.map \
-		-o $@ $(QEMU_RISCV64_RPH1_FIXTURE_OBJS)
+		-T tests/fixtures/riscv64/rlh1_consumer.ld \
+		-Map=$(QEMU_RISCV64_RLH1_FIXTURE_DIR)/payload.map \
+		-o $@ $(QEMU_RISCV64_RLH1_FIXTURE_OBJS)
 
 $(QEMU_RISCV64_ELF): $(QEMU_RISCV64_OBJS) \
 	targets/qemu-riscv64-virt-opensbi/linker.ld
@@ -336,30 +336,30 @@ qemu-riscv64-virt-parus-smoke: qemu-riscv64-virt-parus-product
 		--log $(RESULTS_DIR)/qemu-riscv64-virt-parus.log \
 		--result $(RESULTS_DIR)/qemu-riscv64-virt-parus.json
 
-qemu-riscv64-virt-rph1-fixture-product: \
-	$(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD)
+qemu-riscv64-virt-rlh1-fixture-product: \
+	$(QEMU_RISCV64_RLH1_FIXTURE_PAYLOAD)
 	$(MAKE) --no-print-directory \
-		QEMU_RISCV64_DIR=$(abspath $(QEMU_RISCV64_RPH1_FIXTURE_DIR)) \
-		QEMU_RISCV64_MANIFEST=$(QEMU_RISCV64_RPH1_FIXTURE_MANIFEST) \
-		QEMU_RISCV64_PAYLOAD=$(abspath $(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD)) \
-		$(abspath $(QEMU_RISCV64_RPH1_FIXTURE_IMAGE))
+		QEMU_RISCV64_DIR=$(abspath $(QEMU_RISCV64_RLH1_FIXTURE_DIR)) \
+		QEMU_RISCV64_MANIFEST=$(QEMU_RISCV64_RLH1_FIXTURE_MANIFEST) \
+		QEMU_RISCV64_PAYLOAD=$(abspath $(QEMU_RISCV64_RLH1_FIXTURE_PAYLOAD)) \
+		$(abspath $(QEMU_RISCV64_RLH1_FIXTURE_IMAGE))
 
-qemu-riscv64-virt-rph1-fixture-smoke: \
-	qemu-riscv64-virt-rph1-fixture-product
+qemu-riscv64-virt-rlh1-fixture-smoke: \
+	qemu-riscv64-virt-rlh1-fixture-product
 	$(PYTHON) tools/qemu_target_smoke.py \
 		--target riscv64-virt-opensbi --qemu $(QEMU_RISCV64) \
-		--image $(QEMU_RISCV64_RPH1_FIXTURE_IMAGE) \
+		--image $(QEMU_RISCV64_RLH1_FIXTURE_IMAGE) \
 		--firmware $(RISCV64_OPENSBI_FIRMWARE) \
-		--payload $(QEMU_RISCV64_RPH1_FIXTURE_PAYLOAD) \
+		--payload $(QEMU_RISCV64_RLH1_FIXTURE_PAYLOAD) \
 		--expected-payload-class fixture \
-		--product-manifest $(QEMU_RISCV64_RPH1_FIXTURE_MANIFEST) \
-		--required-marker RIBON-RPH1-RISCV64-FIXTURE-ENTRY \
-		--required-marker RIBON-RPH1-RISCV64-FIXTURE-MMU-OFF \
-		--required-marker RIBON-RPH1-RISCV64-FIXTURE-RPH1-OK \
-		--required-marker RIBON-RPH1-RISCV64-FIXTURE-BOOT-CPU-OK \
+		--product-manifest $(QEMU_RISCV64_RLH1_FIXTURE_MANIFEST) \
+		--required-marker RIBON-RLH1-RISCV64-FIXTURE-ENTRY \
+		--required-marker RIBON-RLH1-RISCV64-FIXTURE-MMU-OFF \
+		--required-marker RIBON-RLH1-RISCV64-FIXTURE-RLH1-OK \
+		--required-marker RIBON-RLH1-RISCV64-FIXTURE-BOOT-CPU-OK \
 		--source-revision $(shell git rev-parse HEAD) \
-		--log $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.log \
-		--result $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.json
+		--log $(RESULTS_DIR)/qemu-riscv64-virt-rlh1-fixture.log \
+		--result $(RESULTS_DIR)/qemu-riscv64-virt-rlh1-fixture.json
 
 $(QEMU_RISCV64_LINUX_EXTERNAL_STAMP): \
 		$(QEMU_RISCV64_LINUX_INPUT_DESCRIPTOR) \
@@ -447,16 +447,16 @@ check-multi-os-runtime: \
 	qemu-riscv64-virt-linux-smoke \
 	qemu-aarch64-virt-raw-fdt-smoke \
 	x86_64-uefi-parus-fixture-smoke \
-	qemu-riscv64-virt-rph1-fixture-smoke
+	qemu-riscv64-virt-rlh1-fixture-smoke
 	$(PYTHON) tools/check_multi_os_runtime.py \
 		--source-revision $(shell git rev-parse HEAD) \
 		--linux-aarch64-raw-fdt $(RESULTS_DIR)/qemu-aarch64-virt-linux.json \
 		--linux-x86_64-uefi $(UEFI_LINUX_DIR)/results/qemu.json \
 		--freebsd-amd64-uefi $(UEFI_FREEBSD_DIR)/results/qemu.json \
 		--linux-riscv64-opensbi $(RESULTS_DIR)/qemu-riscv64-virt-linux.json \
-		--parus-aarch64-rph1-fixture $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.json \
-		--parus-x86_64-rph1-fixture $(UEFI_FIXTURE_DIR)/results/qemu.json \
-		--parus-riscv64-rph1-fixture $(RESULTS_DIR)/qemu-riscv64-virt-rph1-fixture.json \
+		--parus-aarch64-rlh1-fixture $(RESULTS_DIR)/qemu-aarch64-virt-raw-fdt.json \
+		--parus-x86_64-rlh1-fixture $(UEFI_FIXTURE_DIR)/results/qemu.json \
+		--parus-riscv64-rlh1-fixture $(RESULTS_DIR)/qemu-riscv64-virt-rlh1-fixture.json \
 		--output $(RESULTS_DIR)/multi-os/R04/matrix.json
 
 $(RPI5_PARUS_VALIDATION): \

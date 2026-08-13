@@ -54,7 +54,7 @@ product + architecture + environment 또는 personality
 | Ribon UEFI-compatible firmware product | 별도 target별 지정 | firmware provider evidence |
 | Ribon BIOS-compatible firmware product | 별도 target별 지정 | firmware provider evidence |
 
-Boot Protocol 지원 등급은 target과 별도로 matrix에 기록한다. Parus protocol 성공이
+Boot Protocol 지원 등급은 target과 별도로 matrix에 기록한다. LUCA protocol 성공이
 Linux, FreeBSD, Multiboot 지원을 의미하지 않는다.
 
 ## Acceptance
@@ -98,8 +98,8 @@ RISC-V SBI target의 독립 acceptance는 다음 경계를 모두 확인해야 �
 
 - OpenSBI native `a0=hartid`, `a1=FDT` capture
 - raw-FDT environment의 `boot_cpu_id`와 machine-description seal
-- RPH1 `BOOT_CPU` required section의 bounded producer/parser 검증
-- primary OS entry의 `a0=RPH1`, `a1=flags`
+- RLH1 `BOOT_CPU` required section의 bounded producer/parser 검증
+- primary OS entry의 `a0=RLH1`, `a1=flags`
 - S-mode, interrupt-masked, `satp=0` terminal transfer
 - FDT reserve map과 `/reserved-memory`의 firmware-owned normalization
 - 선택한 Linux product에서는 2 MiB-aligned Image, `a0=hartid`, `a1=FDT`, PID 1과 clean poweroff

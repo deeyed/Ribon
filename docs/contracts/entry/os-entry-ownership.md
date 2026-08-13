@@ -79,16 +79,16 @@ Handoff image-layout descriptor는 이 정책의 입력이지 page-table authori
 | RISC-V SBI | S-mode, interrupt mask와 `satp=0` normal entry contract 정규화 |
 
 RISC-V SBI에는 서로 다른 두 register ABI가 있다. OpenSBI가 Ribon target에 전달하는
-native entry와 SBI HSM secondary entry는 `a0=hartid`를 사용한다. Parus Boot Protocol의
-primary OS entry는 `a0=RPH1`, `a1=entry flags`를 사용한다. Architecture Backend는
+native entry와 SBI HSM secondary entry는 `a0=hartid`를 사용한다. LUCA Boot Protocol의
+primary OS entry는 `a0=RLH1`, `a1=entry flags`를 사용한다. Architecture Backend는
 protocol-owned argument word를 register에 배치할 뿐 의미를 해석하지 않으며,
-RPH1 producer는 native bootstrap hart ID를 `BOOT_CPU` section으로 보존한다.
+RLH1 producer는 native bootstrap hart ID를 `BOOT_CPU` section으로 보존한다.
 
 RISC-V normal entry bridge는 terminal transfer 전에 `sie=0`, `sstatus.SIE=0`,
 `satp=0`, `sfence.vma`와 `fence.i` ordering을 만족해야 한다. 이 전환은 Ribon이
 permanent Sv39/Sv48 page table을 소유한다는 의미가 아니다. Parus EB3와 RISC-V VM
 backend가 permanent mapping, high stack, trap vector와 identity lifetime을 소유한다.
-Parus Boot Protocol은 이 경로에 `RIBON_ENTRY_TRANSLATION_DISABLED`를 선택한다.
+LUCA Boot Protocol은 이 경로에 `RIBON_ENTRY_TRANSLATION_DISABLED`를 선택한다.
 Architecture contract validator는 RISC-V direct-high 요구를 terminal transfer 전에
 거부한다. 다른 protocol을 위한 preserve-reachable 값은 generic contract에 남지만
 Parus profile은 이를 선택하지 않는다. Backend는 `SIE`와 `SPIE`를 지우고 `SPP`를

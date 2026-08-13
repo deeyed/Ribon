@@ -32,7 +32,7 @@ tuple만 실행 지원을 주장한다.
 
 | OS package | 구현 경계 | 허용 주장 | 열지 않는 주장 |
 | --- | --- | --- | --- |
-| Parus | RPH1 build/parse, AArch64·x86_64·RISC-V invocation | product별 QEMU 또는 hardware evidence가 있는 tuple | 모든 board, production firmware, feature parity |
+| Parus | RLH1 build/parse, AArch64·x86_64·RISC-V invocation | product별 QEMU 또는 hardware evidence가 있는 tuple | 모든 board, production firmware, feature parity |
 | Linux | AArch64·RISC-V64 raw `Image` direct entry와 x86_64 EFI-stub managed image | pinned OpenWrt AArch64·x86_64와 Debian RISC-V64 image의 product별 QEMU PID 1 boot | bzImage direct loader, physical board와 production firmware |
 | FreeBSD | pinned 15.1 amd64 mini-memstick, PE/COFF validation과 managed UEFI loader chain | QEMU q35에서 official loader, GENERIC kernel과 single-user terminal prompt | clean poweroff, multi-user, network, physical board와 production authenticity |
 | Zircon | bounded ZBI container validation과 AArch64 invocation | unit-level experimental protocol contract | complete ZBI item policy 또는 Zircon runtime boot |
@@ -66,7 +66,7 @@ hartid, compact FDT, `satp=0`, 2 MiB placement와 OpenSBI `/reserved-memory` nor
 각 증거는 descriptor가 고정한 release/hash와 해당 QEMU tuple에만 한정된다.
 
 `check-multi-os-runtime`의 Parus row 세 개는 Ribon-owned AArch64, x86_64와 RISC-V64 protocol fixture다.
-이는 RPH1와 register ABI 회귀 증거이며 현재 Parus kernel의 full boot 또는 IDLE receipt를 주장하지
+이는 RLH1와 register ABI 회귀 증거이며 현재 Parus kernel의 full boot 또는 IDLE receipt를 주장하지
 않는다. 실제 external Parus payload 성공은 별도 payload identity와 marker graph를 요구한다.
 
 ## Boot health confirmation 지원

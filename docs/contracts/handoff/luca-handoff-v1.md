@@ -2,33 +2,34 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-07-29
+last_verified: 2026-08-14
 code_paths:
-  - src/protocols/os/parus/
+  - src/protocols/os/luca/
   - include/Ribon/protocol/
-  - ../../../../sys/include/parus/boot/
+  - ../../../../sys/include/luca/boot/
   - ../../../../sys/kern/boot/
 tests:
-  - ribon-parus-handoff-v1-unit
-  - parus-ribon-handoff-v1-consumer
-  - ribon-parus-handoff-v1-malformed
+  - ribon-luca-handoff-v1-unit
+  - luca-ribon-handoff-v1-consumer
+  - ribon-luca-handoff-v1-malformed
 hardware:
   - none
 supersedes:
-  - legacy previous handoff artifact
+  - parus-handoff-v1
+  - RPH1 wire artifact
 ---
 
-# Parus Handoff v1 계약
+# Ribon LUCA Handoff v1 계약
 
-Parus Handoff v1은 Ribon의 Parus Boot Protocol이 생성하고 Parus `xibalba()` 경계가 소비하는
+Ribon LUCA Handoff v1은 Ribon의 LUCA Boot Protocol이 생성하고 LUCA `xibalba()` 경계가 소비하는
 wire artifact다. Ribon Core는 이 형식을 알지 않는다.
 
 ## Wire 규칙
 
-- Artifact 이름은 `RPH1`이다.
+- Artifact 이름은 `RLH1`이다.
 - 모든 integer는 little-endian으로 byte-wise 직렬화한다.
 - C struct를 wire buffer에 직접 cast하거나 packed struct로 기록하지 않는다.
-- Header 크기는 64 byte다.
+- Header 크기는 80 byte다.
 - Section entry 크기는 32 byte다.
 - Section payload 시작은 16 byte alignment를 만족한다.
 - Artifact 전체 크기는 65,536 byte를 넘지 않는다.
@@ -39,24 +40,29 @@ wire artifact다. Ribon Core는 이 형식을 알지 않는다.
 
 | Offset | 크기 | Field | 값 또는 의미 |
 | ---: | ---: | --- | --- |
-| 0 | 4 | `magic` | ASCII `RPH1` |
+| 0 | 4 | `magic` | ASCII `RLH1` |
 | 4 | 2 | `version_major` | `1` |
 | 6 | 2 | `version_minor` | `0` |
-| 8 | 2 | `header_size` | `64` |
+| 8 | 2 | `header_size` | `80` |
 | 10 | 2 | `section_entry_size` | `32` |
 | 12 | 2 | `section_count` | 최대 32 |
 | 14 | 2 | `reserved0` | `0` |
 | 16 | 4 | `total_size` | header를 포함한 artifact 크기 |
-| 20 | 4 | `section_table_offset` | 64 이상, 16 byte aligned |
+| 20 | 4 | `section_table_offset` | 80 이상, 16 byte aligned |
 | 24 | 8 | `flags` | artifact capability bitset |
 | 32 | 4 | `crc32c` | CRC-32C |
 | 36 | 4 | `reserved1` | `0` |
 | 40 | 8 | `boot_generation` | slot metadata generation |
 | 48 | 8 | `manifest_sequence` | anti-rollback manifest sequence |
-| 56 | 8 | `reserved2` | `0` |
+| 56 | 16 | `domain` | ASCII `RIBON_LUCA_RLH1\0` |
+| 72 | 8 | `reserved2` | `0` |
 
 CRC-32C는 `crc32c` field를 0으로 놓고 `total_size` 전체에 대해 계산한다. CRC는 메모리
 손상 검출용이며 manifest signature를 대신하지 않는다.
+
+RPH1의 `0x31485052` magic, 64-byte header, LUCA protocol ID는 호환 입력이
+아니다. Producer와 consumer는 이 조합을 명시적으로 거부하며 RLH1에서
+RPH1이나 direct-DTB로 fallback하지 않는다.
 
 ## Section entry
 
@@ -200,7 +206,7 @@ Architecture ID는 AMD64 1, AArch64 2, RISC-V 64 3이다.
 RISC-V raw-FDT/OpenSBI producer는 `BOOT_CPU`에
 `REQUIRED_TO_UNDERSTAND`를 설정하고 `BORROWED_RANGE_DESCRIPTOR`는 설정하지 않는다.
 `boot_cpu_id`의 0은 유효한 hart ID다. Section이 없거나 중복되고, namespace가 `1`이
-아니거나 `BOOTSTRAP` 외 flag 또는 reserved field가 0이 아니면 RISC-V RPH1 생성과
+아니거나 `BOOTSTRAP` 외 flag 또는 reserved field가 0이 아니면 RISC-V RLH1 생성과
 소비는 실패한다.
 
 AMD64와 AArch64 producer는 해당 architecture 계약이 별도로 요구하기 전
@@ -222,27 +228,27 @@ payload overlap, singleton duplication, required section 존재, section별 payl
 | AMD64 | `rdi` | `rsi` |
 | RISC-V 64 | `a0` | `a1` |
 
-Entry flag bit 0은 `RPH1`, bit 1은 direct-DTB 예약, bit 2는 `ENTERED_HIGH`, bit 3은
-`DIRECT_HIGH`다. Normal Parus protocol은 bit 0만 설정한다. Direct-high mode는 bit 0, 2,
+Entry flag bit 0은 `RLH1`, bit 1은 direct-DTB 예약, bit 2는 `ENTERED_HIGH`, bit 3은
+`DIRECT_HIGH`다. Normal LUCA protocol은 bit 0만 설정한다. Direct-high mode는 bit 0, 2,
 3을 함께 설정한다.
 
-Flag는 pointer와 CPU state 검증을 대체하지 않는다. Malformed RPH1을 DTB 또는 다른
+Flag는 pointer와 CPU state 검증을 대체하지 않는다. Malformed RLH1을 DTB 또는 다른
 artifact로 재해석하지 않는다.
 
 RISC-V에서 이 표는 Ribon이 primary OS image로 terminal transfer할 때의 ABI다.
 OpenSBI가 Ribon target을 호출할 때의 native `a0=hartid`, `a1=FDT`와 SBI HSM이
 secondary hart를 시작할 때의 `a0=hartid`, `a1=opaque`는 별도 firmware ABI다.
-Ribon은 native hart ID를 `BOOT_CPU`에 보존한 뒤 `a0`를 RPH1 pointer로 교체한다.
+Ribon은 native hart ID를 `BOOT_CPU`에 보존한 뒤 `a0`를 RLH1 pointer로 교체한다.
 Primary transfer에서 `a2`나 별도 global을 boot CPU identity의 두 번째 권위로
 사용하지 않는다.
 
 ## 수명
 
-RPH1 raw pointer와 section table은 Parus EB0-EB2에서만 직접 소비한다. Runtime은 raw
+RLH1 raw pointer와 section table은 LUCA EB0-EB2에서만 직접 소비한다. Runtime은 raw
 artifact를 재해석하지 않고 검증된 descriptor와 immutable boot constants만 사용한다.
 
 ## 보안 경계
 
-RPH1은 signed manifest의 검증 결과를 전달하지만 그 자체가 서명 envelope는 아니다.
+RLH1은 signed manifest의 검증 결과를 전달하지만 그 자체가 서명 envelope는 아니다.
 Consumer는 CRC, bounds, section 관계, physical range를 독립적으로 검증한다. Manifest
 sequence가 platform anti-rollback state보다 작으면 부팅을 거부한다.

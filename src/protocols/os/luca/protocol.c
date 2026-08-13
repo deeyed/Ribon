@@ -1,9 +1,9 @@
 #include <Ribon/boot/plan.h>
 #include <Ribon/plugin/descriptor.h>
-#include <Ribon/protocols/os/parus/rph1.h>
+#include <Ribon/protocols/os/luca/rlh1.h>
 
 /** @brief 두 stable ID가 같은 byte sequence인지 검사한다. */
-static int parus_streq(const char *lhs, const char *rhs) {
+static int luca_streq(const char *lhs, const char *rhs) {
     if (lhs == 0 || rhs == 0) {
         return 0;
     }
@@ -17,9 +17,9 @@ static int parus_streq(const char *lhs, const char *rhs) {
     return *lhs == *rhs;
 }
 
-/** @brief Manifest가 Parus Boot Protocol ABI v1을 허용하는지 검사한다. */
-static int parus_match(const struct RibonManifestView *manifest) {
-    if (manifest == 0 || !parus_streq(manifest->protocol_id, "parus")) {
+/** @brief Manifest가 LUCA Boot Protocol ABI v1을 허용하는지 검사한다. */
+static int luca_match(const struct RibonManifestView *manifest) {
+    if (manifest == 0 || !luca_streq(manifest->protocol_id, "luca")) {
         return RIBON_PROTOCOL_STATUS_BAD_MANIFEST;
     }
     if (manifest->protocol_abi_min == 0u ||
@@ -31,11 +31,11 @@ static int parus_match(const struct RibonManifestView *manifest) {
     return RIBON_PROTOCOL_STATUS_OK;
 }
 
-/** @brief Parus manifest가 정확히 한 kernel과 허용 component만 가지는지 검사한다. */
-static int parus_validate_components(const struct RibonManifestView *manifest) {
+/** @brief LUCA manifest가 정확히 한 kernel과 허용 component만 가지는지 검사한다. */
+static int luca_validate_components(const struct RibonManifestView *manifest) {
     uint32_t kernel_count = 0u;
 
-    if (parus_match(manifest) != RIBON_PROTOCOL_STATUS_OK ||
+    if (luca_match(manifest) != RIBON_PROTOCOL_STATUS_OK ||
         manifest->components == 0 ||
         manifest->component_count == 0u ||
         manifest->component_count > 32u) {
@@ -65,13 +65,13 @@ static int parus_validate_components(const struct RibonManifestView *manifest) {
         RIBON_PROTOCOL_STATUS_BAD_COMPONENTS;
 }
 
-/** @brief Parus가 허용하는 OS image format을 반환한다. */
-static uint64_t parus_select_image_formats(void) {
+/** @brief LUCA가 허용하는 OS image format을 반환한다. */
+static uint64_t luca_select_image_formats(void) {
     return RIBON_IMAGE_FORMAT_MASK(RIBON_EXECUTABLE_FORMAT_ELF64);
 }
 
-/** @brief RPH1 artifact를 Parus entry register invocation으로 봉인한다. */
-static int parus_prepare_terminal(
+/** @brief RLH1 artifact를 LUCA entry register invocation으로 봉인한다. */
+static int luca_prepare_terminal(
     const struct RibonArchDescriptor *arch,
     const struct RibonBootPlan *plan,
     const struct RibonBootEnvironment *environment,
@@ -116,7 +116,7 @@ static int parus_prepare_terminal(
         .argument_count = 2u,
         .arguments = {
             (uint64_t)(uintptr_t)handoff->data,
-            RIBON_PARUS_ENTRY_FLAG_RPH1,
+            RIBON_LUCA_ENTRY_FLAG_RLH1,
         },
         .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
         .privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR,
@@ -125,28 +125,28 @@ static int parus_prepare_terminal(
     return RIBON_PROTOCOL_STATUS_OK;
 }
 
-/** @brief Parus producer 계약이 열리기 전에는 health payload를 거부한다. */
-static int parus_validate_boot_health(
+/** @brief LUCA producer 계약이 열리기 전에는 health payload를 거부한다. */
+static int luca_validate_boot_health(
     const struct RibonBootHealthPayload *payload) {
     (void)payload;
     return RIBON_PROTOCOL_STATUS_UNSUPPORTED;
 }
 
-static const struct RibonBootProtocolOps parus_ops = {
-    .size = sizeof(parus_ops),
+static const struct RibonBootProtocolOps luca_ops = {
+    .size = sizeof(luca_ops),
     .abi_version = RIBON_BOOT_PROTOCOL_OPS_ABI_VERSION,
-    .match = parus_match,
-    .validate_components = parus_validate_components,
-    .select_image_formats = parus_select_image_formats,
-    .prepare_handoff = ribon_parus_build_rph1,
-    .prepare_terminal = parus_prepare_terminal,
-    .validate_boot_health = parus_validate_boot_health,
+    .match = luca_match,
+    .validate_components = luca_validate_components,
+    .select_image_formats = luca_select_image_formats,
+    .prepare_handoff = ribon_luca_build_rlh1,
+    .prepare_terminal = luca_prepare_terminal,
+    .validate_boot_health = luca_validate_boot_health,
 };
 
-static const struct RibonBootProtocol parus_protocol = {
-    .size = sizeof(parus_protocol),
+static const struct RibonBootProtocol luca_protocol = {
+    .size = sizeof(luca_protocol),
     .abi_version = 1u,
-    .id = "parus",
+    .id = "luca",
     .kernel_path = "kernel/kernel.elf",
     .terminal_execution = RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY,
     .expectations =
@@ -159,20 +159,20 @@ static const struct RibonBootProtocol parus_protocol = {
         RIBON_MODE_MASK(RIBON_MODE_NORMAL) |
         RIBON_MODE_MASK(RIBON_MODE_RECOVERY) |
         RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
-    .handoff_format = "rph1",
-    .handoff_major = RIBON_PARUS_RPH1_VERSION_MAJOR,
-    .ops = &parus_ops,
+    .handoff_format = "rlh1",
+    .handoff_major = RIBON_LUCA_RLH1_VERSION_MAJOR,
+    .ops = &luca_ops,
 };
 
-/** @brief Parus Boot Protocol plugin descriptor다. */
-const struct RibonPluginDescriptor ribon_parus_protocol_plugin_descriptor = {
+/** @brief LUCA Boot Protocol plugin descriptor다. */
+const struct RibonPluginDescriptor ribon_luca_protocol_plugin_descriptor = {
     .magic = RIBON_PLUGIN_DESCRIPTOR_MAGIC,
-    .size = sizeof(ribon_parus_protocol_plugin_descriptor),
+    .size = sizeof(ribon_luca_protocol_plugin_descriptor),
     .abi_major = RIBON_PLUGIN_ABI_MAJOR,
     .abi_minor = RIBON_PLUGIN_ABI_MINOR,
     .kind = RIBON_PLUGIN_KIND_BOOT_PROTOCOL,
     .phase = RIBON_PLUGIN_PHASE_BOOT,
-    .id = "protocol.parus",
+    .id = "protocol.luca",
     .provides =
         RIBON_CAP_BOOT_PROTOCOL |
         RIBON_CAP_HANDOFF |
@@ -187,10 +187,10 @@ const struct RibonPluginDescriptor ribon_parus_protocol_plugin_descriptor = {
         RIBON_MODE_MASK(RIBON_MODE_DIAGNOSTIC),
     .arena_budget = 64ull * 1024ull,
     .input_budget = 64ull * 1024ull * 1024ull,
-    .output_budget = RIBON_PARUS_RPH1_MAX_TOTAL_SIZE,
+    .output_budget = RIBON_LUCA_RLH1_MAX_TOTAL_SIZE,
     .deadline_ms = 30000u,
-    .operations = &parus_protocol,
-    .operations_size = sizeof(parus_protocol),
+    .operations = &luca_protocol,
+    .operations_size = sizeof(luca_protocol),
     .operations_abi = 1u,
     .validate_operations = ribon_protocol_plugin_operations_are_valid,
 };

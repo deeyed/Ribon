@@ -16,20 +16,20 @@ PF_W = 2
 FIXTURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-OK",
     b"RIBON-FIXTURE-PAYLOAD-V1",
-    b"RIBON-RISCV64-RPH1-FIXTURE-V1",
+    b"RIBON-RISCV64-RLH1-FIXTURE-V1",
 )
 ARCHITECTURE_CONTRACTS = {
     "x86_64": {
         "machine": 62,
-        "entry_abi": "amd64-rph1-v1",
+        "entry_abi": "amd64-rlh1-v1",
     },
     "aarch64": {
         "machine": 183,
-        "entry_abi": "arm64-rph1-v1",
+        "entry_abi": "arm64-rlh1-v1",
     },
     "riscv64": {
         "machine": 243,
-        "entry_abi": "riscv-rph1-v1",
+        "entry_abi": "riscv-rlh1-v1",
     },
 }
 PRODUCT_LOAD_WINDOWS = {
@@ -138,7 +138,7 @@ def validate(
         "load_size": load_window["load_size"],
     }
     if contract != expected:
-        raise ValueError("product payload contract is not the selected RPH1 tuple")
+        raise ValueError("product payload contract is not the selected RLH1 tuple")
 
     before = sha256_file(payload_path)
     header, segments = inspect_elf(payload_path)

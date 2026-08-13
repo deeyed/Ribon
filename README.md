@@ -21,9 +21,9 @@ plugin set을 선택하고 `build/` 아래 immutable registry와 product descrip
 생성한다. `RibonProfile`, `RibonFirmwareAdapter`, builtin registry를 위한 compatibility
 API는 제공하지 않는다.
 
-Parus는 generic Core의 특수 분기가 아니라 `protocol.parus` Boot Protocol plugin이다.
-Parus Handoff v1(`RPH1`) serializer와 parser는
-`src/protocols/os/parus/`와 `include/Ribon/protocols/os/parus/`가 소유한다.
+Parus는 generic Core의 특수 분기가 아니라 `protocol.luca` Boot Protocol plugin이다.
+Ribon LUCA Handoff v1(`RLH1`) serializer와 parser는
+`src/protocols/os/luca/`와 `include/Ribon/protocols/os/luca/`가 소유한다.
 Linux, FreeBSD, Zircon은 같은 generic frontend를 소비하는 독립 OS protocol package다.
 Package 존재와 실제 runtime support는
 [`docs/contracts/protocols/os-package-support-matrix.md`](docs/contracts/protocols/os-package-support-matrix.md)
@@ -60,7 +60,7 @@ make check-ribos-executable-corpus
 make check
 make check-target-builds
 make qemu-aarch64-virt-raw-fdt-smoke
-make qemu-riscv64-virt-rph1-fixture-smoke
+make qemu-riscv64-virt-rlh1-fixture-smoke
 make x86_64-uefi-parus-fixture-smoke
 make check-uefi-product-hermeticity
 make qstar-check
@@ -113,7 +113,7 @@ corpus, 여섯 target archive의 SDK install reproducibility, installed-only typ
 extension, external plugin package, firmware reference provider, host-reference plan,
 architecture matrix와 object graph를 검사한다.
 QEMU smoke는 x86_64 UEFI consumer와 AArch64 raw-FDT target의 runtime evidence다.
-RISC-V RPH1 fixture smoke는 OpenSBI, Ribon lifecycle, RPH1 `BOOT_CPU`와
+RISC-V RLH1 fixture smoke는 OpenSBI, Ribon lifecycle, RLH1 `BOOT_CPU`와
 S-mode/MMU-off entry를 잇는 Ribon 소유 계약 증거이며 실제 Parus kernel boot가 아니다.
 BIOS consumer와 UEFI/BIOS-compatible provider는 compile-only, RPi5는 package evidence다.
 Reference provider 성공은 bootable firmware나 specification conformance 증거가 아니며

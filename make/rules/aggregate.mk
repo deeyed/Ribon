@@ -17,7 +17,7 @@ check-target-builds: bios-compile rpi5-aarch64-raw-fdt-package \
 	rpi5-aarch64-modules-fixture-package \
 	qemu-aarch64-virt-raw-fdt qemu-aarch64-virt-modules-fixture-product \
 	qemu-aarch64-virt-linux-product \
-	qemu-riscv64-virt-rph1-fixture-product \
+	qemu-riscv64-virt-rlh1-fixture-product \
 	qemu-riscv64-virt-linux-product x86_64-uefi-parus-fixture \
 	x86_64-uefi-linux-product x86_64-uefi-freebsd-product \
 	x86_64-uefi-network-update-recovery
@@ -58,11 +58,11 @@ check: check-build-system legacy-hard-cut check-public-api check-frontends check
 	check-update-storage-cross-compile check-update-storage-graphs \
 	check-update-installer check-uefi-update-storage \
 	check-update-power-cut check-boot-confirmation check-recovery-network-update \
-	check-pe-coff check-fdt check-rph1 check-arch-x86_64 \
+	check-pe-coff check-fdt check-rlh1 check-arch-x86_64 \
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \
 	check-environment-persistent-inputs check-boot-modules check-media-pipeline check-mode-descriptors check-plugin-descriptors \
-	check-protocol-contract check-parus-entry-contract check-os-packages \
+	check-protocol-contract check-luca-entry-contract check-os-packages \
 	check-linux-boot check-linux-external-input \
 	check-library-embed check-composition-schemas \
 	check-qemu-evidence check-uefi-product-hermeticity \

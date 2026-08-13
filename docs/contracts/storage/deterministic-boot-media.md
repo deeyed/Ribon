@@ -51,7 +51,7 @@ input에서 byte-wise로 검증한다.
 - non-empty partition의 inclusive LBA range는 usable range 밖으로 나가거나 서로 겹치면 안 된다.
 - parser는 repair, backup-header fallback, writable metadata 갱신을 수행하지 않는다.
 
-GPT CRC32는 RPH1의 CRC32C와 다른 on-media integrity field다. 어느 CRC도 signed manifest,
+GPT CRC32는 RLH1의 CRC32C와 다른 on-media integrity field다. 어느 CRC도 signed manifest,
 anti-rollback 또는 bundle authenticity를 대신하지 않는다.
 
 ## FAT32 read-only subset
@@ -76,7 +76,7 @@ Configuration byte stream은 ASCII `version=1`과 하나 이상의 closed candid
 version=1
 entry=primary
 priority=100
-protocol=parus
+protocol=luca
 image=elf64
 kernel=/RIBON/PAYLOAD.ELF
 cmdline=console=ttyS0

@@ -125,7 +125,7 @@ Protocol의 architecture-specific 코드는 해당 protocol의 `arch/<arch>/` �
 격리한다. Generic protocol code에 board 또는 firmware 조건문을 두지 않는다.
 
 Boot manager와 environment frontend는 generated registry/configuration으로 protocol을
-선택하며 Parus, RPH1, Linux, ZBI 같은 OS-specific symbol과 parser를 직접 참조하지 않는다.
+선택하며 Parus, RLH1, Linux, ZBI 같은 OS-specific symbol과 parser를 직접 참조하지 않는다.
 
 ## Image format 분리
 

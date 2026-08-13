@@ -54,7 +54,7 @@ immutable `RibonServiceDirectory`에 연결한다.
 | `bios-client` | E820, EDD와 long-mode 진입 전 native callback |
 | `raw-fdt` | entry register의 FDT pointer와 bounded FDT blob |
 
-Environment source는 RPH1, Parus entry flag, RPi5, QEMU identity를 알지 않는다.
+Environment source는 RLH1, LUCA entry flag, RPi5, QEMU identity를 알지 않는다.
 Environment가 제공한 borrowed native pointer는 generic Core 또는 Protocol에 저장하지
 않는다.
 

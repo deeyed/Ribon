@@ -30,7 +30,7 @@ REQUIRED_TARGETS = (
     "qstar-check:",
     "docs:",
     "qemu-aarch64-virt-modules-fixture-smoke:",
-    "qemu-riscv64-virt-rph1-fixture-smoke:",
+    "qemu-riscv64-virt-rlh1-fixture-smoke:",
     "x86_64-uefi-parus-fixture-smoke:",
 )
 FORBIDDEN_PATHS = (

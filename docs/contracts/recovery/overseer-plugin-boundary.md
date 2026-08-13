@@ -49,7 +49,7 @@ Overseer plugin은 다음을 정의할 수 있다.
 - recovery 또는 diagnostic product 선택
 - operator와 fleet 상태 변환
 
-Parus overseer는 Parus protocol 또는 companion package에 위치한다. Linux와 FreeBSD
+Parus overseer는 LUCA protocol 또는 companion package에 위치한다. Linux와 FreeBSD
 product에는 Parus overseer object를 링크하지 않는다.
 
 ## Reboot-time cycle

@@ -90,7 +90,7 @@ def main() -> int:
         fail("network-only recovery product unexpectedly authorizes confirmation")
 
     protocols = (
-        root / "src/protocols/os/parus/protocol.c",
+        root / "src/protocols/os/luca/protocol.c",
         root / "src/protocols/os/linux/protocol.c",
         root / "src/protocols/os/freebsd/protocol.c",
         root / "src/protocols/os/zircon/protocol.c",

@@ -296,21 +296,21 @@ class QemuTargetSmokeTests(unittest.TestCase):
             )
             self.assertEqual(len(result["firmware"]["sha256"]), 64)
 
-    def test_riscv64_rph1_fixture_uses_its_own_marker_graph(self) -> None:
-        """The Ribon-owned RPH1 fixture remains distinct from a Parus kernel."""
+    def test_riscv64_rlh1_fixture_uses_its_own_marker_graph(self) -> None:
+        """The Ribon-owned RLH1 fixture remains distinct from a Parus kernel."""
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            payload = directory / "rph1-fixture.elf"
+            payload = directory / "rlh1-fixture.elf"
             payload.write_bytes(
                 b"\x7fELF"
-                + b"RIBON-RISCV64-RPH1-FIXTURE-V1"
+                + b"RIBON-RISCV64-RLH1-FIXTURE-V1"
                 + b"\0" * 128
             )
             markers = (
-                "RIBON-RPH1-RISCV64-FIXTURE-ENTRY",
-                "RIBON-RPH1-RISCV64-FIXTURE-MMU-OFF",
-                "RIBON-RPH1-RISCV64-FIXTURE-RPH1-OK",
-                "RIBON-RPH1-RISCV64-FIXTURE-BOOT-CPU-OK",
+                "RIBON-RLH1-RISCV64-FIXTURE-ENTRY",
+                "RIBON-RLH1-RISCV64-FIXTURE-MMU-OFF",
+                "RIBON-RLH1-RISCV64-FIXTURE-RLH1-OK",
+                "RIBON-RLH1-RISCV64-FIXTURE-BOOT-CPU-OK",
             )
             completed, result = self.run_harness(
                 directory,
@@ -319,7 +319,7 @@ class QemuTargetSmokeTests(unittest.TestCase):
                 target="riscv64-virt-opensbi",
                 required_markers=markers,
                 extra_output="\n".join(
-                    (*markers, "RIBON-RPH1-RISCV64-FIXTURE-OK")
+                    (*markers, "RIBON-RLH1-RISCV64-FIXTURE-OK")
                 ),
             )
             self.assertEqual(completed.returncode, 0, completed.stdout)
@@ -351,13 +351,13 @@ class QemuTargetSmokeTests(unittest.TestCase):
             self.assertTrue(result["cleanup"]["complete"])
 
     def test_riscv64_fixture_failure_marker_is_terminal(self) -> None:
-        """A Ribon RPH1 fixture failure cannot wait until generic timeout."""
+        """A Ribon RLH1 fixture failure cannot wait until generic timeout."""
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            payload = directory / "rph1-fixture.elf"
+            payload = directory / "rlh1-fixture.elf"
             payload.write_bytes(
                 b"\x7fELF"
-                + b"RIBON-RISCV64-RPH1-FIXTURE-V1"
+                + b"RIBON-RISCV64-RLH1-FIXTURE-V1"
                 + b"\0" * 128
             )
             completed, result = self.run_harness(
@@ -365,7 +365,7 @@ class QemuTargetSmokeTests(unittest.TestCase):
                 payload,
                 "fixture",
                 target="riscv64-virt-opensbi",
-                extra_output="RIBON-RPH1-RISCV64-FIXTURE-FAIL:crc32c",
+                extra_output="RIBON-RLH1-RISCV64-FIXTURE-FAIL:crc32c",
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertEqual(result["outcome"], "payload-abi-failure")

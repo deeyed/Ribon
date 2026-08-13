@@ -1,9 +1,9 @@
 .PHONY: all lib sdk-install host-reference check check-one check-loader check-pe-coff \
-	check-fdt check-rph1 check-arch-x86_64 check-arch-aarch64 \
+	check-fdt check-rlh1 check-arch-x86_64 check-arch-aarch64 \
 	check-arch-ops check-core-service check-port-services check-boot-lifecycle \
 	check-environment-persistent-inputs check-boot-modules check-media-pipeline \
 	check-mode-descriptors check-plugin-descriptors check-protocol-contract \
-	check-parus-entry-contract \
+	check-luca-entry-contract \
 	check-os-packages \
 	check-linux-boot \
 	check-linux-external-input \
@@ -64,8 +64,8 @@
 	qemu-aarch64-virt-parus-modules-product \
 	qemu-aarch64-virt-parus-modules-smoke x86_64-uefi-parus-fixture \
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
-	qemu-riscv64-virt-rph1-fixture-product \
-	qemu-riscv64-virt-rph1-fixture-smoke \
+	qemu-riscv64-virt-rlh1-fixture-product \
+	qemu-riscv64-virt-rlh1-fixture-smoke \
 	qemu-riscv64-virt-linux-product qemu-riscv64-virt-linux-smoke \
 	x86_64-uefi-parus-external x86_64-uefi-parus-external-product \
 	x86_64-uefi-parus-fixture-smoke x86_64-uefi-parus-external-smoke \

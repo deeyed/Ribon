@@ -7,7 +7,7 @@
   "environment": "bios",
   "mode": "normal",
   "boot_protocols": [
-    "parus"
+    "luca"
   ],
   "policies": [
     "normal"
@@ -41,7 +41,7 @@
       "kind": "image-format"
     },
     {
-      "id": "protocol.parus",
+      "id": "protocol.luca",
       "kind": "boot-protocol"
     }
   ],
@@ -92,9 +92,9 @@
       "symbol": "ribon_elf64_image_plugin_descriptor"
     },
     {
-      "id": "protocol.parus",
-      "package": "ribon.protocol.parus",
-      "symbol": "ribon_parus_protocol_plugin_descriptor"
+      "id": "protocol.luca",
+      "package": "ribon.protocol.luca",
+      "symbol": "ribon_luca_protocol_plugin_descriptor"
     }
   ]
 }

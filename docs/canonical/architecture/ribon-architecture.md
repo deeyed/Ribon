@@ -84,7 +84,7 @@ Boot Library는 OS 중립적인 boot orchestration을 소유한다.
 - 선택된 boot protocol의 prepare와 handoff 호출
 - metadata write/flush commit, selected environment quiesce 뒤 architecture transfer 호출
 
-Boot Library는 RPH1, Linux `boot_params`, FreeBSD metadata, Multiboot tag를 직접 알지
+Boot Library는 RLH1, Linux `boot_params`, FreeBSD metadata, Multiboot tag를 직접 알지
 않는다.
 
 ### Boot Protocol
@@ -101,7 +101,7 @@ Protocol은 다음을 소유한다.
 - architecture별 register ABI와 entry precondition
 - boot confirmation의 OS별 payload 의미론
 
-Parus Handoff, Linux boot protocol, FreeBSD boot metadata, Multiboot, EFI chainload는
+Ribon LUCA Handoff, Linux boot protocol, FreeBSD boot metadata, Multiboot, EFI chainload는
 서로 다른 protocol plugin이다. Protocol은 block, network, watchdog, firmware
 protocol, MMIO를 직접 호출하지 않는다.
 
@@ -349,8 +349,8 @@ bootloader product는 커널 entry 뒤 상주하는 hypervisor가 아니다.
 
 ## OS 독립성과 Parus
 
-Parus protocol은 Ribon plugin ABI를 소비하는 한 개의 OS-specific component다. RPH1,
-Parus entry flag, Parus confirmation semantics는 Parus protocol 밖으로 나오지 않는다.
+LUCA protocol은 Ribon plugin ABI를 소비하는 한 개의 OS-specific component다. RLH1,
+LUCA entry flag, Parus confirmation semantics는 LUCA protocol 밖으로 나오지 않는다.
 
 Parus overseer, fleet update policy, health policy는 generic Core가 아니라 OS-specific
 policy plugin 또는 companion package가 소유한다. Linux와 FreeBSD product에는 해당

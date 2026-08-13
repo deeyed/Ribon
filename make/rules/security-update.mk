@@ -449,10 +449,10 @@ $(FDT_TEST): \
 	$(TEST_BUILD_DIR)/obj/src/common/sys/fdt/fdt.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
-$(RPH1_TEST): \
-	$(TEST_BUILD_DIR)/obj/tests/rph1/rph1_builder_tests.o \
-	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_builder.o \
-	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_parser.o \
+$(RLH1_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/rlh1/rlh1_builder_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/rlh1_builder.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/rlh1_parser.o \
 	$(TEST_BUILD_DIR)/obj/src/core/memory.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
@@ -530,11 +530,11 @@ $(PROTOCOL_CONTRACT_TEST): \
 	$(BOOT_LIB) $(CORE_LIB)
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
-$(PARUS_ENTRY_CONTRACT_TEST): \
-	$(TEST_BUILD_DIR)/obj/tests/protocol/parus_entry_contract_tests.o \
-	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/protocol.o \
-	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_builder.o \
-	$(TEST_BUILD_DIR)/obj/src/protocols/os/parus/rph1_parser.o \
+$(LUCA_ENTRY_CONTRACT_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/protocol/luca_entry_contract_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/rlh1_builder.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/rlh1_parser.o \
 	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/core/memory.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@

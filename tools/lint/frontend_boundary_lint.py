@@ -33,7 +33,7 @@ def main() -> int:
         fail("src/boot must not exist")
     scan(
         ROOT / "src" / "environments",
-        re.compile(r"\b(?:parus|rph1)\b", re.IGNORECASE),
+        re.compile(r"\b(?:parus|rlh1)\b", re.IGNORECASE),
         "environment contains OS protocol policy",
     )
     scan(

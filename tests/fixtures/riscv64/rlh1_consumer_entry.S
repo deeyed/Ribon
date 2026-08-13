@@ -11,7 +11,7 @@ _start:
 
     la      sp, __stack_top
     andi    sp, sp, -16
-    call    ribon_rph1_fixture_main
+    call    ribon_rlh1_fixture_main
 1:
     wfi
     j       1b

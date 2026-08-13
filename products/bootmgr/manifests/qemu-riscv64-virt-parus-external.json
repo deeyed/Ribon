@@ -8,7 +8,7 @@
   "port": "qemu-virt-riscv64",
   "mode": "normal",
   "boot_protocols": [
-    "parus"
+    "luca"
   ],
   "policies": [
     "normal"
@@ -30,7 +30,7 @@
   "payload": {
     "architecture": "riscv64",
     "class": "external-kernel",
-    "entry_abi": "riscv-rph1-v1",
+    "entry_abi": "riscv-rlh1-v1",
     "format": "elf64",
     "load_base": 2151677952,
     "load_size": 33554432
@@ -85,7 +85,7 @@
       "kind": "image-format"
     },
     {
-      "id": "protocol.parus",
+      "id": "protocol.luca",
       "kind": "boot-protocol"
     }
   ],
@@ -148,9 +148,9 @@
       "symbol": "ribon_elf64_image_plugin_descriptor"
     },
     {
-      "id": "protocol.parus",
-      "package": "ribon.protocol.parus",
-      "symbol": "ribon_parus_protocol_plugin_descriptor"
+      "id": "protocol.luca",
+      "package": "ribon.protocol.luca",
+      "symbol": "ribon_luca_protocol_plugin_descriptor"
     }
   ]
 }

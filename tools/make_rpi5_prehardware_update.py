@@ -213,7 +213,7 @@ def main() -> int:
         "predecessor_generation": 0,
         "product_digest_sha256": sha256_bytes(product),
         "product_id": product_value["product_id"],
-        "protocol": {"id": "protocol.parus", "major": 1, "minor": 0},
+        "protocol": {"id": "protocol.luca", "major": 1, "minor": 0},
         "rollback_domain": "ribon.update.rpi5-prehardware.v1",
         "rollback_sequence": 1,
         "schema": "ribon-update-manifest-source-v1",

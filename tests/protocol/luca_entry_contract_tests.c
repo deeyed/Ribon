@@ -1,6 +1,6 @@
 #include <Ribon/boot/plan.h>
 #include <Ribon/plugin/descriptor.h>
-#include <Ribon/protocols/os/parus/rph1.h>
+#include <Ribon/protocols/os/luca/rlh1.h>
 
 #include <stdio.h>
 
@@ -9,7 +9,7 @@ static int check_entry_contract(
     enum RibonArchitectureId architecture,
     enum RibonRegisterAbi expected_abi,
     enum RibonEntryTranslationRequirement expected_translation) {
-    const unsigned char handoff_bytes[4] = {'R', 'P', 'H', '1'};
+    const unsigned char handoff_bytes[4] = {'R', 'L', 'H', '1'};
     const struct RibonArchDescriptor arch = {
         .size = sizeof(arch),
         .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
@@ -22,7 +22,7 @@ static int check_entry_contract(
     const struct RibonHandoffArtifact handoff = {
         .data = handoff_bytes,
         .size = sizeof(handoff_bytes),
-        .format = "rph1",
+        .format = "rlh1",
         .version_major = 1u,
     };
     struct RibonTerminalRequest terminal = {0};
@@ -38,7 +38,7 @@ static int check_entry_contract(
         terminal.direct_entry.register_abi != expected_abi ||
         terminal.direct_entry.argument_count != 2u ||
         terminal.direct_entry.arguments[0] != (uint64_t)(uintptr_t)handoff.data ||
-        terminal.direct_entry.arguments[1] != RIBON_PARUS_ENTRY_FLAG_RPH1 ||
+        terminal.direct_entry.arguments[1] != RIBON_LUCA_ENTRY_FLAG_RLH1 ||
         terminal.direct_entry.interrupts != RIBON_ENTRY_INTERRUPTS_MASKED ||
         terminal.direct_entry.privilege != RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR ||
         terminal.direct_entry.translation != expected_translation) {
@@ -50,7 +50,7 @@ static int check_entry_contract(
 int main(void) {
     const struct RibonBootProtocol *protocol =
         (const struct RibonBootProtocol *)
-            ribon_parus_protocol_plugin_descriptor.operations;
+            ribon_luca_protocol_plugin_descriptor.operations;
 
     if (protocol == 0 ||
         !check_entry_contract(
@@ -68,10 +68,10 @@ int main(void) {
             RIBON_ARCHITECTURE_RISCV64,
             RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3,
             RIBON_ENTRY_TRANSLATION_DISABLED)) {
-        fputs("parus_entry_contract_tests: entry contract mismatch\n", stderr);
+        fputs("luca_entry_contract_tests: entry contract mismatch\n", stderr);
         return 1;
     }
 
-    puts("RIBON-PARUS-ENTRY-CONTRACT-OK");
+    puts("RIBON-LUCA-ENTRY-CONTRACT-OK");
     return 0;
 }

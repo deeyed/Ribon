@@ -22,11 +22,11 @@ qstar.test "protocol_free_embed_tests" {
   },
 }
 
-qstar.test "rph1_builder_tests" {
+qstar.test "rlh1_builder_tests" {
   sources = {
-    "tests/rph1/rph1_builder_tests.c",
-    "src/protocols/os/parus/rph1_builder.c",
-    "src/protocols/os/parus/rph1_parser.c",
+    "tests/rlh1/rlh1_builder_tests.c",
+    "src/protocols/os/luca/rlh1_builder.c",
+    "src/protocols/os/luca/rlh1_parser.c",
     "src/core/memory.c",
   },
   configs = {
@@ -34,12 +34,12 @@ qstar.test "rph1_builder_tests" {
   },
 }
 
-qstar.test "parus_entry_contract_tests" {
+qstar.test "luca_entry_contract_tests" {
   sources = {
-    "tests/protocol/parus_entry_contract_tests.c",
-    "src/protocols/os/parus/protocol.c",
-    "src/protocols/os/parus/rph1_builder.c",
-    "src/protocols/os/parus/rph1_parser.c",
+    "tests/protocol/luca_entry_contract_tests.c",
+    "src/protocols/os/luca/protocol.c",
+    "src/protocols/os/luca/rlh1_builder.c",
+    "src/protocols/os/luca/rlh1_parser.c",
     "src/common/protocol.c",
     "src/core/memory.c",
   },
@@ -597,8 +597,8 @@ qstar.group "ribon_tests" {
   deps = {
     "//tests:plugin_descriptor_tests",
     "//tests:protocol_free_embed_tests",
-    "//tests:rph1_builder_tests",
-    "//tests:parus_entry_contract_tests",
+    "//tests:rlh1_builder_tests",
+    "//tests:luca_entry_contract_tests",
     "//tests:pe_coff_loader_tests",
     "//tests:fdt_parser_tests",
     "//tests:linux_boot_tests",
