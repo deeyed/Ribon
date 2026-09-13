@@ -10,7 +10,7 @@ struct RibonDirectLoadPlan;
 struct RibonPluginDescriptor;
 
 /** @brief Architecture operation table ABI다. */
-#define RIBON_ARCH_OPS_ABI_VERSION 4u
+#define RIBON_ARCH_OPS_ABI_VERSION 5u
 
 /** @brief Ribon architecture의 stable ID다. */
 enum RibonArchitectureId {
@@ -70,10 +70,11 @@ enum RibonArchCapability {
     RIBON_ARCH_CAP_HALT = 1ull << 5,
     RIBON_ARCH_CAP_RESET = 1ull << 6,
     RIBON_ARCH_CAP_MONOTONIC_COUNTER = 1ull << 7,
+    RIBON_ARCH_CAP_POST_EXIT_IDENTITY = 1ull << 8,
 };
 
 /** @brief 알려진 architecture operation bit 전체다. */
-#define RIBON_ARCH_CAP_ALL ((1ull << 8) - 1ull)
+#define RIBON_ARCH_CAP_ALL ((1ull << 9) - 1ull)
 
 /** @brief Architecture operation의 결과다. */
 enum RibonArchOperationStatus {
@@ -123,6 +124,23 @@ typedef int (*RibonArchPrepareEntryFn)(
     const struct RibonEntryInvocation *,
     struct RibonPreparedEntry *);
 
+/** @brief Firmware page-table retirement 전에 caller-owned identity table을 만든다. */
+typedef int (*RibonArchPreparePostExitIdentityFn)(
+    void *table_buffer,
+    uint64_t table_buffer_size,
+    uint64_t normal_memory_start,
+    uint64_t *translation_root_out);
+
+/** @brief 준비한 identity table로 전환하고 현재 physical execution을 유지한다. */
+typedef int (*RibonArchActivatePostExitIdentityFn)(uint64_t translation_root);
+
+/** @brief Caller-owned stack에서 반환 없이 post-exit continuation을 시작한다. */
+typedef void (*RibonArchPostExitContinuationFn)(void *context);
+typedef int (*RibonArchEnterPostExitStackFn)(
+    uint64_t stack_top,
+    RibonArchPostExitContinuationFn continuation,
+    void *context);
+
 /** @brief Prepared register ABI를 적용하고 OS entry로 제어를 넘긴다. */
 typedef void (*RibonArchTransferPreparedFn)(
     const struct RibonPreparedEntry *);
@@ -148,6 +166,9 @@ struct RibonArchOps {
     RibonArchDirectHighPagesFn direct_high_page_table_pages; /**< Page budget callback이다. */
     RibonArchPrepareDirectHighFn prepare_direct_high_entry; /**< Direct-high callback이다. */
     RibonArchPrepareEntryFn prepare_entry; /**< Invocation validator다. */
+    RibonArchPreparePostExitIdentityFn prepare_post_exit_identity; /**< Post-exit table builder다. */
+    RibonArchActivatePostExitIdentityFn activate_post_exit_identity; /**< Firmware table retirement callback이다. */
+    RibonArchEnterPostExitStackFn enter_post_exit_stack; /**< Caller-owned stack의 단방향 진입 callback이다. */
     RibonArchTransferPreparedFn transfer_prepared; /**< Terminal transfer callback이다. */
     RibonArchHaltFn halt; /**< Terminal halt callback이다. */
     RibonArchResetFn reset; /**< Optional reset callback이다. */

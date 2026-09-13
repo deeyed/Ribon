@@ -22,6 +22,7 @@
 #define RIBON_AARCH64_TCR_IPS_SHIFT 32u
 #define RIBON_AARCH64_HIGH_L3_TABLES 8ull
 #define RIBON_AARCH64_DIRECT_HIGH_TABLE_PAGES (5ull + RIBON_AARCH64_HIGH_L3_TABLES)
+#define RIBON_AARCH64_POST_EXIT_IDENTITY_PAGES 2ull
 
 static const struct RibonArchDescriptor aarch64_arch = {
     .size = sizeof(aarch64_arch),
@@ -86,6 +87,17 @@ static uint64_t block_descriptor(uint64_t physical_address) {
            RIBON_AARCH64_DESC_VALID;
 }
 
+/** @brief Existing MAIR의 selected attribute로 normal-memory block을 만든다. */
+static uint64_t block_descriptor_with_attr(
+    uint64_t physical_address,
+    uint64_t attribute_index) {
+    return descriptor_address(physical_address) |
+           ((attribute_index & 7u) << 2u) |
+           RIBON_AARCH64_DESC_INNER_SHAREABLE |
+           RIBON_AARCH64_DESC_AF |
+           RIBON_AARCH64_DESC_VALID;
+}
+
 /** @brief 4 KiB page mapping descriptor를 만든다. */
 static uint64_t page_descriptor(uint64_t physical_address) {
     return block_descriptor(physical_address) | RIBON_AARCH64_DESC_TABLE;
@@ -96,6 +108,101 @@ static void zero_u64_table(uint64_t *table, uint64_t entries) {
     for (uint64_t index = 0; index < entries; ++index) {
         table[index] = 0;
     }
+}
+
+/** @brief Caller-owned 두 page에 low 512 GiB identity map을 준비한다. */
+static int aarch64_prepare_post_exit_identity(
+    void *table_buffer,
+    uint64_t table_buffer_size,
+    uint64_t normal_memory_start,
+    uint64_t *translation_root_out) {
+    uint64_t *tables;
+    uint64_t attribute_index = 0u;
+    uint64_t device_attribute_index = 1u;
+    int root_is_l1 = 0;
+    const uint64_t root = (uint64_t)(uintptr_t)table_buffer;
+    if (table_buffer == 0 || translation_root_out == 0 ||
+        (root & (RIBON_AARCH64_PAGE_SIZE - 1u)) != 0u ||
+        normal_memory_start == 0u ||
+        (normal_memory_start & (RIBON_AARCH64_L1_BLOCK - 1u)) != 0u ||
+        table_buffer_size <
+            RIBON_AARCH64_POST_EXIT_IDENTITY_PAGES * RIBON_AARCH64_PAGE_SIZE) {
+        return RIBON_ARCH_OPERATION_BAD_ARGUMENT;
+    }
+#if defined(__aarch64__) && defined(_WIN32)
+    uint64_t tcr;
+    uint64_t mair;
+    int normal_attribute_seen = 0;
+    int device_attribute_seen = 0;
+    __asm__ __volatile__("mrs %0, tcr_el1" : "=r"(tcr));
+    __asm__ __volatile__("mrs %0, mair_el1" : "=r"(mair));
+    if (((tcr >> 14u) & 3u) != 0u ||
+        (tcr & 0x3fu) < 16u || (tcr & 0x3fu) > 32u) {
+        return RIBON_ARCH_OPERATION_UNSUPPORTED;
+    }
+    root_is_l1 = (tcr & 0x3fu) >= 25u;
+    for (uint64_t index = 0u; index < 8u; ++index) {
+        if (((mair >> (index * 8u)) & 0xffu) == 0xffu) {
+            attribute_index = index;
+            normal_attribute_seen = 1;
+            break;
+        }
+    }
+    for (uint64_t index = 0u; index < 8u; ++index) {
+        if (((mair >> (index * 8u)) & 0xffu) == 0x00u) {
+            device_attribute_index = index;
+            device_attribute_seen = 1;
+            break;
+        }
+    }
+    if (!normal_attribute_seen || !device_attribute_seen) {
+        return RIBON_ARCH_OPERATION_UNSUPPORTED;
+    }
+#endif
+    tables = (uint64_t *)table_buffer;
+    zero_u64_table(
+        tables,
+        RIBON_AARCH64_POST_EXIT_IDENTITY_PAGES * RIBON_AARCH64_ENTRIES);
+    if (!root_is_l1) {
+        tables[0] = table_descriptor(root + RIBON_AARCH64_PAGE_SIZE);
+        tables += RIBON_AARCH64_ENTRIES;
+    }
+    for (uint64_t index = 0u; index < RIBON_AARCH64_ENTRIES; ++index) {
+        tables[index] = block_descriptor_with_attr(
+            index * RIBON_AARCH64_L1_BLOCK,
+            index * RIBON_AARCH64_L1_BLOCK < normal_memory_start ?
+                device_attribute_index : attribute_index);
+    }
+    *translation_root_out = root;
+    return RIBON_ARCH_OPERATION_OK;
+}
+
+static int aarch64_activate_post_exit_identity(uint64_t translation_root);
+
+/** @brief Valid한 caller-owned stack으로 옮긴 뒤 continuation에 반환 없이 진입한다. */
+static int aarch64_enter_post_exit_stack(
+    uint64_t stack_top,
+    RibonArchPostExitContinuationFn continuation,
+    void *context) {
+    if (stack_top == 0u || (stack_top & 15u) != 0u ||
+        continuation == 0 || context == 0) {
+        return RIBON_ARCH_OPERATION_BAD_ARGUMENT;
+    }
+#if defined(__aarch64__) && defined(_WIN32)
+    __asm__ __volatile__(
+        "mov x9, %0\n"
+        "mov x10, %1\n"
+        "mov x0, %2\n"
+        "msr daifset, #0xf\n"
+        "mov sp, x9\n"
+        "br x10\n"
+        :
+        : "r"(stack_top), "r"(continuation), "r"(context)
+        : "x0", "x9", "x10", "memory");
+    __builtin_unreachable();
+#else
+    return RIBON_ARCH_OPERATION_UNSUPPORTED;
+#endif
 }
 
 /** @brief AArch64 data/instruction view를 full-system 경계에서 동기화한다. */
@@ -154,6 +261,7 @@ static const struct RibonArchOps aarch64_ops = {
         RIBON_ARCH_CAP_CACHE_SYNC |
         RIBON_ARCH_CAP_DIRECT_HIGH_ENTRY |
         RIBON_ARCH_CAP_ENTRY_BRIDGE |
+        RIBON_ARCH_CAP_POST_EXIT_IDENTITY |
         RIBON_ARCH_CAP_HALT |
         RIBON_ARCH_CAP_MONOTONIC_COUNTER,
     .descriptor = &aarch64_arch,
@@ -163,6 +271,9 @@ static const struct RibonArchOps aarch64_ops = {
     .direct_high_page_table_pages = ribon_arch_direct_high_page_table_pages,
     .prepare_direct_high_entry = ribon_arch_prepare_direct_high_entry,
     .prepare_entry = ribon_arch_prepare_entry,
+    .prepare_post_exit_identity = aarch64_prepare_post_exit_identity,
+    .activate_post_exit_identity = aarch64_activate_post_exit_identity,
+    .enter_post_exit_stack = aarch64_enter_post_exit_stack,
     .transfer_prepared = ribon_arch_transfer_prepared,
     .halt = aarch64_halt,
     .reset = 0,
@@ -362,6 +473,40 @@ static uint32_t current_pa_bits(void) {
     default:
         return 48u;
     }
+}
+
+/** @brief Firmware-owned translation을 caller-owned low identity map으로 교체한다. */
+static int aarch64_activate_post_exit_identity(uint64_t translation_root) {
+    uint64_t current_el;
+#if defined(__aarch64__)
+    __asm__ __volatile__("msr daifset, #0xf" : : : "memory");
+#endif
+    if (translation_root == 0u ||
+        (translation_root & (RIBON_AARCH64_PAGE_SIZE - 1u)) != 0u) {
+        return RIBON_ARCH_OPERATION_BAD_ARGUMENT;
+    }
+    __asm__ __volatile__("mrs %0, CurrentEL" : "=r"(current_el));
+    if (current_el != 4u) {
+        return RIBON_ARCH_OPERATION_UNSUPPORTED;
+    }
+    __asm__ __volatile__(
+        "msr daifset, #0xf\n"
+        "dsb sy\n"
+        "msr ttbr0_el1, %0\n"
+        "isb\n"
+        "tlbi vmalle1\n"
+        "dsb sy\n"
+        "isb\n"
+        :
+        : "r"(translation_root)
+        : "memory");
+    return RIBON_ARCH_OPERATION_OK;
+}
+#else
+/** @brief Host analysis build에서는 privileged identity activation을 지원하지 않는다. */
+static int aarch64_activate_post_exit_identity(uint64_t translation_root) {
+    return translation_root == 0u ?
+        RIBON_ARCH_OPERATION_BAD_ARGUMENT : RIBON_ARCH_OPERATION_UNSUPPORTED;
 }
 #endif
 

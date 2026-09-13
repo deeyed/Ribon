@@ -9,6 +9,8 @@
 #define RIBON_UEFI_MEMORY_MAP_CAPACITY (128u * 1024u)
 #define RIBON_UEFI_REGION_CAPACITY 512u
 #define RIBON_UEFI_SEGMENT_CAPACITY 16u
+#define RIBON_UEFI_POST_EXIT_IDENTITY_BYTES 8192u
+#define RIBON_UEFI_POST_EXIT_STACK_BYTES (64u * 1024u)
 #define RIBON_UEFI_HANDOFF_CAPACITY 65536u
 #define RIBON_UEFI_ARENA_CAPACITY (256u * 1024u)
 #define RIBON_UEFI_CONFIG_CAPACITY 4096u
@@ -26,6 +28,10 @@ static _Alignas(16) unsigned char raw_memory_map[RIBON_UEFI_MEMORY_MAP_CAPACITY]
 static struct RibonMemoryRegion environment_regions[RIBON_UEFI_REGION_CAPACITY];
 static struct RibonMemoryRegion normalized_regions[RIBON_UEFI_REGION_CAPACITY];
 static struct RibonLoadSegment load_segments[RIBON_UEFI_SEGMENT_CAPACITY];
+static _Alignas(4096) unsigned char
+    post_exit_identity_tables[RIBON_UEFI_POST_EXIT_IDENTITY_BYTES];
+static _Alignas(16) unsigned char
+    post_exit_stack[RIBON_UEFI_POST_EXIT_STACK_BYTES];
 static _Alignas(4096) unsigned char handoff_buffer[RIBON_UEFI_HANDOFF_CAPACITY];
 static _Alignas(16) unsigned char arena_storage[RIBON_UEFI_ARENA_CAPACITY];
 static unsigned char boot_config_bytes[RIBON_UEFI_CONFIG_CAPACITY];
@@ -36,7 +42,42 @@ static const struct RibonDiagnosticSinkServiceOperations *diagnostic_sink;
 
 struct UefiRefreshContext {
     struct RibonBootTransaction *transaction;
+    struct RibonUefiAppContext *native;
+    const struct RibonPayloadImage *payload;
+    const struct RibonDirectLoadPlan *layout;
+    int post_exit_payload;
 };
+
+struct UefiPostExitIdentityContext {
+    const struct RibonArchOps *arch;
+    uint64_t translation_root;
+};
+
+/* Direct-FDT post-exit execution may overwrite the firmware stack range. */
+static struct RibonUefiAppContext native;
+static struct RibonBootEnvironment environment;
+static struct RibonArena arena;
+static struct RibonCoreContext core;
+static struct RibonBootTransaction transaction;
+static struct RibonBootSource source;
+static struct RibonValidatedImage validated_image;
+static struct RibonDirectLoadPlan layout;
+static struct RibonMutableMemoryMap normalized;
+static struct RibonHandoffArtifact handoff;
+static struct UefiRefreshContext refresh;
+static struct UefiPostExitIdentityContext post_exit_identity;
+static struct RibonBootEnvironmentPersistentInputs persistent_inputs;
+static uint32_t boot_module_count;
+
+/** @brief ExitBootServices 반환 직후 interrupt를 막고 firmware TTBR0를 폐기한다. */
+static int uefi_activate_post_exit_identity(void *context) {
+    struct UefiPostExitIdentityContext *identity =
+        (struct UefiPostExitIdentityContext *)context;
+    return identity != 0 && identity->arch != 0 &&
+           identity->arch->activate_post_exit_identity != 0 &&
+           identity->arch->activate_post_exit_identity(
+               identity->translation_root) == RIBON_ARCH_OPERATION_OK ? 0 : -1;
+}
 
 /** @brief UEFI service lifetime과 무관한 stable serial marker를 기록한다. */
 static void uefi_marker(const char *text) {
@@ -135,14 +176,83 @@ static int uefi_refresh_plan(
     struct RibonBootEnvironment *environment) {
     struct UefiRefreshContext *refresh =
         (struct UefiRefreshContext *)context;
-    if (refresh == 0) {
+    if (refresh == 0 || refresh->native == 0 || refresh->payload == 0 ||
+        refresh->layout == 0) {
         return -1;
     }
-    return ribon_boot_transaction_refresh_after_commit(
-               refresh->transaction,
-               environment) == RIBON_BOOT_STATUS_OK ?
-        0 :
-        -1;
+    if (ribon_boot_transaction_refresh_after_commit(
+            refresh->transaction,
+            environment) != RIBON_BOOT_STATUS_OK) {
+        return -1;
+    }
+    if (!refresh->post_exit_payload) {
+        return 0;
+    }
+    return ribon_uefi_app_validate_post_exit_payload(
+               refresh->native,
+               refresh->payload,
+               refresh->layout) == RIBON_UEFI_APP_STATUS_OK ? 0 : -1;
+}
+
+/** @brief Caller-owned stack에서 final map, post-exit copy와 LUCA transfer를 끝낸다. */
+static void uefi_direct_fdt_exit_and_transfer(void *context) {
+    const struct RibonArchOps *arch = transaction.arch;
+    int status;
+    if (context != &post_exit_identity || arch == 0) {
+        if (arch != 0) {
+            arch->halt();
+        }
+        for (;;) {
+        }
+    }
+    uefi_marker("RIBON-R4-PROTOCOL-HANDOFF-OK");
+    status = ribon_uefi_app_exit_boot_services(
+        &native,
+        &environment,
+        &persistent_inputs,
+        uefi_refresh_plan,
+        &refresh,
+        uefi_activate_post_exit_identity,
+        &post_exit_identity);
+    if (status != RIBON_UEFI_APP_STATUS_OK) {
+        (void)uefi_fail("exit-boot-services");
+        arch->halt();
+    }
+    uefi_marker("RIBON-R4-UEFI-FINAL-HANDOFF-OK");
+    uefi_marker("RIBON-R4-UEFI-EXIT-BOOT-SERVICES-OK");
+    if (ribon_boot_transaction_quiesce_environment(&transaction) !=
+        RIBON_BOOT_STATUS_OK) {
+        arch->halt();
+    }
+    if (arch->cache_sync(
+            (uint64_t)(uintptr_t)handoff.data,
+            handoff.size) != RIBON_ARCH_OPERATION_OK) {
+        arch->halt();
+    }
+    for (uint32_t index = 0u; index < boot_module_count; ++index) {
+        if (arch->cache_sync(
+                boot_modules[index].physical_address,
+                boot_modules[index].size) != RIBON_ARCH_OPERATION_OK) {
+            arch->halt();
+        }
+    }
+    if (arch->cache_sync(
+            (uint64_t)(uintptr_t)transaction.payload.data,
+            transaction.payload.size) != RIBON_ARCH_OPERATION_OK) {
+        arch->halt();
+    }
+    uefi_marker("RIBON-R4-UEFI-TRANSFER");
+    if (ribon_uefi_app_place_payload_after_exit(
+            &native,
+            &transaction.payload,
+            &layout) != RIBON_UEFI_APP_STATUS_OK ||
+        arch->cache_sync(
+            layout.runtime_load_base,
+            layout.runtime_load_end - layout.runtime_load_base) !=
+            RIBON_ARCH_OPERATION_OK) {
+        arch->halt();
+    }
+    ribon_boot_transaction_transfer(&transaction);
 }
 
 /**
@@ -163,38 +273,46 @@ EFI_STATUS EFIAPI efi_main(
     const struct RibonPluginDescriptor *image_plugin;
     const struct RibonBootProtocol *protocol;
     const struct RibonImageFormatOps *image_format;
-    struct RibonUefiAppContext native = {
+    native = (struct RibonUefiAppContext){
         .raw_memory_map = raw_memory_map,
         .raw_memory_map_capacity = sizeof(raw_memory_map),
         .regions = environment_regions,
         .region_capacity = RIBON_UEFI_REGION_CAPACITY,
     };
-    struct RibonBootEnvironment environment;
-    struct RibonArena arena;
-    struct RibonCoreContext core;
-    struct RibonBootTransaction transaction;
-    struct RibonBootSource source;
-    struct RibonValidatedImage validated_image;
-    struct RibonDirectLoadPlan layout = {
+    environment = (struct RibonBootEnvironment){0};
+    arena = (struct RibonArena){0};
+    core = (struct RibonCoreContext){0};
+    transaction = (struct RibonBootTransaction){0};
+    source = (struct RibonBootSource){0};
+    validated_image = (struct RibonValidatedImage){0};
+    layout = (struct RibonDirectLoadPlan){
         .segments = load_segments,
         .segment_capacity = RIBON_UEFI_SEGMENT_CAPACITY,
     };
-    struct RibonMutableMemoryMap normalized = {
+    normalized = (struct RibonMutableMemoryMap){
         .regions = normalized_regions,
         .capacity = RIBON_UEFI_REGION_CAPACITY,
     };
-    struct RibonHandoffArtifact handoff = {0};
-    struct UefiRefreshContext refresh = {
+    handoff = (struct RibonHandoffArtifact){0};
+    refresh = (struct UefiRefreshContext){
         .transaction = &transaction,
+        .native = &native,
+        .payload = &transaction.payload,
+        .layout = &layout,
+    };
+    post_exit_identity = (struct UefiPostExitIdentityContext){
+        .arch = arch,
     };
     const struct RibonBootConfigEntry *selected_config = 0;
-    struct RibonBootEnvironmentPersistentInputs persistent_inputs = {0};
     void *handoff_storage = handoff_buffer;
     uint64_t handoff_storage_capacity = sizeof(handoff_buffer);
     int direct_fdt_development = 0;
-    uint32_t boot_module_count = 0u;
     uint64_t config_size = 0u;
+    uint64_t post_exit_identity_root = 0u;
     int status;
+
+    persistent_inputs = (struct RibonBootEnvironmentPersistentInputs){0};
+    boot_module_count = 0u;
 
     if (!ribon_port_descriptor_is_valid(port) ||
         port->architecture != RIBON_UEFI_TARGET_ARCHITECTURE ||
@@ -399,10 +517,36 @@ EFI_STATUS EFIAPI efi_main(
     if (status != RIBON_BOOT_STATUS_OK) {
         return uefi_transaction_fail(&transaction);
     }
-    if (protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+    refresh.post_exit_payload = direct_fdt_development;
+    if (direct_fdt_development &&
+        (((arch->capabilities & RIBON_ARCH_CAP_POST_EXIT_IDENTITY) == 0u) ||
+         arch->prepare_post_exit_identity == 0 ||
+         arch->activate_post_exit_identity == 0 ||
+         arch->enter_post_exit_stack == 0 ||
+         arch->prepare_post_exit_identity(
+             post_exit_identity_tables,
+             sizeof(post_exit_identity_tables),
+             RIBON_LUCA_DIRECT_FDT_RUNTIME_RAM_START,
+             &post_exit_identity_root) != RIBON_ARCH_OPERATION_OK)) {
+        return uefi_fail("post-exit-identity-prepare");
+    }
+    post_exit_identity.translation_root = post_exit_identity_root;
+    if (direct_fdt_development &&
+        arch->cache_sync(
+            (uint64_t)(uintptr_t)post_exit_identity_tables,
+            sizeof(post_exit_identity_tables)) != RIBON_ARCH_OPERATION_OK) {
+        return uefi_fail("post-exit-identity-cache");
+    }
+    if (!direct_fdt_development &&
+        protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
         ribon_uefi_app_place_payload(&native, &transaction.payload, &layout) !=
             RIBON_UEFI_APP_STATUS_OK) {
         return uefi_fail("payload-place");
+    }
+    if (!direct_fdt_development &&
+        protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY) {
+        uefi_marker("RIBON-R4-UEFI-PAYLOAD-LOADED");
+        uefi_marker("RIBON-R8-UEFI-ESP-PAYLOAD-OK");
     }
     if (ribon_boot_transaction_commit_attempt(&transaction) != RIBON_BOOT_STATUS_OK) {
         return uefi_fail("attempt-commit");
@@ -414,27 +558,31 @@ EFI_STATUS EFIAPI efi_main(
         (void)ribon_boot_transaction_execute_terminal(&transaction);
         return uefi_fail("managed-image-returned");
     }
+    if (direct_fdt_development) {
+        status = arch->enter_post_exit_stack(
+            (uint64_t)(uintptr_t)(post_exit_stack + sizeof(post_exit_stack)),
+            uefi_direct_fdt_exit_and_transfer,
+            &post_exit_identity);
+        if (status != RIBON_ARCH_OPERATION_OK) {
+            return uefi_fail("post-exit-stack-enter");
+        }
+        arch->halt();
+    }
     uefi_marker("RIBON-R4-PROTOCOL-HANDOFF-OK");
-    uefi_marker("RIBON-R4-UEFI-PAYLOAD-LOADED");
-    uefi_marker("RIBON-R8-UEFI-ESP-PAYLOAD-OK");
     status = ribon_uefi_app_exit_boot_services(
         &native,
         &environment,
         &persistent_inputs,
         uefi_refresh_plan,
-        &refresh);
+        &refresh,
+        0,
+        0);
     if (status != RIBON_UEFI_APP_STATUS_OK) {
         return uefi_fail("exit-boot-services");
     }
     uefi_marker("RIBON-R4-UEFI-FINAL-HANDOFF-OK");
     uefi_marker("RIBON-R4-UEFI-EXIT-BOOT-SERVICES-OK");
     if (ribon_boot_transaction_quiesce_environment(&transaction) != RIBON_BOOT_STATUS_OK) {
-        arch->halt();
-    }
-    if (arch->cache_sync(
-            layout.runtime_load_base,
-            layout.runtime_load_end - layout.runtime_load_base) !=
-        RIBON_ARCH_OPERATION_OK) {
         arch->halt();
     }
     if (arch->cache_sync(
@@ -448,6 +596,12 @@ EFI_STATUS EFIAPI efi_main(
                 boot_modules[index].size) != RIBON_ARCH_OPERATION_OK) {
             arch->halt();
         }
+    }
+    if (arch->cache_sync(
+            layout.runtime_load_base,
+            layout.runtime_load_end - layout.runtime_load_base) !=
+        RIBON_ARCH_OPERATION_OK) {
+        arch->halt();
     }
     uefi_marker("RIBON-R4-UEFI-TRANSFER");
     ribon_boot_transaction_transfer(&transaction);

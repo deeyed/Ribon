@@ -27,6 +27,9 @@
 /** @brief ConfigurationTable에서 허용할 source FDT byte 상한이다. */
 #define RIBON_UEFI_FDT_MAX_SIZE (16ull * 1024ull * 1024ull)
 
+/** @brief ExitBootServices 성공 직후 firmware 호출 없이 실행하는 callback이다. */
+typedef int (*RibonUefiPostExitFn)(void *context);
+
 /** @brief Environment-private UEFI file handle과 validated byte size다. */
 struct RibonUefiFileSource {
     EFI_FILE_PROTOCOL *handle; /**< ExitBootServices 전까지만 유효한 native handle이다. */
@@ -43,11 +46,12 @@ struct RibonUefiAppContext {
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *file_system; /**< Loaded-image device의 borrowed file system이다. */
     EFI_FILE_PROTOCOL *root; /**< Loaded-image volume의 borrowed root handle이다. */
     EFI_BLOCK_IO_PROTOCOL *block_io; /**< 선택적으로 capture한 borrowed block adapter다. */
-    const void *device_tree; /**< ExitBootServices 뒤에도 물리 storage가 유지되는 source FDT다. */
+    const void *device_tree; /**< Final handoff refresh까지 유지되는 validated source FDT다. */
     uint64_t device_tree_size; /**< Header totalsize로 검증한 exact source byte 수다. */
     struct RibonUefiFileSource files[RIBON_UEFI_FILE_SOURCE_CAPACITY]; /**< Bounded file source slots다. */
     void *raw_memory_map; /**< Caller-owned descriptor buffer다. */
     uint64_t raw_memory_map_capacity; /**< Raw buffer byte 수다. */
+    uint64_t raw_memory_map_size; /**< 마지막 성공 capture의 exact descriptor byte 수다. */
     struct RibonMemoryRegion *regions; /**< Caller-owned converted region storage다. */
     uint32_t region_capacity; /**< Converted region element 수 상한이다. */
     uint32_t region_count; /**< 마지막 capture의 region 수다. */
@@ -147,6 +151,23 @@ int ribon_uefi_app_place_payload(
     struct RibonDirectLoadPlan *layout);
 
 /**
+ * @brief Final UEFI map에서 post-exit payload 대상이 회수 가능한지 검증한다.
+ *
+ * 각 page는 ConventionalMemory 또는 BootServicesCode/Data여야 한다. Loader,
+ * Runtime Services, ACPI, MMIO와 descriptor gap은 실패한다.
+ */
+int ribon_uefi_app_validate_post_exit_payload(
+    const struct RibonUefiAppContext *context,
+    const struct RibonPayloadImage *payload,
+    const struct RibonDirectLoadPlan *layout);
+
+/** @brief ExitBootServices 성공 뒤 검증된 exact segment에 payload를 배치한다. */
+int ribon_uefi_app_place_payload_after_exit(
+    struct RibonUefiAppContext *context,
+    const struct RibonPayloadImage *payload,
+    struct RibonDirectLoadPlan *layout);
+
+/**
  * @brief Final map, plan refresh, ExitBootServices를 bounded transaction으로 수행한다.
  *
  * `EFI_INVALID_PARAMETER`이면 새 map을 capture하고 callback으로 handoff를 다시 만든다.
@@ -156,7 +177,9 @@ int ribon_uefi_app_exit_boot_services(
     struct RibonBootEnvironment *environment,
     const struct RibonBootEnvironmentPersistentInputs *persistent_inputs,
     RibonUefiRefreshPlanFn refresh,
-    void *refresh_context);
+    void *refresh_context,
+    RibonUefiPostExitFn post_exit,
+    void *post_exit_context);
 
 /** @brief 초기화된 UEFI application typed service directory를 반환한다. */
 const struct RibonServiceDirectory *ribon_uefi_app_service_directory(void);

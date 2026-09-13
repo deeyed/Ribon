@@ -30,7 +30,8 @@ static int expected_arch(
         *translation_out = RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE;
         *capabilities_out |=
             RIBON_ARCH_CAP_DIRECT_HIGH_ENTRY |
-            RIBON_ARCH_CAP_ENTRY_BRIDGE;
+            RIBON_ARCH_CAP_ENTRY_BRIDGE |
+            RIBON_ARCH_CAP_POST_EXIT_IDENTITY;
         return 1;
     }
     if (strcmp(name, "riscv64") == 0) {
@@ -82,6 +83,8 @@ int main(void) {
         .privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR,
     };
     struct RibonPreparedEntry prepared;
+    static _Alignas(4096) uint64_t post_exit_identity_tables[1024];
+    uint64_t post_exit_identity_root = 0u;
 
     if (ops == 0 ||
         !ribon_arch_ops_are_valid(ops) ||
@@ -100,6 +103,35 @@ int main(void) {
     if (ops->validate_direct_load(ops->descriptor, &validated, &payload) !=
         RIBON_ARCH_OPERATION_OK) {
         fputs("arch_ops_tests: valid payload rejected\n", stderr);
+        return 1;
+    }
+    if (strcmp(ops->descriptor->canonical_name, "aarch64") == 0) {
+        if (ops->prepare_post_exit_identity == 0 ||
+            ops->activate_post_exit_identity == 0 ||
+            ops->enter_post_exit_stack == 0 ||
+            ops->prepare_post_exit_identity(
+                post_exit_identity_tables,
+                sizeof(post_exit_identity_tables),
+                UINT64_C(0x40000000),
+                &post_exit_identity_root) != RIBON_ARCH_OPERATION_OK ||
+            post_exit_identity_root !=
+                (uint64_t)(uintptr_t)post_exit_identity_tables ||
+            (post_exit_identity_tables[0] & 3u) != 3u ||
+            (post_exit_identity_tables[512] & 1u) == 0u ||
+            ops->prepare_post_exit_identity(
+                post_exit_identity_tables,
+                sizeof(post_exit_identity_tables) - 1u,
+                UINT64_C(0x40000000),
+                &post_exit_identity_root) != RIBON_ARCH_OPERATION_BAD_ARGUMENT ||
+            ops->enter_post_exit_stack(0u, 0, 0) !=
+                RIBON_ARCH_OPERATION_BAD_ARGUMENT) {
+            fputs("arch_ops_tests: post-exit identity table contract failed\n", stderr);
+            return 1;
+        }
+    } else if (ops->prepare_post_exit_identity != 0 ||
+               ops->activate_post_exit_identity != 0 ||
+               ops->enter_post_exit_stack != 0) {
+        fputs("arch_ops_tests: unsupported post-exit identity callbacks published\n", stderr);
         return 1;
     }
     ++validated.machine;

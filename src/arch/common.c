@@ -115,6 +115,12 @@ int ribon_arch_ops_are_valid(const struct RibonArchOps *ops) {
         (ops->prepare_entry != 0 && ops->transfer_prepared != 0)) {
         return 0;
     }
+    if (((ops->capabilities & RIBON_ARCH_CAP_POST_EXIT_IDENTITY) != 0u) !=
+        (ops->prepare_post_exit_identity != 0 &&
+         ops->activate_post_exit_identity != 0 &&
+         ops->enter_post_exit_stack != 0)) {
+        return 0;
+    }
     if (((ops->capabilities & RIBON_ARCH_CAP_RESET) != 0u) !=
         (ops->reset != 0)) {
         return 0;

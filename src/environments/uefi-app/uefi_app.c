@@ -587,6 +587,7 @@ int ribon_uefi_app_initialize(
         context->files[index] = (struct RibonUefiFileSource){0};
     }
     context->region_count = 0u;
+    context->raw_memory_map_size = 0u;
     context->map_key = 0u;
     context->descriptor_size = 0u;
     context->descriptor_version = 0u;
@@ -945,6 +946,7 @@ int ribon_uefi_app_capture_environment(
     if (convert_status != RIBON_UEFI_APP_STATUS_OK) {
         return convert_status;
     }
+    context->raw_memory_map_size = map_size;
     ribon_boot_environment_init(
         out,
         RIBON_ENVIRONMENT_UEFI,
@@ -1050,13 +1052,192 @@ int ribon_uefi_app_place_payload(
     return RIBON_UEFI_APP_STATUS_OK;
 }
 
+/** @brief UEFI descriptor type이 ExitBootServices 뒤 payload로 회수 가능한지 판정한다. */
+static int uefi_payload_descriptor_reclaimable(UINT32 type) {
+    return type == EfiConventionalMemory ||
+           type == EfiBootServicesCode ||
+           type == EfiBootServicesData;
+}
+
+/** @brief Exact page range 전체가 post-exit reclaimable descriptor로 덮이는지 검사한다. */
+static int uefi_payload_range_reclaimable(
+    const struct RibonUefiAppContext *context,
+    uint64_t start,
+    uint64_t end) {
+    uint64_t cursor = start;
+    while (cursor < end) {
+        int found = 0;
+        for (uint64_t offset = 0u; offset < context->raw_memory_map_size;
+             offset += context->descriptor_size) {
+            const EFI_MEMORY_DESCRIPTOR *descriptor =
+                (const EFI_MEMORY_DESCRIPTOR *)
+                    ((const unsigned char *)context->raw_memory_map + offset);
+            uint64_t bytes;
+            uint64_t descriptor_end;
+            if (descriptor->NumberOfPages == 0u ||
+                descriptor->NumberOfPages > UINT64_MAX / 4096u) {
+                continue;
+            }
+            bytes = descriptor->NumberOfPages * 4096u;
+            if (bytes > UINT64_MAX - descriptor->PhysicalStart) {
+                continue;
+            }
+            descriptor_end = descriptor->PhysicalStart + bytes;
+            if (descriptor->PhysicalStart <= cursor && cursor < descriptor_end) {
+                if (!uefi_payload_descriptor_reclaimable(descriptor->Type)) {
+                    return 0;
+                }
+                cursor = descriptor_end < end ? descriptor_end : end;
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/** @brief Payload layout과 captured map의 immutable post-exit copy 계약을 검사한다. */
+static int uefi_post_exit_payload_is_valid(
+    const struct RibonUefiAppContext *context,
+    const struct RibonPayloadImage *payload,
+    const struct RibonDirectLoadPlan *layout) {
+    uint64_t source_start;
+    uint64_t source_end;
+    if (context == 0 || payload == 0 || payload->data == 0 ||
+        layout == 0 || layout->segments == 0 || layout->segment_count == 0u ||
+        context->raw_memory_map == 0 ||
+        context->descriptor_size < sizeof(EFI_MEMORY_DESCRIPTOR) ||
+        context->raw_memory_map_size < sizeof(EFI_MEMORY_DESCRIPTOR) ||
+        context->raw_memory_map_size > context->raw_memory_map_capacity ||
+        context->raw_memory_map_size % context->descriptor_size != 0u ||
+        (layout->load_plan_flags & RIBON_LOAD_PLAN_SEGMENTS_PLACED) != 0u ||
+        payload->size > UINT64_MAX - (uint64_t)(uintptr_t)payload->data) {
+        return 0;
+    }
+    source_start = (uint64_t)(uintptr_t)payload->data;
+    source_end = source_start + payload->size;
+    for (uint32_t index = 0u; index < layout->segment_count; ++index) {
+        const struct RibonLoadSegment *segment = &layout->segments[index];
+        const uint64_t page_base = ribon_align_down(segment->load_address, 4096u);
+        uint64_t page_end;
+        if (segment->memory_size == 0u ||
+            segment->load_address > UINT64_MAX - segment->memory_size ||
+            segment->virtual_address > UINT64_MAX - segment->memory_size ||
+            ribon_align_up(
+                segment->load_address + segment->memory_size,
+                4096u,
+                &page_end) != RIBON_MEMORY_STATUS_OK ||
+            page_end <= page_base ||
+            page_end - page_base > (uint64_t)(size_t)-1 ||
+            segment->file_offset > payload->size ||
+            segment->file_size > payload->size - segment->file_offset ||
+            segment->file_size > segment->memory_size ||
+            segment->file_size > (uint64_t)(size_t)-1 ||
+            (page_base < source_end && source_start < page_end) ||
+            !uefi_payload_range_reclaimable(context, page_base, page_end)) {
+            return 0;
+        }
+        for (uint32_t prior = 0u; prior < index; ++prior) {
+            const struct RibonLoadSegment *other = &layout->segments[prior];
+            const uint64_t other_base = ribon_align_down(other->load_address, 4096u);
+            uint64_t other_end;
+            if (other->load_address > UINT64_MAX - other->memory_size ||
+                ribon_align_up(
+                    other->load_address + other->memory_size,
+                    4096u,
+                    &other_end) != RIBON_MEMORY_STATUS_OK ||
+                (page_base < other_end && other_base < page_end)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int ribon_uefi_app_validate_post_exit_payload(
+    const struct RibonUefiAppContext *context,
+    const struct RibonPayloadImage *payload,
+    const struct RibonDirectLoadPlan *layout) {
+    if (context == 0 || context->boot_services == 0) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    return uefi_post_exit_payload_is_valid(context, payload, layout) ?
+        RIBON_UEFI_APP_STATUS_OK : RIBON_UEFI_APP_STATUS_PAYLOAD_ERROR;
+}
+
+/** @brief ExitBootServices 뒤 회수 가능한 segment에 payload를 zero-and-copy한다. */
+int ribon_uefi_app_place_payload_after_exit(
+    struct RibonUefiAppContext *context,
+    const struct RibonPayloadImage *payload,
+    struct RibonDirectLoadPlan *layout) {
+    uint64_t runtime_base = UINT64_MAX;
+    uint64_t runtime_end = 0u;
+    int entry_seen = 0;
+    if (context == 0 || context->boot_services != 0 ||
+        !uefi_post_exit_payload_is_valid(context, payload, layout)) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    for (uint32_t index = 0u; index < layout->segment_count; ++index) {
+        struct RibonLoadSegment *segment = &layout->segments[index];
+        const uint64_t page_base = ribon_align_down(segment->load_address, 4096u);
+        const uint64_t page_offset = segment->load_address - page_base;
+        uint64_t page_end;
+        uint64_t segment_end;
+        if (ribon_align_up(
+                segment->load_address + segment->memory_size,
+                4096u,
+                &page_end) != RIBON_MEMORY_STATUS_OK) {
+            return RIBON_UEFI_APP_STATUS_PAYLOAD_ERROR;
+        }
+        memset(
+            (void *)(uintptr_t)page_base,
+            0,
+            (size_t)(page_end - page_base));
+        memcpy(
+            (void *)(uintptr_t)(page_base + page_offset),
+            (const unsigned char *)payload->data + segment->file_offset,
+            (size_t)segment->file_size);
+        segment->runtime_address = page_base + page_offset;
+        segment_end = segment->runtime_address + segment->memory_size;
+        if (segment->runtime_address < runtime_base) {
+            runtime_base = segment->runtime_address;
+        }
+        if (segment_end > runtime_end) {
+            runtime_end = segment_end;
+        }
+        if (layout->entry_point >= segment->virtual_address &&
+            layout->entry_point < segment->virtual_address + segment->memory_size &&
+            (segment->flags & RIBON_LOAD_SEGMENT_EXECUTE) != 0u) {
+            layout->runtime_entry_address =
+                segment->runtime_address +
+                (layout->entry_point - segment->virtual_address);
+            entry_seen = 1;
+        }
+    }
+    if (!entry_seen || runtime_end <= runtime_base) {
+        return RIBON_UEFI_APP_STATUS_PAYLOAD_ERROR;
+    }
+    layout->runtime_load_base = runtime_base;
+    layout->runtime_load_end = runtime_end;
+    layout->memory_size = runtime_end - runtime_base;
+    layout->load_plan_flags |=
+        RIBON_LOAD_PLAN_SEGMENTS_PLACED |
+        RIBON_LOAD_PLAN_RUNTIME_ENTRY_VALID;
+    return RIBON_UEFI_APP_STATUS_OK;
+}
+
 /** @brief Final map과 ExitBootServices를 handoff refresh와 함께 재시도한다. */
 int ribon_uefi_app_exit_boot_services(
     struct RibonUefiAppContext *context,
     struct RibonBootEnvironment *environment,
     const struct RibonBootEnvironmentPersistentInputs *persistent_inputs,
     RibonUefiRefreshPlanFn refresh,
-    void *refresh_context) {
+    void *refresh_context,
+    RibonUefiPostExitFn post_exit,
+    void *post_exit_context) {
     if (context == 0 || environment == 0 || persistent_inputs == 0 ||
         refresh == 0 ||
         context->boot_services == 0) {
@@ -1081,6 +1262,9 @@ int ribon_uefi_app_exit_boot_services(
             context->map_key);
         if (!EFI_ERROR(status)) {
             context->boot_services = 0;
+            if (post_exit != 0 && post_exit(post_exit_context) != 0) {
+                return RIBON_UEFI_APP_STATUS_PAYLOAD_ERROR;
+            }
             return RIBON_UEFI_APP_STATUS_OK;
         }
         if (status != EFI_INVALID_PARAMETER) {
