@@ -13,6 +13,14 @@
 #define RIBON_UEFI_CONFIG_CAPACITY 4096u
 #define RIBON_UEFI_PAYLOAD_CAPACITY (8u * 1024u * 1024u)
 
+#if defined(__aarch64__)
+#define RIBON_UEFI_TARGET_ARCHITECTURE RIBON_ARCHITECTURE_AARCH64
+#elif defined(__x86_64__)
+#define RIBON_UEFI_TARGET_ARCHITECTURE RIBON_ARCHITECTURE_X86_64
+#else
+#error "UEFI entry supports only x86_64 and AArch64"
+#endif
+
 static _Alignas(16) unsigned char raw_memory_map[RIBON_UEFI_MEMORY_MAP_CAPACITY];
 static struct RibonMemoryRegion environment_regions[RIBON_UEFI_REGION_CAPACITY];
 static struct RibonMemoryRegion normalized_regions[RIBON_UEFI_REGION_CAPACITY];
@@ -123,7 +131,7 @@ EFI_STATUS EFIAPI efi_main(
     int status;
 
     if (!ribon_port_descriptor_is_valid(port) ||
-        port->architecture != RIBON_ARCHITECTURE_X86_64 ||
+        port->architecture != RIBON_UEFI_TARGET_ARCHITECTURE ||
         port->environment != RIBON_ENVIRONMENT_UEFI ||
         port->diagnostic_sink == 0) {
         return EFI_UNSUPPORTED;

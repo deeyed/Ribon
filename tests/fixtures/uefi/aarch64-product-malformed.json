@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "product_id": "bootmgr.aarch64-uefi-parus-fixture",
+  "product_kind": "bootloader",
+  "target_id": "aarch64-uefi-parus-fixture",
+  "architecture": "x86_64"
+}

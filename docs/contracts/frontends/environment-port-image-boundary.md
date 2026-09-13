@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-08-02
+last_verified: 2026-09-13
 code_paths:
   - src/environments/
   - src/image-formats/
@@ -15,6 +15,10 @@ tests:
   - make check-target-builds
   - make qemu-aarch64-virt-raw-fdt-smoke
   - make x86_64-uefi-parus-fixture-smoke
+  - make check-aarch64-uefi-host-generation
+  - make check-aarch64-uefi-pe
+  - make aarch64-uefi-parus-fixture-smoke
+  - make check-aarch64-uefi-negative-smoke
   - make check-uefi-product-hermeticity
 hardware:
   - none
@@ -68,6 +72,14 @@ UEFI consumer는 loaded-image device의 native file and block handle을 environm
 유지하고 canonical read-only file source 또는 `RibonReadOnlyBlockDevice`로만 변환한다. File size와
 exact read를 검증하고, configuration-selected payload path가 아닌 build-embedded bytes를 external
 media product의 source로 사용하지 않는다.
+
+AArch64 UEFI product는 `EFI/BOOT/BOOTAA64.EFI`를 ARM64 PE32+ application으로
+생성한다. Firmware entry의 AArch64 ABI와 16-byte stack 정렬은 target compiler가
+소유하고, Ribon architecture backend는 EFI handle이나 System Table을 받지 않는다.
+Entry는 두 native pointer를 `uefi-app` context에 넘긴 뒤 typed environment와 service
+directory만 generic Core에 공개한다. Product는 `qemu-virt-aarch64`의 bounded PL011
+diagnostic sink를 사용하지만 UEFI file, memory map, allocation과 quiesce authority는
+계속 environment provider가 소유한다.
 
 Raw-FDT parser는 allocation과 MMIO 없이 header, structure, string bounds를 검증한다.
 Product와 machine-description service가 선언한 native input 상한을 넘는 blob과 memory

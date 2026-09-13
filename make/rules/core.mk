@@ -63,6 +63,9 @@
 	qemu-aarch64-virt-modules-fixture-smoke \
 	qemu-aarch64-virt-parus-modules-product \
 	qemu-aarch64-virt-parus-modules-smoke x86_64-uefi-parus-fixture \
+	aarch64-uefi-parus-fixture aarch64-uefi-parus-fixture-smoke \
+	check-aarch64-uefi-host-generation check-aarch64-uefi-pe \
+	check-aarch64-uefi-negative-smoke \
 	qemu-riscv64-virt-parus-product qemu-riscv64-virt-parus-smoke \
 	qemu-riscv64-virt-rlh1-fixture-product \
 	qemu-riscv64-virt-rlh1-fixture-smoke \

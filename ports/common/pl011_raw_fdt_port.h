@@ -25,6 +25,12 @@
 #ifndef RIBON_PORT_PAYLOAD_SIZE
 #error "RIBON_PORT_PAYLOAD_SIZE must be defined"
 #endif
+#ifndef RIBON_PORT_ENVIRONMENT
+#define RIBON_PORT_ENVIRONMENT RIBON_ENVIRONMENT_RAW_FDT
+#endif
+#ifndef RIBON_PORT_ENVIRONMENT_MASK
+#define RIBON_PORT_ENVIRONMENT_MASK RIBON_ENV_MASK_RAW_FDT
+#endif
 
 #include <Ribon/port/port.h>
 
@@ -97,7 +103,7 @@ static const struct RibonPayloadPlacementServiceOperations
     .id = (id_value), \
     .provides = (cap_value), \
     .architecture_mask = RIBON_PORT_ARCH_MASK, \
-    .environment_mask = RIBON_ENV_MASK_RAW_FDT, \
+    .environment_mask = RIBON_PORT_ENVIRONMENT_MASK, \
     .mode_mask = RIBON_MODE_MASK_ALL, \
     .arena_budget = 1u, \
     .input_budget = 4096u, \
@@ -143,7 +149,7 @@ static const struct RibonPortDescriptor selected_port = {
     .abi_version = RIBON_PORT_ABI_VERSION,
     .id = RIBON_PORT_ID,
     .architecture = RIBON_PORT_ARCHITECTURE,
-    .environment = RIBON_ENVIRONMENT_RAW_FDT,
+    .environment = RIBON_PORT_ENVIRONMENT,
     .timer_frequency_hz = RIBON_PORT_TIMER_FREQUENCY,
     .diagnostic_sink = &ribon_port_diagnostic_sink_service_descriptor,
     .machine_description = &ribon_port_machine_description_service_descriptor,
@@ -155,3 +161,5 @@ const struct RibonPortDescriptor *ribon_port_selected(void) {
 }
 
 #undef RIBON_PORT_SERVICE_FIELDS
+#undef RIBON_PORT_ENVIRONMENT
+#undef RIBON_PORT_ENVIRONMENT_MASK

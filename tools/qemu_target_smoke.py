@@ -15,6 +15,19 @@ import time
 
 
 TARGET_MARKERS = {
+    "aarch64-uefi": (
+        b"RIBON-R4-UEFI-ENTRY",
+        b"RIBON-R8-UEFI-CONFIG-OK",
+        b"RIBON-R9-UEFI-MODULE-LOADED",
+        b"RIBON-R4-UEFI-MEMORY-MAP",
+        b"RIBON-R4-UEFI-PRODUCT-GRAPH-OK",
+        b"RIBON-R4-PROTOCOL-HANDOFF-OK",
+        b"RIBON-R4-UEFI-PAYLOAD-LOADED",
+        b"RIBON-R8-UEFI-ESP-PAYLOAD-OK",
+        b"RIBON-R4-UEFI-FINAL-HANDOFF-OK",
+        b"RIBON-R4-UEFI-EXIT-BOOT-SERVICES-OK",
+        b"RIBON-R4-UEFI-TRANSFER",
+    ),
     "aarch64-virt-raw-fdt": (
         b"RIBON-R4-RAW-FDT-ENTRY",
         b"RIBON-R4-FDT-ACCEPTED",
@@ -66,6 +79,7 @@ LEGACY_FIXTURE_MARKERS = (
     b"PARUS-FIXTURE-ENTRY-ABI-FAIL",
 )
 TARGET_FIXTURE_SUCCESS_MARKERS = {
+    "aarch64-uefi": b"PARUS-FIXTURE-ENTRY-OK",
     "aarch64-virt-raw-fdt": b"PARUS-FIXTURE-ENTRY-OK",
     "riscv64-virt-opensbi": b"RIBON-RLH1-RISCV64-FIXTURE-OK",
     "x86_64-uefi": b"PARUS-FIXTURE-ENTRY-OK",
@@ -412,6 +426,30 @@ def command_for(args: argparse.Namespace) -> list[str]:
         return command
     if args.firmware is None or (args.esp is None and args.disk_image is None):
         raise ValueError("--esp/--disk-image and --firmware are required")
+    if args.target == "aarch64-uefi":
+        command = [
+            args.qemu,
+            "-machine", "virt",
+            "-cpu", "cortex-a72",
+            "-m", "256M",
+            "-display", "none",
+            "-serial", "stdio",
+            "-monitor", "none",
+            "-net", "none",
+            "-no-reboot",
+            "-snapshot",
+            "-drive", f"if=pflash,format=raw,readonly=on,file={args.firmware}",
+        ]
+        if args.disk_image is not None:
+            command += [
+                "-drive",
+                f"if=virtio,format=raw,readonly=on,file={args.disk_image}",
+            ]
+        else:
+            command += ["-drive", f"if=virtio,format=raw,file=fat:{args.esp}"]
+        if not args.expect_clean_exit:
+            command.insert(command.index("-snapshot"), "-no-shutdown")
+        return command
     # Keep firmware NvVars writes in a transient overlay over the immutable ESP.
     command = [
         args.qemu,
@@ -466,6 +504,8 @@ def process_group_alive(process_group: int) -> bool:
 
 def required_markers(args: argparse.Namespace) -> tuple[bytes, ...]:
     """Select fixture or actual-payload evidence without kernel policy."""
+    if args.expected_failure_stage is not None:
+        return (TARGET_MARKERS[args.target][0],)
     candidates = TARGET_MARKERS[args.target]
     candidates += tuple(
         marker.encode("utf-8") for marker in args.required_marker
@@ -550,7 +590,7 @@ def main() -> int:
     parser.add_argument(
         "--expected-payload-class",
         choices=(
-            "fixture", "kernel", "linux-image", "linux-riscv64-image",
+            "invalid", "fixture", "kernel", "linux-image", "linux-riscv64-image",
             "linux-efi", "freebsd-efi",
         ),
         required=True,
@@ -565,9 +605,18 @@ def main() -> int:
     parser.add_argument("--preload-payload-address", type=lambda value: int(value, 0))
     parser.add_argument("--kernel-command-line")
     parser.add_argument("--expect-clean-exit", action="store_true")
+    parser.add_argument(
+        "--expected-failure-stage",
+        choices=("esp-config", "init-image-load", "boot-prepare"),
+    )
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
     args = parser.parse_args()
+
+    if args.expected_failure_stage is not None and args.target != "aarch64-uefi":
+        parser.error("--expected-failure-stage is limited to aarch64-uefi")
+    if args.expected_payload_class == "invalid" and args.expected_failure_stage is None:
+        parser.error("invalid payload class requires --expected-failure-stage")
 
     command = command_for(args)
     composed_path = (
@@ -899,6 +948,20 @@ def main() -> int:
         for line in output.splitlines()
     ) or any(marker in output for marker in FATAL_OUTPUT_MARKERS)
     fixture_failed = any(marker in output for marker in FIXTURE_FAILURE_MARKERS)
+    expected_target_rejection = (
+        args.expected_failure_stage is not None
+        and outcome == "target-failure"
+        and output.count(b"RIBON-R4-UEFI-FAIL") == 1
+        and output.count(args.expected_failure_stage.encode("utf-8")) == 1
+        and output.count(TARGET_MARKERS[args.target][0]) == 1
+        and b"RIBON-R4-UEFI-TRANSFER" not in output
+        and not payload_failed
+        and not fixture_failed
+    )
+    if expected_target_rejection:
+        outcome = "passed"
+        terminal = "expected-target-rejection"
+        first_divergence = None
     if (
         outcome == "clean-exit-candidate"
         and process_returncode == 0
@@ -909,7 +972,7 @@ def main() -> int:
     ):
         outcome = "passed"
         terminal = "clean-poweroff"
-    if outcome == "passed" and target_failed:
+    if outcome == "passed" and target_failed and not expected_target_rejection:
         outcome = "target-failure"
         terminal = "target-failure"
         first_divergence = "target-failure-after-required-evidence"
@@ -1078,6 +1141,7 @@ def main() -> int:
             "occurred": timed_out,
         },
         "terminal": terminal,
+        "expected_failure_stage": args.expected_failure_stage,
         "cleanup": {
             "launched": launched,
             "complete": cleanup_complete,

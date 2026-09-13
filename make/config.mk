@@ -17,6 +17,8 @@ CROSS_CC ?= $(shell $(PYTHON) $(LLVM_TOOL_RESOLVER) \
 	--tool clang --require-target riscv64 2>/dev/null)
 X86_64_CC ?= $(CROSS_CC)
 AARCH64_CC ?= $(CROSS_CC)
+AARCH64_UEFI_CC ?= clang
+AARCH64_UEFI_LLD_LINK ?= lld-link
 RISCV64_CC ?= $(CROSS_CC)
 LD_LLD ?= $(shell $(PYTHON) $(LLVM_TOOL_RESOLVER) --tool ld.lld 2>/dev/null)
 LLD_LINK ?= $(shell $(PYTHON) $(LLVM_TOOL_RESOLVER) --tool lld-link 2>/dev/null)
@@ -25,6 +27,7 @@ LLVM_AR ?= $(shell $(PYTHON) $(LLVM_TOOL_RESOLVER) --tool llvm-ar 2>/dev/null)
 QEMU_AARCH64 ?= qemu-system-aarch64
 QEMU_X86_64 ?= qemu-system-x86_64
 QEMU_RISCV64 ?= qemu-system-riscv64
+AARCH64_UEFI_FIRMWARE ?=
 
 ifeq ($(origin AR),default)
 AR := $(LLVM_AR)
@@ -53,6 +56,9 @@ RISCV64_FLAGS := --target=riscv64-none-elf $(FREESTANDING_FLAGS) \
 UEFI_FLAGS := --target=x86_64-pc-win32-coff $(FREESTANDING_FLAGS) \
 	-fshort-wchar -mno-red-zone -I$(ROOT)/include/uefi \
 	-I$(ROOT)/include/uefi/X64
+AARCH64_UEFI_FLAGS := --target=aarch64-pc-windows-msvc $(FREESTANDING_FLAGS) \
+	-fshort-wchar -mgeneral-regs-only -mstrict-align \
+	-I$(ROOT)/include/uefi -I$(ROOT)/include/uefi/AArch64
 BIOS_FLAGS := --target=i386-none-elf $(FREESTANDING_FLAGS) -m32
 
 # Parus-specific product smokes require the complete kernel-owned boot chain.

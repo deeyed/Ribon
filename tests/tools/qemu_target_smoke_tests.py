@@ -38,6 +38,39 @@ TRANSFER_MARKERS = (
 class QemuTargetSmokeTests(unittest.TestCase):
     """Verify actual-kernel and fixture evidence cannot masquerade."""
 
+    def test_invalid_payload_class_requires_expected_failure(self) -> None:
+        """An invalid input cannot become an ordinary positive payload class."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            image = directory / "ribon.bin"
+            payload = directory / "invalid.bin"
+            image.write_bytes(b"RIBON")
+            payload.write_bytes(b"NOT-AN-EXECUTABLE")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(HARNESS),
+                    "--target", "aarch64-virt-raw-fdt",
+                    "--qemu", "/usr/bin/false",
+                    "--image", str(image),
+                    "--payload", str(payload),
+                    "--expected-payload-class", "invalid",
+                    "--source-revision", "test-revision",
+                    "--log", str(directory / "serial.log"),
+                    "--result", str(directory / "result.json"),
+                ],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn(
+                "invalid payload class requires --expected-failure-stage",
+                completed.stdout,
+            )
+
     def test_freebsd_loader_has_distinct_observed_class(self) -> None:
         """An official-loader marker cannot be reported as a Linux EFI stub."""
 

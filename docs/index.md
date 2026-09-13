@@ -62,6 +62,7 @@ contracts/update/transaction-journal-v1
 contracts/update/boot-confirmation-v1
 contracts/storage/bounded-update-slot-provider-v1
 contracts/frontends/environment-port-image-boundary
+contracts/frontends/aarch64-uefi-application
 contracts/frontends/raw-fdt-boot-module-bundle
 contracts/storage/deterministic-boot-media
 contracts/firmware/firmware-personality-plugin

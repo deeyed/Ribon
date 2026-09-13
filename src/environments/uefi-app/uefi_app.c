@@ -7,6 +7,16 @@
 
 #include <string.h>
 
+#if defined(__aarch64__)
+#define RIBON_UEFI_ARCHITECTURE RIBON_ARCHITECTURE_AARCH64
+#define RIBON_UEFI_ARCH_MASK RIBON_ARCH_MASK_AARCH64
+#elif defined(__x86_64__)
+#define RIBON_UEFI_ARCHITECTURE RIBON_ARCHITECTURE_X86_64
+#define RIBON_UEFI_ARCH_MASK RIBON_ARCH_MASK_X86_64
+#else
+#error "UEFI application supports only x86_64 and AArch64"
+#endif
+
 static struct RibonUefiAppContext *uefi_context;
 static int uefi_services_initialized;
 static unsigned char uefi_attempt_metadata[64];
@@ -393,7 +403,7 @@ const struct RibonServiceDescriptor ribon_uefi_app_boot_source_service_descripto
     .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
     .id = "service.uefi-app.boot-source",
     .provides = RIBON_CAP_BOOT_SOURCE_READ,
-    .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .architecture_mask = RIBON_UEFI_ARCH_MASK,
     .environment_mask = RIBON_ENV_MASK_UEFI,
     .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 8192u,
@@ -417,7 +427,7 @@ const struct RibonServiceDescriptor ribon_uefi_app_monotonic_timer_service_descr
     .phase = RIBON_PLUGIN_PHASE_FOUNDATION,
     .id = "service.uefi-app.monotonic-timer",
     .provides = RIBON_CAP_MONOTONIC_TIMER,
-    .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .architecture_mask = RIBON_UEFI_ARCH_MASK,
     .environment_mask = RIBON_ENV_MASK_UEFI,
     .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 8192u,
@@ -436,7 +446,7 @@ const struct RibonServiceDescriptor ribon_uefi_app_persistent_metadata_service_d
     .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_PERSISTENT_METADATA,
     .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
     .phase = RIBON_PLUGIN_PHASE_FOUNDATION, .id = "service.uefi-app.persistent-metadata",
-    .provides = RIBON_CAP_PERSISTENT_METADATA, .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .provides = RIBON_CAP_PERSISTENT_METADATA, .architecture_mask = RIBON_UEFI_ARCH_MASK,
     .environment_mask = RIBON_ENV_MASK_UEFI, .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
     .operations = &uefi_metadata_operations, .operations_size = sizeof(uefi_metadata_operations),
@@ -449,7 +459,7 @@ const struct RibonServiceDescriptor ribon_uefi_app_storage_flush_service_descrip
     .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_STORAGE_FLUSH,
     .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_BOOT,
     .phase = RIBON_PLUGIN_PHASE_FOUNDATION, .id = "service.uefi-app.storage-flush",
-    .provides = RIBON_CAP_STORAGE_FLUSH, .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .provides = RIBON_CAP_STORAGE_FLUSH, .architecture_mask = RIBON_UEFI_ARCH_MASK,
     .environment_mask = RIBON_ENV_MASK_UEFI, .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
     .operations = &uefi_flush_operations, .operations_size = sizeof(uefi_flush_operations),
@@ -462,7 +472,7 @@ const struct RibonServiceDescriptor ribon_uefi_app_environment_quiesce_service_d
     .abi_version = RIBON_SERVICE_ABI_VERSION, .kind = RIBON_SERVICE_KIND_ENVIRONMENT_QUIESCE,
     .cardinality = RIBON_SERVICE_CARDINALITY_AUTHORITY, .lifetime = RIBON_SERVICE_LIFETIME_QUIESCE,
     .phase = RIBON_PLUGIN_PHASE_QUIESCE, .id = "service.uefi-app.environment-quiesce",
-    .provides = RIBON_CAP_ENVIRONMENT_QUIESCE, .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .provides = RIBON_CAP_ENVIRONMENT_QUIESCE, .architecture_mask = RIBON_UEFI_ARCH_MASK,
     .environment_mask = RIBON_ENV_MASK_UEFI, .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 1024u, .input_budget = 64u, .output_budget = 64u, .deadline_ms = 30000u,
     .operations = &uefi_quiesce_operations, .operations_size = sizeof(uefi_quiesce_operations),
@@ -781,7 +791,7 @@ int ribon_uefi_app_capture_environment(
     ribon_boot_environment_init(
         out,
         RIBON_ENVIRONMENT_UEFI,
-        RIBON_ARCHITECTURE_X86_64);
+        RIBON_UEFI_ARCHITECTURE);
     out->memory_map.regions = context->regions;
     out->memory_map.region_count = context->region_count;
     out->raw_memory_map.data = context->raw_memory_map;
@@ -975,7 +985,7 @@ const struct RibonPluginDescriptor ribon_uefi_app_environment_plugin_descriptor 
         RIBON_CAP_STORAGE_FLUSH |
         RIBON_CAP_ENVIRONMENT_QUIESCE,
     .requires = RIBON_CAP_ARCHITECTURE,
-    .architecture_mask = RIBON_ARCH_MASK_X86_64,
+    .architecture_mask = RIBON_UEFI_ARCH_MASK,
     .environment_mask = RIBON_ENV_MASK_UEFI,
     .mode_mask = RIBON_MODE_MASK_ALL,
     .arena_budget = 16384u,

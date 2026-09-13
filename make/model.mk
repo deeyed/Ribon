@@ -551,6 +551,54 @@ UEFI_FIXTURE_PAYLOAD := $(UEFI_FIXTURE_ESP)/RIBON/PAYLOAD.ELF
 UEFI_FIXTURE_INIT_SOURCE := $(UEFI_FIXTURE_DIR)/fixtures/init-image.bin
 UEFI_FIXTURE_INIT_IMAGE := $(UEFI_FIXTURE_ESP)/RIBON/INIT.IMG
 
+AARCH64_UEFI_PRODUCT := aarch64-uefi-parus-fixture
+AARCH64_UEFI_DIR := $(TARGET_BUILD_ROOT)/$(AARCH64_UEFI_PRODUCT)
+AARCH64_UEFI_MANIFEST := \
+	products/bootmgr/manifests/aarch64-uefi-parus-fixture.json
+AARCH64_UEFI_REGISTRY_C := $(AARCH64_UEFI_DIR)/generated/plugin_registry.c
+AARCH64_UEFI_GRAPH := $(AARCH64_UEFI_DIR)/results/object-graph.json
+AARCH64_UEFI_INPUT_MANIFEST := $(AARCH64_UEFI_DIR)/manifests/product.json
+AARCH64_UEFI_APP := $(AARCH64_UEFI_DIR)/BOOTAA64.EFI
+AARCH64_UEFI_ESP := $(AARCH64_UEFI_DIR)/esp
+AARCH64_UEFI_CONFIG := $(AARCH64_UEFI_ESP)/RIBON/BOOT.CFG
+AARCH64_UEFI_PAYLOAD_SOURCE := $(AARCH64_UEFI_DIR)/fixtures/payload.elf
+AARCH64_UEFI_PAYLOAD := $(AARCH64_UEFI_ESP)/RIBON/PAYLOAD.ELF
+AARCH64_UEFI_INIT_SOURCE := $(AARCH64_UEFI_DIR)/fixtures/init-image.bin
+AARCH64_UEFI_INIT_IMAGE := $(AARCH64_UEFI_ESP)/RIBON/INIT.IMG
+AARCH64_UEFI_HOST_TOOL := $(BUILD_ROOT)/tools/ribon-aarch64-uefi-gen
+AARCH64_UEFI_HOST_TOOL_TEST := \
+	$(TEST_BUILD_DIR)/aarch64_uefi_host_tool_tests
+AARCH64_UEFI_PE_TEST := $(TEST_BUILD_DIR)/aarch64_uefi_pe_tests
+AARCH64_UEFI_NEGATIVE_DIR := $(AARCH64_UEFI_DIR)/negative
+AARCH64_UEFI_SRCS := \
+	src/core/arena.c \
+	src/core/context.c \
+	src/core/plugin.c \
+	src/core/registry.c \
+	src/core/service_directory.c \
+	src/core/memory.c \
+	src/config/boot_config.c \
+	src/common/environment.c \
+	src/common/protocol.c \
+	src/common/boot.c \
+	src/common/image.c \
+	src/common/port.c \
+	src/common/freestanding/string.c \
+	src/common/drivers/serial/pl011.c \
+	src/arch/common.c \
+	src/arch/aarch64/arch.c \
+	src/modes/normal.c \
+	src/image-formats/elf64.c \
+	src/protocols/os/luca/protocol.c \
+	src/protocols/os/luca/rlh1_builder.c \
+	src/protocols/os/luca/rlh1_parser.c \
+	src/environments/uefi-app/uefi_app.c \
+	ports/qemu/virt-aarch64/uefi_port.c \
+	targets/uefi-app/entry.c
+AARCH64_UEFI_OBJS := \
+	$(AARCH64_UEFI_SRCS:%.c=$(AARCH64_UEFI_DIR)/obj/%.o) \
+	$(AARCH64_UEFI_DIR)/obj/generated/plugin_registry.o
+
 UEFI_EXTERNAL_REGISTRY_C := $(UEFI_EXTERNAL_DIR)/generated/plugin_registry.c
 UEFI_EXTERNAL_GRAPH := $(UEFI_EXTERNAL_DIR)/results/object-graph.json
 UEFI_EXTERNAL_INPUT_MANIFEST := $(UEFI_EXTERNAL_DIR)/manifests/product.json
@@ -585,7 +633,7 @@ UEFI_SRCS := \
 	src/protocols/os/luca/rlh1_parser.c \
 	src/environments/uefi-app/uefi_app.c \
 	ports/qemu/pc-x86_64/port.c \
-	targets/x86_64-uefi-app/entry.c
+	targets/uefi-app/entry.c
 UEFI_FIXTURE_OBJS := $(UEFI_SRCS:%.c=$(UEFI_FIXTURE_DIR)/obj/%.o)
 UEFI_FIXTURE_OBJS += \
 	$(UEFI_FIXTURE_DIR)/obj/generated/plugin_registry.o
@@ -635,7 +683,7 @@ UEFI_LINUX_SRCS := \
 	src/environments/uefi-app/uefi_app.c \
 	src/environments/uefi-app/terminal_image.c \
 	ports/qemu/pc-x86_64/port.c \
-	targets/x86_64-uefi-app/entry.c
+	targets/uefi-app/entry.c
 UEFI_LINUX_OBJS := $(UEFI_LINUX_SRCS:%.c=$(UEFI_LINUX_DIR)/obj/%.o)
 UEFI_LINUX_OBJS += $(UEFI_LINUX_DIR)/obj/generated/plugin_registry.o
 
@@ -683,7 +731,7 @@ UEFI_FREEBSD_SRCS := \
 	src/environments/uefi-app/uefi_app.c \
 	src/environments/uefi-app/terminal_image.c \
 	ports/qemu/pc-x86_64/port.c \
-	targets/x86_64-uefi-app/entry.c
+	targets/uefi-app/entry.c
 UEFI_FREEBSD_OBJS := $(UEFI_FREEBSD_SRCS:%.c=$(UEFI_FREEBSD_DIR)/obj/%.o)
 UEFI_FREEBSD_OBJS += $(UEFI_FREEBSD_DIR)/obj/generated/plugin_registry.o
 

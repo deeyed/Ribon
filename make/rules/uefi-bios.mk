@@ -1,5 +1,226 @@
 uefi-external-input-force:
 
+$(AARCH64_UEFI_HOST_TOOL): \
+	tools/host/aarch64_uefi_gen.c \
+	language/ribos/artifact/src/sha256.c \
+	language/ribos/artifact/src/internal.h \
+	language/ribos/artifact/include/ribos/artifact/format.h
+	@mkdir -p $(@D)
+	$(CC) -std=c11 -O2 -g $(WARNFLAGS) \
+		-Ilanguage/ribos/artifact/include \
+		-Ilanguage/ribos/schema/include \
+		tools/host/aarch64_uefi_gen.c \
+		language/ribos/artifact/src/sha256.c -o $@
+
+$(AARCH64_UEFI_HOST_TOOL_TEST): \
+	tests/tools/aarch64_uefi_host_tool_tests.c \
+	language/ribos/artifact/src/sha256.c \
+	language/ribos/artifact/src/internal.h \
+	language/ribos/artifact/include/ribos/artifact/format.h
+	@mkdir -p $(@D)
+	$(CC) -std=c11 -O2 -g $(WARNFLAGS) \
+		-Ilanguage/ribos/artifact/include \
+		-Ilanguage/ribos/schema/include \
+		tests/tools/aarch64_uefi_host_tool_tests.c \
+		language/ribos/artifact/src/sha256.c -o $@
+
+$(AARCH64_UEFI_PE_TEST): tests/tools/aarch64_uefi_pe_tests.c
+	@mkdir -p $(@D)
+	$(CC) -std=c11 -O2 -g $(WARNFLAGS) $< -o $@
+
+$(AARCH64_UEFI_REGISTRY_C): \
+	$(AARCH64_UEFI_MANIFEST) $(AARCH64_UEFI_HOST_TOOL)
+	@mkdir -p $(@D) $(dir $(AARCH64_UEFI_GRAPH))
+	$(AARCH64_UEFI_HOST_TOOL) registry --manifest $< $@ $(AARCH64_UEFI_GRAPH)
+
+$(AARCH64_UEFI_GRAPH): $(AARCH64_UEFI_REGISTRY_C)
+	@test -f $@
+
+$(AARCH64_UEFI_INPUT_MANIFEST): $(AARCH64_UEFI_MANIFEST)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(AARCH64_UEFI_CONFIG): $(AARCH64_UEFI_HOST_TOOL) $(RIBON_MAKEFILES)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_HOST_TOOL) boot-config $@
+
+$(AARCH64_UEFI_PAYLOAD_SOURCE): $(AARCH64_UEFI_HOST_TOOL)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_HOST_TOOL) elf-fixture $@
+
+$(AARCH64_UEFI_INIT_SOURCE): $(AARCH64_UEFI_HOST_TOOL)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_HOST_TOOL) init-image $@
+
+$(AARCH64_UEFI_DIR)/obj/%.o: %.c $(RIBON_MAKEFILES)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(AARCH64_UEFI_DIR)/obj/generated/plugin_registry.o: \
+	$(AARCH64_UEFI_REGISTRY_C)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(AARCH64_UEFI_APP): $(AARCH64_UEFI_OBJS)
+	$(AARCH64_UEFI_LLD_LINK) /Brepro /subsystem:efi_application \
+		/entry:efi_main /nodefaultlib /machine:arm64 /dynamicbase /fixed:no \
+		/map:$(AARCH64_UEFI_DIR)/ribon.map /out:$@ $(AARCH64_UEFI_OBJS)
+
+$(AARCH64_UEFI_ESP)/EFI/BOOT/BOOTAA64.EFI: $(AARCH64_UEFI_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(AARCH64_UEFI_PAYLOAD): $(AARCH64_UEFI_PAYLOAD_SOURCE)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(AARCH64_UEFI_INIT_IMAGE): $(AARCH64_UEFI_INIT_SOURCE)
+	@mkdir -p $(@D)
+	cp $< $@
+
+aarch64-uefi-parus-fixture: \
+	$(AARCH64_UEFI_ESP)/EFI/BOOT/BOOTAA64.EFI \
+	$(AARCH64_UEFI_CONFIG) $(AARCH64_UEFI_PAYLOAD) \
+	$(AARCH64_UEFI_INIT_IMAGE) $(AARCH64_UEFI_INPUT_MANIFEST) \
+	$(AARCH64_UEFI_GRAPH)
+
+check-aarch64-uefi-host-generation: aarch64-uefi-parus-fixture \
+	$(AARCH64_UEFI_HOST_TOOL_TEST) tools/generate_plugin_registry.py
+	@mkdir -p $(AARCH64_UEFI_NEGATIVE_DIR)/repeat \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/reference
+	$(AARCH64_UEFI_HOST_TOOL) registry --manifest $(AARCH64_UEFI_MANIFEST) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/repeat/plugin_registry.c \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/repeat/object-graph.json
+	cmp $(AARCH64_UEFI_REGISTRY_C) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/repeat/plugin_registry.c
+	cmp $(AARCH64_UEFI_GRAPH) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/repeat/object-graph.json
+	$(PYTHON) tools/generate_plugin_registry.py \
+		--manifest $(AARCH64_UEFI_MANIFEST) \
+		--output $(AARCH64_UEFI_NEGATIVE_DIR)/reference/plugin_registry.c \
+		--report $(AARCH64_UEFI_NEGATIVE_DIR)/reference/object-graph.json
+	cmp $(AARCH64_UEFI_REGISTRY_C) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/reference/plugin_registry.c
+	cmp $(AARCH64_UEFI_GRAPH) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/reference/object-graph.json
+	@if $(AARCH64_UEFI_HOST_TOOL) registry --manifest \
+		tests/fixtures/uefi/aarch64-product-malformed.json \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed/plugin_registry.c \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed/object-graph.json; then \
+		echo "malformed AArch64 UEFI manifest was accepted" >&2; exit 1; \
+	fi
+	$(AARCH64_UEFI_HOST_TOOL_TEST) $(AARCH64_UEFI_MANIFEST) \
+		$(AARCH64_UEFI_REGISTRY_C) $(AARCH64_UEFI_GRAPH) \
+		$(AARCH64_UEFI_CONFIG) $(AARCH64_UEFI_PAYLOAD_SOURCE) \
+		$(AARCH64_UEFI_INIT_SOURCE)
+	@echo "RIBON-AARCH64-UEFI-HOST-GENERATION-OK"
+
+check-aarch64-uefi-pe: aarch64-uefi-parus-fixture $(AARCH64_UEFI_PE_TEST)
+	$(AARCH64_UEFI_PE_TEST) $(AARCH64_UEFI_APP)
+	@if $(AARCH64_UEFI_PE_TEST) tests/fixtures/uefi/malformed-pe.bin; then \
+		echo "malformed PE image was accepted" >&2; exit 1; \
+	fi
+
+aarch64-uefi-parus-fixture-smoke: aarch64-uefi-parus-fixture
+	@test -n "$(AARCH64_UEFI_FIRMWARE)" || \
+		{ echo "AARCH64_UEFI_FIRMWARE is required" >&2; exit 2; }
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) --esp $(AARCH64_UEFI_ESP) \
+		--payload $(AARCH64_UEFI_PAYLOAD_SOURCE) \
+		--init-image $(AARCH64_UEFI_INIT_SOURCE) \
+		--product-manifest $(AARCH64_UEFI_MANIFEST) \
+		--expected-payload-class fixture \
+		--source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_DIR)/results/qemu.log \
+		--result $(AARCH64_UEFI_DIR)/results/qemu.json
+
+check-aarch64-uefi-negative-smoke: aarch64-uefi-parus-fixture
+	@test -n "$(AARCH64_UEFI_FIRMWARE)" || \
+		{ echo "AARCH64_UEFI_FIRMWARE is required" >&2; exit 2; }
+	@mkdir -p \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-config/EFI/BOOT \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-config/RIBON \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-payload/EFI/BOOT \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-payload/RIBON \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-init/EFI/BOOT \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-init/RIBON \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-payload/EFI/BOOT \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-payload/RIBON \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/results
+	@for case in malformed-config missing-payload missing-init malformed-payload; do \
+		cp $(AARCH64_UEFI_APP) \
+			$(AARCH64_UEFI_NEGATIVE_DIR)/$$case/EFI/BOOT/BOOTAA64.EFI; \
+	done
+	cp tests/fixtures/uefi/boot-config-malformed.cfg \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-config/RIBON/BOOT.CFG
+	cp $(AARCH64_UEFI_PAYLOAD_SOURCE) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-config/RIBON/PAYLOAD.ELF
+	cp $(AARCH64_UEFI_INIT_SOURCE) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-config/RIBON/INIT.IMG
+	cp $(AARCH64_UEFI_CONFIG) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-payload/RIBON/BOOT.CFG
+	$(RM) $(AARCH64_UEFI_NEGATIVE_DIR)/missing-payload/RIBON/PAYLOAD.ELF
+	cp $(AARCH64_UEFI_INIT_SOURCE) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-payload/RIBON/INIT.IMG
+	cp $(AARCH64_UEFI_CONFIG) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-init/RIBON/BOOT.CFG
+	cp $(AARCH64_UEFI_PAYLOAD_SOURCE) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/missing-init/RIBON/PAYLOAD.ELF
+	$(RM) $(AARCH64_UEFI_NEGATIVE_DIR)/missing-init/RIBON/INIT.IMG
+	cp $(AARCH64_UEFI_CONFIG) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-payload/RIBON/BOOT.CFG
+	cp tests/fixtures/uefi/malformed-payload.bin \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-payload/RIBON/PAYLOAD.ELF
+	cp $(AARCH64_UEFI_INIT_SOURCE) \
+		$(AARCH64_UEFI_NEGATIVE_DIR)/malformed-payload/RIBON/INIT.IMG
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) \
+		--esp $(AARCH64_UEFI_NEGATIVE_DIR)/malformed-config \
+		--payload $(AARCH64_UEFI_PAYLOAD_SOURCE) \
+		--init-image $(AARCH64_UEFI_INIT_SOURCE) \
+		--product-manifest $(AARCH64_UEFI_MANIFEST) \
+		--expected-payload-class fixture --expected-failure-stage esp-config \
+		--timeout 12 --source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_NEGATIVE_DIR)/results/malformed-config.log \
+		--result $(AARCH64_UEFI_NEGATIVE_DIR)/results/malformed-config.json
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) \
+		--esp $(AARCH64_UEFI_NEGATIVE_DIR)/missing-payload \
+		--payload $(AARCH64_UEFI_PAYLOAD_SOURCE) \
+		--init-image $(AARCH64_UEFI_INIT_SOURCE) \
+		--product-manifest $(AARCH64_UEFI_MANIFEST) \
+		--expected-payload-class fixture --expected-failure-stage esp-config \
+		--timeout 12 --source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_NEGATIVE_DIR)/results/missing-payload.log \
+		--result $(AARCH64_UEFI_NEGATIVE_DIR)/results/missing-payload.json
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) \
+		--esp $(AARCH64_UEFI_NEGATIVE_DIR)/missing-init \
+		--payload $(AARCH64_UEFI_PAYLOAD_SOURCE) \
+		--init-image $(AARCH64_UEFI_INIT_SOURCE) \
+		--product-manifest $(AARCH64_UEFI_MANIFEST) \
+		--expected-payload-class fixture --expected-failure-stage init-image-load \
+		--timeout 12 --source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_NEGATIVE_DIR)/results/missing-init.log \
+		--result $(AARCH64_UEFI_NEGATIVE_DIR)/results/missing-init.json
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) \
+		--esp $(AARCH64_UEFI_NEGATIVE_DIR)/malformed-payload \
+		--payload tests/fixtures/uefi/malformed-payload.bin \
+		--init-image $(AARCH64_UEFI_INIT_SOURCE) \
+		--product-manifest $(AARCH64_UEFI_MANIFEST) \
+		--expected-payload-class invalid --expected-failure-stage boot-prepare \
+		--timeout 12 --source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_NEGATIVE_DIR)/results/malformed-payload.log \
+		--result $(AARCH64_UEFI_NEGATIVE_DIR)/results/malformed-payload.json
+	@echo "RIBON-AARCH64-UEFI-NEGATIVE-SMOKE-OK cases=4 bounded=1 transfer=0"
+
 $(UEFI_FIXTURE_REGISTRY_C): \
 	$(UEFI_FIXTURE_MANIFEST) tools/generate_plugin_registry.py
 	$(PYTHON) tools/generate_plugin_registry.py --manifest $< \
