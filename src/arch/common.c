@@ -236,12 +236,37 @@ static int entry_translation_matches_architecture(
         return translation == RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE ||
                translation == RIBON_ENTRY_TRANSLATION_DISABLED;
     }
-    if (architecture == RIBON_ARCHITECTURE_X86_64 ||
-        architecture == RIBON_ARCHITECTURE_AARCH64) {
+    if (architecture == RIBON_ARCHITECTURE_AARCH64) {
+        return translation == RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE ||
+               translation == RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE ||
+               translation == RIBON_ENTRY_TRANSLATION_DISABLED;
+    }
+    if (architecture == RIBON_ARCHITECTURE_X86_64) {
         return translation == RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE ||
                translation == RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE;
     }
     return 0;
+}
+
+/** @brief Entry privilege requirement가 selected architecture에서 표현 가능한지 검사한다. */
+static int entry_privilege_matches_architecture(
+    enum RibonArchitectureId architecture,
+    enum RibonEntryPrivilegeRequirement privilege) {
+    return privilege == RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR ||
+           (architecture == RIBON_ARCHITECTURE_AARCH64 &&
+            privilege == RIBON_ENTRY_PRIVILEGE_AARCH64_EL1);
+}
+
+/** @brief AArch64 EL1 direct entry는 disabled translation과 한 쌍으로만 허용한다. */
+static int entry_state_pair_is_valid(
+    enum RibonArchitectureId architecture,
+    enum RibonEntryPrivilegeRequirement privilege,
+    enum RibonEntryTranslationRequirement translation) {
+    if (architecture != RIBON_ARCHITECTURE_AARCH64) {
+        return 1;
+    }
+    return (privilege == RIBON_ENTRY_PRIVILEGE_AARCH64_EL1) ==
+           (translation == RIBON_ENTRY_TRANSLATION_DISABLED);
 }
 
 /** @brief Protocol invocation을 selected architecture의 prepared entry로 검증한다. */
@@ -256,9 +281,14 @@ int ribon_arch_prepare_entry(
         invocation->argument_count > RIBON_ENTRY_ARGUMENT_LIMIT ||
         !entry_abi_matches_architecture(arch->id, invocation->register_abi) ||
         invocation->interrupts != RIBON_ENTRY_INTERRUPTS_MASKED ||
-        invocation->privilege != RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR ||
+        !entry_privilege_matches_architecture(
+            arch->id, invocation->privilege) ||
         !entry_translation_matches_architecture(
             arch->id,
+            invocation->translation) ||
+        !entry_state_pair_is_valid(
+            arch->id,
+            invocation->privilege,
             invocation->translation)) {
         if (out != 0) {
             *out = (struct RibonPreparedEntry){0};

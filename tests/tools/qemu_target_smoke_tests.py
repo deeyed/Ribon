@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+from argparse import Namespace
 from pathlib import Path
 import subprocess
 import sys
@@ -37,6 +38,55 @@ TRANSFER_MARKERS = (
 
 class QemuTargetSmokeTests(unittest.TestCase):
     """Verify actual-kernel and fixture evidence cannot masquerade."""
+
+    def test_direct_fdt_data_disk_uses_modern_isolated_pci_topology(self) -> None:
+        """The data profile gets one distinct PCI block endpoint behind SMMUv3."""
+
+        args = Namespace(
+            target="aarch64-uefi",
+            qemu="qemu-system-aarch64",
+            firmware=Path("edk2-aarch64-code.fd"),
+            esp=Path("esp"),
+            disk_image=None,
+            data_disk=Path("user-data.ext2"),
+            uefi_direct_fdt=True,
+            memory_mib=2048,
+            expect_clean_exit=False,
+        )
+        command = load_harness_module().command_for(args)
+        self.assertIn(
+            "virt,acpi=off,gic-version=3,iommu=smmuv3,"
+            "default-bus-bypass-iommu=off",
+            command,
+        )
+        self.assertIn("rng-builtin,id=luca-rng", command)
+        self.assertIn(
+            "file=user-data.ext2,format=raw,if=none,"
+            "id=luca-data,cache=none",
+            command,
+        )
+        self.assertIn(
+            "virtio-blk-pci,drive=luca-data,disable-legacy=on,"
+            "iommu_platform=on,romfile=",
+            command,
+        )
+
+    def test_data_disk_rejects_a_non_direct_lane(self) -> None:
+        """A separate data fixture cannot silently change another target graph."""
+
+        args = Namespace(
+            target="aarch64-uefi",
+            qemu="qemu-system-aarch64",
+            firmware=Path("edk2-aarch64-code.fd"),
+            esp=Path("esp"),
+            disk_image=None,
+            data_disk=Path("user-data.ext2"),
+            uefi_direct_fdt=False,
+            memory_mib=256,
+            expect_clean_exit=False,
+        )
+        with self.assertRaisesRegex(ValueError, "direct-FDT ESP lane"):
+            load_harness_module().command_for(args)
 
     def test_invalid_payload_class_requires_expected_failure(self) -> None:
         """An invalid input cannot become an ordinary positive payload class."""
@@ -641,6 +691,23 @@ class QemuTargetSmokeTests(unittest.TestCase):
                 )
                 self.assertNotEqual(completed.returncode, 0)
                 self.assertEqual(result["outcome"], "payload-failure")
+
+    def test_zero_valued_panic_counter_is_not_a_terminal_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            payload = directory / "parus.elf"
+            payload.write_bytes(b"\x7fELF" + b"\0" * 128)
+            completed, result = self.run_harness(
+                directory,
+                payload,
+                "kernel",
+                extra_output=(
+                    "[    0.000000] NOTICE RUNTIME "
+                    "lost=0 sink_failed=0 PANIC=0"
+                ),
+            )
+            self.assertEqual(completed.returncode, 0)
+            self.assertEqual(result["outcome"], "passed")
 
     def test_fatal_tail_after_required_markers_revokes_pass(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -84,6 +84,137 @@ aarch64-uefi-parus-fixture: \
 	$(AARCH64_UEFI_INIT_IMAGE) $(AARCH64_UEFI_INPUT_MANIFEST) \
 	$(AARCH64_UEFI_GRAPH)
 
+$(AARCH64_UEFI_DIRECT_REGISTRY_C): \
+	$(AARCH64_UEFI_DIRECT_MANIFEST) $(AARCH64_UEFI_HOST_TOOL)
+	@mkdir -p $(@D) $(dir $(AARCH64_UEFI_DIRECT_GRAPH))
+	$(AARCH64_UEFI_HOST_TOOL) registry --manifest $< $@ \
+		$(AARCH64_UEFI_DIRECT_GRAPH)
+
+$(AARCH64_UEFI_DIRECT_GRAPH): $(AARCH64_UEFI_DIRECT_REGISTRY_C)
+	@test -f $@
+
+$(AARCH64_UEFI_DIRECT_INPUT_MANIFEST): $(AARCH64_UEFI_DIRECT_MANIFEST)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(AARCH64_UEFI_DIRECT_CONFIG): $(AARCH64_UEFI_HOST_TOOL) $(RIBON_MAKEFILES)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_HOST_TOOL) luca-direct-fdt-config $@
+
+$(AARCH64_UEFI_DIRECT_DIR)/obj/%.o: %.c $(RIBON_MAKEFILES)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(AARCH64_UEFI_DIRECT_DIR)/obj/generated/plugin_registry.o: \
+	$(AARCH64_UEFI_DIRECT_REGISTRY_C)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(AARCH64_UEFI_DIRECT_APP): $(AARCH64_UEFI_DIRECT_OBJS)
+	$(AARCH64_UEFI_LLD_LINK) /Brepro /subsystem:efi_application \
+		/entry:efi_main /nodefaultlib /machine:arm64 /dynamicbase /fixed:no \
+		/map:$(AARCH64_UEFI_DIRECT_DIR)/ribon.map /out:$@ \
+		$(AARCH64_UEFI_DIRECT_OBJS)
+
+$(AARCH64_UEFI_DIRECT_ESP)/EFI/BOOT/BOOTAA64.EFI: $(AARCH64_UEFI_DIRECT_APP)
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(AARCH64_UEFI_DIRECT_KERNEL): uefi-external-input-force
+	@test -n "$(AARCH64_UEFI_LUCA_KERNEL)" && \
+		test -f "$(AARCH64_UEFI_LUCA_KERNEL)" || \
+		{ echo "AARCH64_UEFI_LUCA_KERNEL is required" >&2; exit 2; }
+	@mkdir -p $(@D)
+	cp "$(AARCH64_UEFI_LUCA_KERNEL)" $@
+
+$(AARCH64_UEFI_DIRECT_WORLD): uefi-external-input-force
+	@test -n "$(AARCH64_UEFI_LUCA_WORLD)" && \
+		test -f "$(AARCH64_UEFI_LUCA_WORLD)" || \
+		{ echo "AARCH64_UEFI_LUCA_WORLD is required" >&2; exit 2; }
+	@mkdir -p $(@D)
+	cp "$(AARCH64_UEFI_LUCA_WORLD)" $@
+
+aarch64-uefi-luca-direct-fdt-dev: \
+	$(AARCH64_UEFI_DIRECT_ESP)/EFI/BOOT/BOOTAA64.EFI \
+	$(AARCH64_UEFI_DIRECT_CONFIG) $(AARCH64_UEFI_DIRECT_KERNEL) \
+	$(AARCH64_UEFI_DIRECT_WORLD) $(AARCH64_UEFI_DIRECT_INPUT_MANIFEST) \
+	$(AARCH64_UEFI_DIRECT_GRAPH)
+
+aarch64-uefi-luca-direct-fdt-dev-smoke: aarch64-uefi-luca-direct-fdt-dev
+	@test -n "$(AARCH64_UEFI_FIRMWARE)" || \
+		{ echo "AARCH64_UEFI_FIRMWARE is required" >&2; exit 2; }
+	@test -n "$(AARCH64_UEFI_LUCA_DATA_VOLUME)" && \
+		test -f "$(AARCH64_UEFI_LUCA_DATA_VOLUME)" || \
+		{ echo "AARCH64_UEFI_LUCA_DATA_VOLUME is required" >&2; exit 2; }
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) \
+		--esp $(AARCH64_UEFI_DIRECT_ESP) \
+		--payload $(AARCH64_UEFI_DIRECT_KERNEL) \
+		--init-image $(AARCH64_UEFI_DIRECT_WORLD) \
+		--data-disk "$(AARCH64_UEFI_LUCA_DATA_VOLUME)" \
+		--product-manifest $(AARCH64_UEFI_DIRECT_MANIFEST) \
+		--expected-payload-class kernel --memory-mib 2048 --uefi-direct-fdt \
+		--timeout 90 \
+		--required-marker LUCA:BM:v0:01000100:LOCORE:ENTER:NONE \
+		--required-marker LUCA:BM:v0:05000100:KMAIN:ENTER:NONE \
+		--required-marker LUCA:SYSINIT:v0:ENTRY:OK:external-initial-user-runtime \
+		--required-marker LUCA:SYSINIT:v0:ENTRY:OK:system-running \
+		--required-marker LUCA:SHELL:v1:INPUT_READY \
+		--source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_DIRECT_DIR)/results/qemu.log \
+		--result $(AARCH64_UEFI_DIRECT_DIR)/results/qemu.json
+
+check-aarch64-uefi-luca-direct-fdt-negative-smoke: \
+	aarch64-uefi-luca-direct-fdt-dev
+	@test -n "$(AARCH64_UEFI_FIRMWARE)" || \
+		{ echo "AARCH64_UEFI_FIRMWARE is required" >&2; exit 2; }
+	@mkdir -p \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/missing-world/EFI/BOOT \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/missing-world/RIBON \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/corrupt-kernel/EFI/BOOT \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/corrupt-kernel/RIBON \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/results
+	@for case in missing-world corrupt-kernel; do \
+		cp $(AARCH64_UEFI_DIRECT_APP) \
+			$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/$$case/EFI/BOOT/BOOTAA64.EFI; \
+		cp $(AARCH64_UEFI_DIRECT_CONFIG) \
+			$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/$$case/RIBON/BOOT.CFG; \
+	done
+	cp $(AARCH64_UEFI_DIRECT_KERNEL) \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/missing-world/RIBON/LUCA.ELF
+	$(RM) $(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/missing-world/RIBON/WORLD.PKG
+	cp tests/fixtures/uefi/malformed-payload.bin \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/corrupt-kernel/RIBON/LUCA.ELF
+	cp $(AARCH64_UEFI_DIRECT_WORLD) \
+		$(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/corrupt-kernel/RIBON/WORLD.PKG
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) \
+		--esp $(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/missing-world \
+		--payload $(AARCH64_UEFI_DIRECT_KERNEL) \
+		--init-image $(AARCH64_UEFI_DIRECT_WORLD) \
+		--product-manifest $(AARCH64_UEFI_DIRECT_MANIFEST) \
+		--expected-payload-class kernel --expected-failure-stage init-image-load \
+		--memory-mib 2048 --uefi-direct-fdt --timeout 12 \
+		--source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/results/missing-world.log \
+		--result $(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/results/missing-world.json
+	$(PYTHON) tools/qemu_target_smoke.py \
+		--target aarch64-uefi --qemu $(QEMU_AARCH64) \
+		--firmware $(AARCH64_UEFI_FIRMWARE) \
+		--esp $(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/corrupt-kernel \
+		--payload tests/fixtures/uefi/malformed-payload.bin \
+		--init-image $(AARCH64_UEFI_DIRECT_WORLD) \
+		--product-manifest $(AARCH64_UEFI_DIRECT_MANIFEST) \
+		--expected-payload-class invalid \
+		--expected-failure-stage transaction-prepare-image \
+		--memory-mib 2048 --uefi-direct-fdt --timeout 12 \
+		--source-revision $$(git rev-parse HEAD) \
+		--log $(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/results/corrupt-kernel.log \
+		--result $(AARCH64_UEFI_DIRECT_NEGATIVE_DIR)/results/corrupt-kernel.json
+	@echo "RIBON-AARCH64-UEFI-LUCA-DIRECT-FDT-NEGATIVE-SMOKE-OK cases=2 bounded=1 transfer=0"
+
 check-aarch64-uefi-host-generation: aarch64-uefi-parus-fixture \
 	$(AARCH64_UEFI_HOST_TOOL_TEST) tools/generate_plugin_registry.py
 	@mkdir -p $(AARCH64_UEFI_NEGATIVE_DIR)/repeat \
@@ -193,7 +324,8 @@ check-aarch64-uefi-negative-smoke: aarch64-uefi-parus-fixture
 		--payload $(AARCH64_UEFI_PAYLOAD_SOURCE) \
 		--init-image $(AARCH64_UEFI_INIT_SOURCE) \
 		--product-manifest $(AARCH64_UEFI_MANIFEST) \
-		--expected-payload-class fixture --expected-failure-stage esp-config \
+		--expected-payload-class fixture \
+		--expected-failure-stage esp-kernel-source \
 		--timeout 12 --source-revision $$(git rev-parse HEAD) \
 		--log $(AARCH64_UEFI_NEGATIVE_DIR)/results/missing-payload.log \
 		--result $(AARCH64_UEFI_NEGATIVE_DIR)/results/missing-payload.json
@@ -215,7 +347,8 @@ check-aarch64-uefi-negative-smoke: aarch64-uefi-parus-fixture
 		--payload tests/fixtures/uefi/malformed-payload.bin \
 		--init-image $(AARCH64_UEFI_INIT_SOURCE) \
 		--product-manifest $(AARCH64_UEFI_MANIFEST) \
-		--expected-payload-class invalid --expected-failure-stage boot-prepare \
+		--expected-payload-class invalid \
+		--expected-failure-stage transaction-prepare-image \
 		--timeout 12 --source-revision $$(git rev-parse HEAD) \
 		--log $(AARCH64_UEFI_NEGATIVE_DIR)/results/malformed-payload.log \
 		--result $(AARCH64_UEFI_NEGATIVE_DIR)/results/malformed-payload.json

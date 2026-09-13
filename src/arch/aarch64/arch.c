@@ -100,14 +100,23 @@ static void zero_u64_table(uint64_t *table, uint64_t entries) {
 
 /** @brief AArch64 data/instruction view를 full-system 경계에서 동기화한다. */
 static int aarch64_cache_sync(uint64_t address, uint64_t size) {
-    (void)address;
-    if (size == 0u) {
+    if (size == 0u || address > UINT64_MAX - size) {
         return RIBON_ARCH_OPERATION_BAD_ARGUMENT;
     }
 #if defined(__aarch64__)
+    uint64_t ctr;
+    uint64_t line_size;
+    uint64_t cursor;
+    __asm__ __volatile__("mrs %0, ctr_el0" : "=r"(ctr));
+    line_size = 4ull << ((ctr >> 16u) & 0xfu);
+    cursor = address & ~(line_size - 1u);
+    while (cursor < address + size) {
+        __asm__ __volatile__("dc cvau, %0" : : "r"(cursor) : "memory");
+        cursor += line_size;
+    }
     __asm__ __volatile__(
         "dsb sy\n"
-        "ic iallu\n"
+        "ic ialluis\n"
         "dsb sy\n"
         "isb\n"
         :
@@ -399,6 +408,38 @@ _Noreturn void ribon_arch_transfer_prepared(
             : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
               "r"(entry), "r"(prepared->translation_root), "r"(ttbr1),
               "r"(tcr), "r"(RIBON_AARCH64_MAIR_VALUE)
+            : "x0", "x1", "x2", "x3", "x9", "x16", "memory");
+    }
+    if (prepared->invocation.translation == RIBON_ENTRY_TRANSLATION_DISABLED) {
+        uint64_t current_el;
+        __asm__ __volatile__("mrs %0, CurrentEL" : "=r"(current_el));
+        if (current_el != 4u ||
+            prepared->invocation.privilege != RIBON_ENTRY_PRIVILEGE_AARCH64_EL1) {
+            for (;;) {
+                __asm__ __volatile__("msr daifset, #0xf; wfe");
+            }
+        }
+        __asm__ __volatile__(
+            "msr daifset, #0xf\n"
+            "mov x16, %4\n"
+            "dsb sy\n"
+            "mrs x9, sctlr_el1\n"
+            "bic x9, x9, #(1 << 0)\n"
+            "bic x9, x9, #(1 << 2)\n"
+            "bic x9, x9, #(1 << 12)\n"
+            "msr sctlr_el1, x9\n"
+            "isb\n"
+            "tlbi vmalle1\n"
+            "dsb sy\n"
+            "isb\n"
+            "mov x0, %0\n"
+            "mov x1, %1\n"
+            "mov x2, %2\n"
+            "mov x3, %3\n"
+            "br x16\n"
+            :
+            : "r"(argument0), "r"(argument1), "r"(argument2), "r"(argument3),
+              "r"(entry)
             : "x0", "x1", "x2", "x3", "x9", "x16", "memory");
     }
     __asm__ __volatile__(

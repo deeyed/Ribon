@@ -118,9 +118,11 @@ int main(void) {
         return 1;
     }
     invocation.translation =
-        translation == RIBON_ENTRY_TRANSLATION_DISABLED ?
-            RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE :
-            RIBON_ENTRY_TRANSLATION_DISABLED;
+        strcmp(ops->descriptor->canonical_name, "aarch64") == 0 ?
+            (enum RibonEntryTranslationRequirement)3u :
+            translation == RIBON_ENTRY_TRANSLATION_DISABLED ?
+                RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE :
+                RIBON_ENTRY_TRANSLATION_DISABLED;
     if (ops->prepare_entry(ops->descriptor, &invocation, &prepared) !=
             RIBON_ARCH_OPERATION_BAD_ARGUMENT ||
         prepared.invocation.size != 0u) {
@@ -128,6 +130,25 @@ int main(void) {
         return 1;
     }
     invocation.translation = translation;
+    if (strcmp(ops->descriptor->canonical_name, "aarch64") == 0) {
+        invocation.translation = RIBON_ENTRY_TRANSLATION_DISABLED;
+        invocation.privilege = RIBON_ENTRY_PRIVILEGE_AARCH64_EL1;
+        if (ops->prepare_entry(ops->descriptor, &invocation, &prepared) !=
+                RIBON_ARCH_OPERATION_OK ||
+            prepared.invocation.translation != RIBON_ENTRY_TRANSLATION_DISABLED ||
+            prepared.invocation.privilege != RIBON_ENTRY_PRIVILEGE_AARCH64_EL1) {
+            fputs("arch_ops_tests: AArch64 disabled EL1 contract rejected\n", stderr);
+            return 1;
+        }
+        invocation.privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR;
+        if (ops->prepare_entry(ops->descriptor, &invocation, &prepared) !=
+                RIBON_ARCH_OPERATION_BAD_ARGUMENT ||
+            prepared.invocation.size != 0u) {
+            fputs("arch_ops_tests: mismatched AArch64 entry state accepted\n", stderr);
+            return 1;
+        }
+        invocation.translation = translation;
+    }
     invocation.register_abi =
         (enum RibonRegisterAbi)(((uint32_t)register_abi + 1u) % 3u);
     if (ops->prepare_entry(ops->descriptor, &invocation, &prepared) !=
@@ -137,7 +158,7 @@ int main(void) {
         return 1;
     }
     invocation.register_abi = register_abi;
-    invocation.privilege = (enum RibonEntryPrivilegeRequirement)1u;
+    invocation.privilege = (enum RibonEntryPrivilegeRequirement)2u;
     if (ops->prepare_entry(ops->descriptor, &invocation, &prepared) !=
             RIBON_ARCH_OPERATION_BAD_ARGUMENT ||
         prepared.invocation.size != 0u) {

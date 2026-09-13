@@ -62,7 +62,7 @@ check: check-build-system legacy-hard-cut check-public-api check-frontends check
 	check-arch-aarch64 check-arch-ops \
 	check-core-service check-port-services check-boot-lifecycle \
 	check-environment-persistent-inputs check-boot-modules check-media-pipeline check-mode-descriptors check-plugin-descriptors \
-	check-protocol-contract check-luca-entry-contract check-os-packages \
+	check-protocol-contract check-luca-entry-contract check-luca-direct-fdt check-os-packages \
 	check-linux-boot check-linux-external-input \
 	check-library-embed check-composition-schemas \
 	check-qemu-evidence check-uefi-product-hermeticity \

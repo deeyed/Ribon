@@ -24,6 +24,9 @@
 /** @brief 한 page-backed boot module의 최대 byte 수다. */
 #define RIBON_UEFI_BOOT_MODULE_MAX_SIZE (64ull * 1024ull * 1024ull)
 
+/** @brief ConfigurationTable에서 허용할 source FDT byte 상한이다. */
+#define RIBON_UEFI_FDT_MAX_SIZE (16ull * 1024ull * 1024ull)
+
 /** @brief Environment-private UEFI file handle과 validated byte size다. */
 struct RibonUefiFileSource {
     EFI_FILE_PROTOCOL *handle; /**< ExitBootServices 전까지만 유효한 native handle이다. */
@@ -40,6 +43,8 @@ struct RibonUefiAppContext {
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *file_system; /**< Loaded-image device의 borrowed file system이다. */
     EFI_FILE_PROTOCOL *root; /**< Loaded-image volume의 borrowed root handle이다. */
     EFI_BLOCK_IO_PROTOCOL *block_io; /**< 선택적으로 capture한 borrowed block adapter다. */
+    const void *device_tree; /**< ExitBootServices 뒤에도 물리 storage가 유지되는 source FDT다. */
+    uint64_t device_tree_size; /**< Header totalsize로 검증한 exact source byte 수다. */
     struct RibonUefiFileSource files[RIBON_UEFI_FILE_SOURCE_CAPACITY]; /**< Bounded file source slots다. */
     void *raw_memory_map; /**< Caller-owned descriptor buffer다. */
     uint64_t raw_memory_map_capacity; /**< Raw buffer byte 수다. */
@@ -96,6 +101,34 @@ int ribon_uefi_app_load_boot_module(
     const char *path,
     enum RibonBootModuleRole role,
     struct RibonBootModule *out);
+
+/**
+ * @brief Canonical UEFI file을 지정한 half-open physical RAM 창에 적재한다.
+ *
+ * `AllocateMaxAddress` 결과가 `[window_start, window_end)`를 완전히 벗어나면
+ * 즉시 해제하고 실패한다. Development direct-entry consumer가 runtime stage-1
+ * normal-memory 창 밖의 module을 넘기지 않기 위한 API다.
+ */
+int ribon_uefi_app_load_boot_module_in_window(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    enum RibonBootModuleRole role,
+    uint64_t window_start,
+    uint64_t window_end,
+    struct RibonBootModule *out);
+
+/**
+ * @brief ExitBootServices 뒤 전달할 zeroed page buffer를 physical RAM 창에 할당한다.
+ *
+ * 반환 storage의 수명은 payload transfer까지이며 caller가 exact reservation으로
+ * handoff artifact에 게시해야 한다.
+ */
+int ribon_uefi_app_allocate_boot_buffer_in_window(
+    struct RibonUefiAppContext *context,
+    uint64_t window_start,
+    uint64_t window_end,
+    uint64_t size,
+    void **out);
 
 /** @brief UEFI Block I/O를 native type 없는 bounded read-only block provider로 변환한다. */
 int ribon_uefi_app_read_only_block_device(

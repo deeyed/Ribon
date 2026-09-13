@@ -4,6 +4,7 @@
 #include <Ribon/plugin/descriptor.h>
 
 #include <Protocol/LoadedImage.h>
+#include <Guid/Fdt.h>
 
 #include <string.h>
 
@@ -21,6 +22,68 @@ static struct RibonUefiAppContext *uefi_context;
 static int uefi_services_initialized;
 static unsigned char uefi_attempt_metadata[64];
 static uint64_t uefi_attempt_metadata_size;
+
+#define RIBON_UEFI_FDT_MAGIC 0xd00dfeedu
+#define RIBON_UEFI_FDT_HEADER_SIZE 40u
+
+/** @brief Unaligned FDT header의 big-endian 32-bit 값을 읽는다. */
+static uint32_t uefi_read_be32(const unsigned char *bytes) {
+    return ((uint32_t)bytes[0] << 24u) |
+           ((uint32_t)bytes[1] << 16u) |
+           ((uint32_t)bytes[2] << 8u) |
+           (uint32_t)bytes[3];
+}
+
+/** @brief Native UEFI GUID를 padding 가정 없이 비교한다. */
+static int uefi_guid_equal(const EFI_GUID *lhs, const EFI_GUID *rhs) {
+    if (lhs == 0 || rhs == 0 || lhs->Data1 != rhs->Data1 ||
+        lhs->Data2 != rhs->Data2 || lhs->Data3 != rhs->Data3) {
+        return 0;
+    }
+    for (uint32_t index = 0u; index < 8u; ++index) {
+        if (lhs->Data4[index] != rhs->Data4[index]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/** @brief SystemTable에서 단 하나의 bounded FDT table을 capture한다. */
+static int uefi_capture_device_tree(
+    struct RibonUefiAppContext *context,
+    const EFI_SYSTEM_TABLE *system_table) {
+    EFI_GUID fdt_guid = FDT_TABLE_GUID;
+    if (context == 0 || system_table == 0 ||
+        (system_table->NumberOfTableEntries != 0u &&
+         system_table->ConfigurationTable == 0)) {
+        return 0;
+    }
+    context->device_tree = 0;
+    context->device_tree_size = 0u;
+    for (UINTN index = 0u; index < system_table->NumberOfTableEntries; ++index) {
+        const EFI_CONFIGURATION_TABLE *entry = &system_table->ConfigurationTable[index];
+        const unsigned char *bytes;
+        uint32_t total_size;
+        if (!uefi_guid_equal(&entry->VendorGuid, &fdt_guid)) {
+            continue;
+        }
+        if (context->device_tree != 0 || entry->VendorTable == 0) {
+            return 0;
+        }
+        bytes = entry->VendorTable;
+        if (uefi_read_be32(bytes) != RIBON_UEFI_FDT_MAGIC) {
+            return 0;
+        }
+        total_size = uefi_read_be32(bytes + 4u);
+        if (total_size < RIBON_UEFI_FDT_HEADER_SIZE ||
+            total_size > RIBON_UEFI_FDT_MAX_SIZE) {
+            return 0;
+        }
+        context->device_tree = entry->VendorTable;
+        context->device_tree_size = total_size;
+    }
+    return 1;
+}
 
 /** @brief 두 bounded canonical byte string이 같은지 검사한다. */
 static int uefi_streq(const char *lhs, const char *rhs) {
@@ -518,6 +581,8 @@ int ribon_uefi_app_initialize(
     context->file_system = 0;
     context->root = 0;
     context->block_io = 0;
+    context->device_tree = 0;
+    context->device_tree_size = 0u;
     for (uint32_t index = 0u; index < RIBON_UEFI_FILE_SOURCE_CAPACITY; ++index) {
         context->files[index] = (struct RibonUefiFileSource){0};
     }
@@ -548,6 +613,9 @@ int ribon_uefi_app_initialize(
         (void **)&context->block_io);
     if (EFI_ERROR(status)) {
         context->block_io = 0;
+    }
+    if (!uefi_capture_device_tree(context, system_table)) {
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
     }
     uefi_context = context;
     uefi_boot_source_operations.context = context;
@@ -639,11 +707,26 @@ int ribon_uefi_app_open_boot_source(
     return RIBON_UEFI_APP_STATUS_OUT_OF_CAPACITY;
 }
 
-/** @brief Canonical file을 page allocation에 exact read해 typed module로 고정한다. */
-int ribon_uefi_app_load_boot_module(
+/** @brief Page allocation이 optional half-open physical window 안에 있는지 확인한다. */
+static int uefi_page_allocation_in_window(
+    EFI_PHYSICAL_ADDRESS allocation,
+    UINTN pages,
+    uint64_t window_start,
+    uint64_t window_end) {
+    const uint64_t bytes = (uint64_t)pages * 4096u;
+    return pages != 0u && bytes / 4096u == (uint64_t)pages &&
+           window_end > window_start && allocation >= window_start &&
+           allocation < window_end && bytes <= window_end - allocation;
+}
+
+/** @brief Optional physical window를 적용해 canonical file을 page module로 적재한다. */
+static int uefi_load_boot_module(
     struct RibonUefiAppContext *context,
     const char *path,
     enum RibonBootModuleRole role,
+    uint64_t window_start,
+    uint64_t window_end,
+    int window_required,
     struct RibonBootModule *out) {
     EFI_FILE_PROTOCOL *file = 0;
     EFI_PHYSICAL_ADDRESS allocation = 0u;
@@ -670,12 +753,27 @@ int ribon_uefi_app_load_boot_module(
         return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
     }
     pages = (UINTN)((size + 4095u) / 4096u);
+    if (window_required && (window_end <= window_start ||
+        window_end - 1u > (uint64_t)(EFI_PHYSICAL_ADDRESS)-1)) {
+        if (file->Close != 0) {
+            (void)file->Close(file);
+        }
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    allocation = window_required ?
+        (EFI_PHYSICAL_ADDRESS)(window_end - 1u) : 0u;
     allocation_status = context->boot_services->AllocatePages(
-        AllocateAnyPages,
+        window_required ? AllocateMaxAddress : AllocateAnyPages,
         EfiLoaderData,
         pages,
         &allocation);
-    if (EFI_ERROR(allocation_status) || allocation == 0u) {
+    if (EFI_ERROR(allocation_status) || allocation == 0u ||
+        (window_required && !uefi_page_allocation_in_window(
+            allocation, pages, window_start, window_end))) {
+        if (!EFI_ERROR(allocation_status) && allocation != 0u &&
+            context->boot_services->FreePages != 0) {
+            (void)context->boot_services->FreePages(allocation, pages);
+        }
         if (file->Close != 0) {
             (void)file->Close(file);
         }
@@ -702,6 +800,65 @@ int ribon_uefi_app_load_boot_module(
         .size = size,
         .role = role,
     };
+    return RIBON_UEFI_APP_STATUS_OK;
+}
+
+int ribon_uefi_app_load_boot_module(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    enum RibonBootModuleRole role,
+    struct RibonBootModule *out) {
+    return uefi_load_boot_module(
+        context, path, role, 0u, 0u, 0, out);
+}
+
+int ribon_uefi_app_load_boot_module_in_window(
+    struct RibonUefiAppContext *context,
+    const char *path,
+    enum RibonBootModuleRole role,
+    uint64_t window_start,
+    uint64_t window_end,
+    struct RibonBootModule *out) {
+    return uefi_load_boot_module(
+        context, path, role, window_start, window_end, 1, out);
+}
+
+int ribon_uefi_app_allocate_boot_buffer_in_window(
+    struct RibonUefiAppContext *context,
+    uint64_t window_start,
+    uint64_t window_end,
+    uint64_t size,
+    void **out) {
+    EFI_PHYSICAL_ADDRESS allocation;
+    EFI_STATUS status;
+    UINTN pages;
+    if (out != 0) {
+        *out = 0;
+    }
+    if (context == 0 || context->boot_services == 0 ||
+        context->boot_services->AllocatePages == 0 || out == 0 || size == 0u ||
+        size > UINT64_MAX - 4095u || window_end <= window_start ||
+        window_end - 1u > (uint64_t)(EFI_PHYSICAL_ADDRESS)-1) {
+        return RIBON_UEFI_APP_STATUS_BAD_ARGUMENT;
+    }
+    pages = (UINTN)((size + 4095u) / 4096u);
+    if ((uint64_t)pages != (size + 4095u) / 4096u) {
+        return RIBON_UEFI_APP_STATUS_OUT_OF_CAPACITY;
+    }
+    allocation = (EFI_PHYSICAL_ADDRESS)(window_end - 1u);
+    status = context->boot_services->AllocatePages(
+        AllocateMaxAddress, EfiLoaderData, pages, &allocation);
+    if (EFI_ERROR(status) || allocation == 0u ||
+        !uefi_page_allocation_in_window(
+            allocation, pages, window_start, window_end)) {
+        if (!EFI_ERROR(status) && allocation != 0u &&
+            context->boot_services->FreePages != 0) {
+            (void)context->boot_services->FreePages(allocation, pages);
+        }
+        return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
+    }
+    memset((void *)(uintptr_t)allocation, 0, pages * 4096u);
+    *out = (void *)(uintptr_t)allocation;
     return RIBON_UEFI_APP_STATUS_OK;
 }
 
@@ -798,16 +955,25 @@ int ribon_uefi_app_capture_environment(
     out->raw_memory_map.size = map_size;
     out->raw_memory_map.descriptor_size = (uint32_t)context->descriptor_size;
     out->raw_memory_map.descriptor_version = context->descriptor_version;
+    if (context->device_tree != 0) {
+        out->device_tree.physical_address =
+            (uint64_t)(uintptr_t)context->device_tree;
+        out->device_tree.data = context->device_tree;
+        out->device_tree.size = context->device_tree_size;
+    }
     out->command_line.text = "environment=uefi-app";
     out->command_line.length = 20u;
     out->flags =
         RIBON_BOOT_ENV_HAS_MEMORY_MAP |
         RIBON_BOOT_ENV_HAS_RAW_MEMORY_MAP |
         RIBON_BOOT_ENV_HAS_COMMAND_LINE;
+    if (context->device_tree != 0) {
+        out->flags |= RIBON_BOOT_ENV_HAS_DEVICE_TREE;
+    }
     return RIBON_UEFI_APP_STATUS_OK;
 }
 
-/** @brief UEFI page allocation에 analyzed segment를 배치한다. */
+/** @brief Analyzed segment를 plan이 봉인한 exact UEFI physical address에 배치한다. */
 int ribon_uefi_app_place_payload(
     struct RibonUefiAppContext *context,
     const struct RibonPayloadImage *payload,
@@ -848,14 +1014,6 @@ int ribon_uefi_app_place_payload(
             pages,
             &allocation);
         if (EFI_ERROR(status) || allocation != page_base) {
-            allocation = 0u;
-            status = context->boot_services->AllocatePages(
-                AllocateAnyPages,
-                EfiLoaderCode,
-                pages,
-                &allocation);
-        }
-        if (EFI_ERROR(status) || allocation == 0u) {
             return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
         }
         memset((void *)(uintptr_t)allocation, 0, pages * 4096u);

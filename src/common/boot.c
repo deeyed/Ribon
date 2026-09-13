@@ -280,8 +280,18 @@ static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) 
             transaction->input.handoff_buffer,
             transaction->input.handoff_buffer_capacity,
             transaction->input.handoff_artifact);
-        if (status != RIBON_PROTOCOL_HANDOFF_STATUS_OK ||
-            transaction->input.handoff_artifact->size >
+        if (status != RIBON_PROTOCOL_HANDOFF_STATUS_OK) {
+            return boot_fail(
+                transaction,
+                RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
+                status == RIBON_PROTOCOL_HANDOFF_STATUS_OUT_OF_CAPACITY ?
+                    RIBON_BOOT_FAILURE_BUDGET : RIBON_BOOT_FAILURE_PROTOCOL,
+                transaction->protocol->id,
+                status == RIBON_PROTOCOL_HANDOFF_STATUS_OUT_OF_CAPACITY ?
+                    RIBON_BOOT_STATUS_BUDGET_EXCEEDED :
+                    RIBON_BOOT_STATUS_INVALID_HANDOFF);
+        }
+        if (transaction->input.handoff_artifact->size >
                 transaction->core->product->limits.max_handoff_bytes ||
             transaction->input.handoff_artifact->size >
                 transaction->input.handoff_buffer_capacity ||

@@ -254,11 +254,13 @@ CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
 PORT_SERVICE_TEST := $(TEST_BUILD_DIR)/port_service_tests
 BOOT_LIFECYCLE_TEST := $(TEST_BUILD_DIR)/boot_lifecycle_tests
 ENVIRONMENT_PERSISTENT_INPUTS_TEST := $(TEST_BUILD_DIR)/environment_persistent_inputs_tests
+UEFI_EXIT_TRANSACTION_TEST := $(TEST_BUILD_DIR)/uefi_exit_transaction_tests
 BOOT_MODULE_BUNDLE_TEST := $(TEST_BUILD_DIR)/boot_module_bundle_tests
 MEDIA_PIPELINE_TEST := $(TEST_BUILD_DIR)/media_pipeline_tests
 PLUGIN_DESCRIPTOR_TEST := $(TEST_BUILD_DIR)/plugin_descriptor_tests
 PROTOCOL_CONTRACT_TEST := $(TEST_BUILD_DIR)/protocol_contract_tests
 LUCA_ENTRY_CONTRACT_TEST := $(TEST_BUILD_DIR)/luca_entry_contract_tests
+LUCA_DIRECT_FDT_TEST := $(TEST_BUILD_DIR)/luca_direct_fdt_tests
 OS_PACKAGE_TEST := $(TEST_BUILD_DIR)/os_package_tests
 LINUX_BOOT_TEST := $(TEST_BUILD_DIR)/linux_boot_tests
 PROTOCOL_FREE_EMBED_TEST := $(TEST_BUILD_DIR)/protocol_free_embed_tests
@@ -598,6 +600,53 @@ AARCH64_UEFI_SRCS := \
 AARCH64_UEFI_OBJS := \
 	$(AARCH64_UEFI_SRCS:%.c=$(AARCH64_UEFI_DIR)/obj/%.o) \
 	$(AARCH64_UEFI_DIR)/obj/generated/plugin_registry.o
+
+AARCH64_UEFI_DIRECT_PRODUCT := aarch64-uefi-luca-direct-fdt-dev
+AARCH64_UEFI_DIRECT_DIR := $(TARGET_BUILD_ROOT)/$(AARCH64_UEFI_DIRECT_PRODUCT)
+AARCH64_UEFI_DIRECT_MANIFEST := \
+	products/bootmgr/manifests/aarch64-uefi-luca-direct-fdt-dev.json
+AARCH64_UEFI_DIRECT_REGISTRY_C := \
+	$(AARCH64_UEFI_DIRECT_DIR)/generated/plugin_registry.c
+AARCH64_UEFI_DIRECT_GRAPH := \
+	$(AARCH64_UEFI_DIRECT_DIR)/results/object-graph.json
+AARCH64_UEFI_DIRECT_INPUT_MANIFEST := \
+	$(AARCH64_UEFI_DIRECT_DIR)/manifests/product.json
+AARCH64_UEFI_DIRECT_APP := $(AARCH64_UEFI_DIRECT_DIR)/BOOTAA64.EFI
+AARCH64_UEFI_DIRECT_ESP := $(AARCH64_UEFI_DIRECT_DIR)/esp
+AARCH64_UEFI_DIRECT_CONFIG := $(AARCH64_UEFI_DIRECT_ESP)/RIBON/BOOT.CFG
+AARCH64_UEFI_LUCA_KERNEL ?=
+AARCH64_UEFI_LUCA_WORLD ?=
+AARCH64_UEFI_LUCA_DATA_VOLUME ?=
+AARCH64_UEFI_DIRECT_KERNEL := $(AARCH64_UEFI_DIRECT_ESP)/RIBON/LUCA.ELF
+AARCH64_UEFI_DIRECT_WORLD := $(AARCH64_UEFI_DIRECT_ESP)/RIBON/WORLD.PKG
+AARCH64_UEFI_DIRECT_NEGATIVE_DIR := $(AARCH64_UEFI_DIRECT_DIR)/negative
+AARCH64_UEFI_DIRECT_SRCS := \
+	src/core/arena.c \
+	src/core/context.c \
+	src/core/plugin.c \
+	src/core/registry.c \
+	src/core/service_directory.c \
+	src/core/memory.c \
+	src/config/boot_config.c \
+	src/common/environment.c \
+	src/common/protocol.c \
+	src/common/boot.c \
+	src/common/image.c \
+	src/common/port.c \
+	src/common/freestanding/string.c \
+	src/common/drivers/serial/pl011.c \
+	src/arch/common.c \
+	src/arch/aarch64/arch.c \
+	src/modes/normal.c \
+	src/image-formats/elf64.c \
+	src/protocols/os/luca/direct_fdt.c \
+	src/protocols/os/luca/direct_protocol.c \
+	src/environments/uefi-app/uefi_app.c \
+	ports/qemu/virt-aarch64/uefi_port.c \
+	targets/uefi-app/entry.c
+AARCH64_UEFI_DIRECT_OBJS := \
+	$(AARCH64_UEFI_DIRECT_SRCS:%.c=$(AARCH64_UEFI_DIRECT_DIR)/obj/%.o) \
+	$(AARCH64_UEFI_DIRECT_DIR)/obj/generated/plugin_registry.o
 
 UEFI_EXTERNAL_REGISTRY_C := $(UEFI_EXTERNAL_DIR)/generated/plugin_registry.c
 UEFI_EXTERNAL_GRAPH := $(UEFI_EXTERNAL_DIR)/results/object-graph.json

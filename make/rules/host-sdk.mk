@@ -44,6 +44,9 @@ check-boot-lifecycle: $(BOOT_LIFECYCLE_TEST)
 check-environment-persistent-inputs: $(ENVIRONMENT_PERSISTENT_INPUTS_TEST)
 	$(ENVIRONMENT_PERSISTENT_INPUTS_TEST)
 
+check-uefi-exit-transaction: $(UEFI_EXIT_TRANSACTION_TEST)
+	$(UEFI_EXIT_TRANSACTION_TEST)
+
 check-boot-modules: $(BOOT_MODULE_BUNDLE_TEST) $(RAW_FDT_CAPACITY_TEST)
 	$(BOOT_MODULE_BUNDLE_TEST)
 	$(RAW_FDT_CAPACITY_TEST)
@@ -70,6 +73,9 @@ check-protocol-contract: $(PROTOCOL_CONTRACT_TEST)
 
 check-luca-entry-contract: $(LUCA_ENTRY_CONTRACT_TEST)
 	$(LUCA_ENTRY_CONTRACT_TEST)
+
+check-luca-direct-fdt: $(LUCA_DIRECT_FDT_TEST)
+	$(LUCA_DIRECT_FDT_TEST)
 
 check-os-packages: $(OS_PACKAGE_TEST)
 	$(OS_PACKAGE_TEST)

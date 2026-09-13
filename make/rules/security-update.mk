@@ -500,6 +500,20 @@ $(ENVIRONMENT_PERSISTENT_INPUTS_TEST): \
 	$(TEST_BUILD_DIR)/obj/src/common/environment.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
+$(TEST_BUILD_DIR)/obj/tests/environments/uefi_exit_transaction_tests.o \
+$(TEST_BUILD_DIR)/obj/src/environments/uefi-app/uefi_app.o: \
+	CPPFLAGS += -I$(ROOT)/include/uefi -I$(ROOT)/include/uefi/AArch64
+$(TEST_BUILD_DIR)/obj/tests/environments/uefi_exit_transaction_tests.o \
+$(TEST_BUILD_DIR)/obj/src/environments/uefi-app/uefi_app.o: CFLAGS += -fshort-wchar
+
+$(UEFI_EXIT_TRANSACTION_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/environments/uefi_exit_transaction_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/environments/uefi-app/uefi_app.o \
+	$(TEST_BUILD_DIR)/obj/src/common/environment.o \
+	$(TEST_BUILD_DIR)/obj/src/core/memory.o \
+	$(TEST_BUILD_DIR)/obj/src/core/service_directory.o
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
 $(BOOT_MODULE_BUNDLE_TEST): \
 	$(TEST_BUILD_DIR)/obj/tests/boot/module_bundle_tests.o \
 	$(TEST_BUILD_DIR)/obj/src/common/module_bundle.o
@@ -535,6 +549,14 @@ $(LUCA_ENTRY_CONTRACT_TEST): \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/rlh1_builder.o \
 	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/rlh1_parser.o \
+	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
+	$(TEST_BUILD_DIR)/obj/src/core/memory.o
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
+$(LUCA_DIRECT_FDT_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/protocol/luca_direct_fdt_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/direct_fdt.o \
+	$(TEST_BUILD_DIR)/obj/src/protocols/os/luca/direct_protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/common/protocol.o \
 	$(TEST_BUILD_DIR)/obj/src/core/memory.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@

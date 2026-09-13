@@ -24,6 +24,7 @@ enum RibonEntryInterruptRequirement {
 /** @brief OS entry가 요구하는 privilege 정규화 수준이다. */
 enum RibonEntryPrivilegeRequirement {
     RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR = 0,
+    RIBON_ENTRY_PRIVILEGE_AARCH64_EL1 = 1,
 };
 
 /** @brief OS entry가 요구하는 address-space bridge다. */

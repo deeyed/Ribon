@@ -95,11 +95,24 @@ FIXTURE_PROVENANCE = (
     b"RIBON-RISCV64-RLH1-FIXTURE-V1",
 )
 FATAL_OUTPUT_MARKERS = (
-    b"PANIC",
     b"Kernel panic",
     b"Unhandled exception",
     b"qemu: fatal",
 )
+
+
+def fatal_output_observed(output: bytes) -> bool:
+    """Recognize explicit fatal terminals without treating PANIC=0 as failure."""
+
+    if any(marker in output for marker in FATAL_OUTPUT_MARKERS):
+        return True
+    return any(
+        line == b"PANIC"
+        or line.startswith((b"PANIC:", b"LUCA:PANIC:", b"PARUS:PANIC:"))
+        or b" PANIC=1" in line
+        or b":PANIC=1" in line
+        for line in output.splitlines()
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -377,7 +390,7 @@ def command_for(args: argparse.Namespace) -> list[str]:
             args.qemu,
             "-machine", "virt",
             "-cpu", "cortex-a72",
-            "-m", "256M",
+            "-m", f"{args.memory_mib}M",
             "-nographic",
             "-monitor", "none",
             "-net", "none",
@@ -427,11 +440,27 @@ def command_for(args: argparse.Namespace) -> list[str]:
     if args.firmware is None or (args.esp is None and args.disk_image is None):
         raise ValueError("--esp/--disk-image and --firmware are required")
     if args.target == "aarch64-uefi":
+        if args.data_disk is not None and (
+            not args.uefi_direct_fdt
+            or args.esp is None
+            or args.disk_image is not None
+        ):
+            raise ValueError(
+                "--data-disk requires the aarch64 UEFI direct-FDT ESP lane"
+            )
+        machine = (
+            "virt,acpi=off,gic-version=3,iommu=smmuv3,"
+            "default-bus-bypass-iommu=off"
+            if args.data_disk is not None
+            else "virt,acpi=off"
+            if args.uefi_direct_fdt
+            else "virt"
+        )
         command = [
             args.qemu,
-            "-machine", "virt",
+            "-machine", machine,
             "-cpu", "cortex-a72",
-            "-m", "256M",
+            "-m", f"{args.memory_mib}M",
             "-display", "none",
             "-serial", "stdio",
             "-monitor", "none",
@@ -447,6 +476,19 @@ def command_for(args: argparse.Namespace) -> list[str]:
             ]
         else:
             command += ["-drive", f"if=virtio,format=raw,file=fat:{args.esp}"]
+        if args.data_disk is not None:
+            command += [
+                "-object", "rng-builtin,id=luca-rng",
+                "-device",
+                "virtio-rng-pci,rng=luca-rng,disable-legacy=on,"
+                "iommu_platform=on,romfile=",
+                "-drive",
+                f"file={args.data_disk},format=raw,if=none,"
+                "id=luca-data,cache=none",
+                "-device",
+                "virtio-blk-pci,drive=luca-data,disable-legacy=on,"
+                "iommu_platform=on,romfile=",
+            ]
         if not args.expect_clean_exit:
             command.insert(command.index("-snapshot"), "-no-shutdown")
         return command
@@ -580,6 +622,7 @@ def main() -> int:
     parser.add_argument("--image", type=Path)
     parser.add_argument("--esp", type=Path)
     parser.add_argument("--disk-image", type=Path)
+    parser.add_argument("--data-disk", type=Path)
     parser.add_argument("--firmware", type=Path)
     parser.add_argument("--payload", type=Path, required=True)
     parser.add_argument("--init-image", type=Path)
@@ -602,16 +645,39 @@ def main() -> int:
         "--required-marker-anywhere", action="append", default=[]
     )
     parser.add_argument("--timeout", type=float, default=20.0)
+    parser.add_argument("--memory-mib", type=int, default=256)
+    parser.add_argument("--uefi-direct-fdt", action="store_true")
     parser.add_argument("--preload-payload-address", type=lambda value: int(value, 0))
     parser.add_argument("--kernel-command-line")
     parser.add_argument("--expect-clean-exit", action="store_true")
     parser.add_argument(
         "--expected-failure-stage",
-        choices=("esp-config", "init-image-load", "boot-prepare"),
+        choices=(
+            "esp-config",
+            "esp-kernel-source",
+            "init-image-load",
+            "transaction-prepare-image",
+        ),
     )
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
     args = parser.parse_args()
+
+    if args.memory_mib < 128 or args.memory_mib > 8192:
+        parser.error("--memory-mib must be between 128 and 8192")
+    if args.uefi_direct_fdt and args.target != "aarch64-uefi":
+        parser.error("--uefi-direct-fdt is limited to aarch64-uefi")
+    if args.data_disk is not None and (
+        args.target != "aarch64-uefi"
+        or not args.uefi_direct_fdt
+        or args.esp is None
+        or args.disk_image is not None
+    ):
+        parser.error(
+            "--data-disk requires the aarch64 UEFI direct-FDT ESP lane"
+        )
+    if args.data_disk is not None and not args.data_disk.is_file():
+        parser.error("--data-disk must name an existing regular file")
 
     if args.expected_failure_stage is not None and args.target != "aarch64-uefi":
         parser.error("--expected-failure-stage is limited to aarch64-uefi")
@@ -629,6 +695,11 @@ def main() -> int:
     init_image_hash = (
         artifact_sha256(args.init_image)
         if args.init_image is not None
+        else None
+    )
+    data_disk_hash = (
+        artifact_sha256(args.data_disk)
+        if args.data_disk is not None
         else None
     )
     module_provenance_hash = (
@@ -857,12 +928,16 @@ def main() -> int:
                         break
                     payload_failed = any(
                         (
-                            line.startswith(b"PARUS:BM:")
+                            line.startswith((b"PARUS:BM:", b"LUCA:BM:"))
                             and b":FAIL:" in line
                         )
-                        or line.startswith(b"PARUS:EXC:")
+                        or line.startswith((b"PARUS:EXC:", b"LUCA:EXC:"))
+                        or (
+                            line.startswith(b"LUCA:")
+                            and b":RESULT=FAIL" in line
+                        )
                         for line in output.splitlines()
-                    ) or any(marker in output for marker in FATAL_OUTPUT_MARKERS)
+                    ) or fatal_output_observed(bytes(output))
                     if payload_failed:
                         outcome = "payload-failure"
                         terminal = "payload-failure"
@@ -943,10 +1018,14 @@ def main() -> int:
         for line in output.splitlines()
     )
     payload_failed = any(
-        (line.startswith(b"PARUS:BM:") and b":FAIL:" in line)
-        or line.startswith(b"PARUS:EXC:")
+        (
+            line.startswith((b"PARUS:BM:", b"LUCA:BM:"))
+            and b":FAIL:" in line
+        )
+        or line.startswith((b"PARUS:EXC:", b"LUCA:EXC:"))
+        or (line.startswith(b"LUCA:") and b":RESULT=FAIL" in line)
         for line in output.splitlines()
-    ) or any(marker in output for marker in FATAL_OUTPUT_MARKERS)
+    ) or fatal_output_observed(bytes(output))
     fixture_failed = any(marker in output for marker in FIXTURE_FAILURE_MARKERS)
     expected_target_rejection = (
         args.expected_failure_stage is not None
@@ -1040,6 +1119,16 @@ def main() -> int:
         terminal = "artifact-identity-failure"
         first_divergence = "composed-artifact-mutated-during-run"
 
+    data_disk_hash_after = (
+        artifact_sha256(args.data_disk)
+        if args.data_disk is not None
+        else None
+    )
+    if launched and data_disk_hash_after != data_disk_hash:
+        outcome = "data-disk-mutated"
+        terminal = "artifact-identity-failure"
+        first_divergence = "data-disk-mutated-during-run"
+
     report = {
         "schema": "ribon-qemu-payload-evidence-v1",
         "schema_version": 1,
@@ -1065,6 +1154,17 @@ def main() -> int:
                 "sha256": init_image_hash,
             }
             if args.init_image is not None
+            else None
+        ),
+        "data_disk": (
+            {
+                "path": str(args.data_disk),
+                "sha256": data_disk_hash,
+                "sha256_after_run": data_disk_hash_after,
+                "immutable": data_disk_hash_after == data_disk_hash,
+                "attachment": "separate-virtio-pci-snapshot-fixture",
+            }
+            if args.data_disk is not None
             else None
         ),
         "product_manifest": (

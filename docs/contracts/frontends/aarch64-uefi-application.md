@@ -9,6 +9,7 @@ code_paths:
   - make/rules/uefi-bios.mk
   - ports/qemu/virt-aarch64/uefi_port.c
   - products/bootmgr/manifests/aarch64-uefi-parus-fixture.json
+  - products/bootmgr/manifests/aarch64-uefi-luca-direct-fdt-dev.json
   - src/arch/aarch64/arch.c
   - src/environments/uefi-app/uefi_app.c
   - targets/uefi-app/entry.c
@@ -18,6 +19,9 @@ tests:
   - make check-aarch64-uefi-pe
   - make aarch64-uefi-parus-fixture-smoke
   - make check-aarch64-uefi-negative-smoke
+  - make check-uefi-exit-transaction
+  - make check-aarch64-uefi-luca-direct-fdt-negative-smoke
+  - make aarch64-uefi-luca-direct-fdt-dev-smoke
 hardware:
   - qemu-virt-aarch64-edk2
 supersedes:
@@ -26,7 +30,7 @@ supersedes:
 
 # AArch64 UEFI application 계약
 
-`aarch64-uefi-parus-fixture` product는 AArch64 UEFI firmware가 removable-media
+`aarch64-uefi-parus-fixture`와 `aarch64-uefi-luca-direct-fdt-dev` product는 AArch64 UEFI firmware가 removable-media
 경로 `EFI/BOOT/BOOTAA64.EFI`에서 실행하는 Ribon application이다. 이 application은
 기존 Ribon Core, `uefi-app` environment, AArch64 architecture backend, ELF64 image
 provider와 LUCA protocol을 조합한다. LUCA tree에 별도 EFI loader를 두지 않는다.
@@ -78,22 +82,25 @@ fallback이나 first-success selection은 없다.
 
 ## Failure와 진단
 
-Serial evidence는 entry 뒤 첫 실패 stage를 정확히 한 번 기록한다. Malformed config와
-missing payload는 `esp-config`, missing initial image는 environment file-service의
-`init-image-load`, malformed ELF는 `boot-prepare`에서 닫힌다. 이 실패들은
+Serial evidence는 entry 뒤 첫 실패 stage를 정확히 한 번 기록한다. Malformed config는
+`esp-config`, missing payload는 `esp-kernel-source`, missing initial image는 environment
+file-service의 `init-image-load`, malformed ELF는 `transaction-prepare-image`에서 닫힌다. 이 실패들은
 `RIBON-R4-UEFI-TRANSFER`를 기록하지 않는다. Malformed PE/COFF는 host binary validator가
 ARM64 machine, PE32+, EFI application subsystem, nonzero entry, `.text`와 `.reloc` 요구로
 거부한다.
 
 정상 QEMU smoke는 firmware entry, config, initial image, memory map, product graph,
 protocol preparation, payload placement, final map, `ExitBootServices`, architecture transfer와
-AArch64 fixture entry를 순서대로 한 번씩 요구한다. Harness는 timeout 뒤 process group을
+AArch64 fixture entry를 순서대로 한 번씩 요구한다. Direct-FDT development product는
+같은 firmware boundary 뒤 LUCA kernel, external initial-user runtime, system-running과
+실제 EL0 shell input-ready까지 요구하며 세부 wire/lifetime 계약은
+`../handoff/luca-direct-fdt-development-v1.md`가 소유한다. Harness는 timeout 뒤 process group을
 정리하고 firmware, payload, manifest, ESP, raw serial과 QEMU identity digest를 보존한다.
 
 ## Evidence 경계
 
 Host generation과 PE parser 결과는 unit/compile-link evidence다. Selected EDK2와
 QEMU `virt`에서 BOOTAA64가 실행되고 PL011 stage marker와 fixture entry가 관찰된 결과만
-qemu-runtime evidence다. 이 계약은 Ribon EFI application 실행을 닫지만 LUCA kernel
-handoff, World 시작, UTM GUI, Secure Boot, rollback protection, 실제 board firmware 또는
-physical hardware 실행을 주장하지 않는다.
+qemu-runtime evidence다. Direct-FDT selected smoke는 LUCA kernel handoff와 World shell
+startup까지 닫는다. 두 결과 모두 UTM GUI, Secure Boot, rollback protection, 실제 board
+firmware 또는 physical hardware 실행을 주장하지 않는다.

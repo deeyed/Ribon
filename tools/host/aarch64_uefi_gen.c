@@ -40,6 +40,38 @@ struct ExpectedObjectRow {
     const char *third;
 };
 
+struct Aarch64UefiProductProfile {
+    const char *product_id;
+    const char *target_id;
+    const char *boot_protocol;
+    const char *protocol_plugin_id;
+    const char *protocol_package;
+    const char *protocol_symbol;
+    const char *evidence_claim;
+};
+
+static const struct Aarch64UefiProductProfile fixture_profile = {
+    .product_id = "bootmgr.aarch64-uefi-parus-fixture",
+    .target_id = "aarch64-uefi-parus-fixture",
+    .boot_protocol = "luca",
+    .protocol_plugin_id = "protocol.luca",
+    .protocol_package = "ribon.protocol.luca",
+    .protocol_symbol = "ribon_luca_protocol_plugin_descriptor",
+    .evidence_claim =
+        "AArch64 UEFI application reads a config-selected ELF64 fixture from the ESP",
+};
+
+static const struct Aarch64UefiProductProfile direct_fdt_profile = {
+    .product_id = "bootmgr.aarch64-uefi-luca-direct-fdt-dev",
+    .target_id = "aarch64-uefi-luca-direct-fdt-dev",
+    .boot_protocol = "luca-direct-fdt-dev",
+    .protocol_plugin_id = "protocol.luca-direct-fdt-dev",
+    .protocol_package = "ribon.protocol.luca-direct-fdt-dev",
+    .protocol_symbol = "ribon_luca_direct_fdt_protocol_plugin_descriptor",
+    .evidence_claim =
+        "AArch64 UEFI Ribon transfers exact LUCA kernel and World inputs by explicit development direct-FDT",
+};
+
 static void skip_space(struct JsonDocument *document) {
     while (document->cursor < document->size) {
         const char byte = document->bytes[document->cursor];
@@ -399,7 +431,9 @@ static int parse_manifest(
            document->tokens[0].kind == JSON_TOKEN_OBJECT;
 }
 
-static int validate_manifest(const struct JsonDocument *document) {
+static int validate_manifest(
+    const struct JsonDocument *document,
+    const struct Aarch64UefiProductProfile *profile) {
     static const char *const top_keys[] = {
         "schema_version", "product_id", "product_kind", "target_id",
         "architecture", "environment", "port", "mode", "boot_protocols",
@@ -422,16 +456,16 @@ static int validate_manifest(const struct JsonDocument *document) {
         {"service.uefi-app.storage-flush", "storage-flush", "ribon_uefi_app_storage_flush_service_descriptor"},
     };
     static const char *const plugin_fields[] = {"id", "package", "symbol"};
-    static const struct ExpectedObjectRow plugins[] = {
+    const struct ExpectedObjectRow plugins[] = {
         {"arch.aarch64", "ribon.arch.aarch64", "ribon_arch_plugin_descriptor"},
         {"environment.uefi-app", "ribon.environment.uefi-app", "ribon_uefi_app_environment_plugin_descriptor"},
         {"image.elf64", "ribon.image.elf64", "ribon_elf64_image_plugin_descriptor"},
-        {"protocol.luca", "ribon.protocol.luca", "ribon_luca_protocol_plugin_descriptor"},
+        {profile->protocol_plugin_id, profile->protocol_package, profile->protocol_symbol},
     };
     static const char *const selection_fields[] = {"id", "kind", "reserved"};
-    static const struct ExpectedObjectRow selections[] = {
+    const struct ExpectedObjectRow selections[] = {
         {"image.elf64", "image-format", ""},
-        {"protocol.luca", "boot-protocol", ""},
+        {profile->protocol_plugin_id, "boot-protocol", ""},
     };
     static const char *const image_keys[] = {"format", "recipe", "artifact"};
     static const char *const evidence_keys[] = {"class", "claim"};
@@ -444,17 +478,19 @@ static int validate_manifest(const struct JsonDocument *document) {
     size_t limits;
     size_t selections_array;
     size_t cursor;
-    if (!object_has_exact_keys(document, 0u, top_keys, sizeof(top_keys) / sizeof(top_keys[0])) ||
+    if (profile == 0 ||
+        !object_has_exact_keys(document, 0u, top_keys, sizeof(top_keys) / sizeof(top_keys[0])) ||
         !expect_u64(document, 0u, "schema_version", 1u) ||
-        !expect_string(document, 0u, "product_id", "bootmgr.aarch64-uefi-parus-fixture") ||
+        !expect_string(document, 0u, "product_id", profile->product_id) ||
         !expect_string(document, 0u, "product_kind", "bootloader") ||
-        !expect_string(document, 0u, "target_id", "aarch64-uefi-parus-fixture") ||
+        !expect_string(document, 0u, "target_id", profile->target_id) ||
         !expect_string(document, 0u, "architecture", "aarch64") ||
         !expect_string(document, 0u, "environment", "uefi") ||
         !expect_string(document, 0u, "port", "qemu-virt-aarch64") ||
         !expect_string(document, 0u, "mode", "normal") ||
         !expect_u64(document, 0u, "max_plugins", 16u) ||
-        !expect_string_array(document, 0u, "boot_protocols", (const char *const[]){"luca"}, 1u) ||
+        !expect_string_array(
+            document, 0u, "boot_protocols", &profile->boot_protocol, 1u) ||
         !expect_string_array(document, 0u, "policies", (const char *const[]){"normal"}, 1u) ||
         !expect_string_array(document, 0u, "required_capabilities", capabilities, 12u) ||
         !expect_string_array(document, 0u, "allowed_capabilities", capabilities, 12u) ||
@@ -468,7 +504,7 @@ static int validate_manifest(const struct JsonDocument *document) {
         !object_value(document, 0u, "evidence", &evidence) ||
         !object_has_exact_keys(document, evidence, evidence_keys, 2u) ||
         !expect_string(document, evidence, "class", "qemu-smoke") ||
-        !expect_string(document, evidence, "claim", "AArch64 UEFI application reads a config-selected ELF64 fixture from the ESP") ||
+        !expect_string(document, evidence, "claim", profile->evidence_claim) ||
         !object_value(document, 0u, "limits", &limits) ||
         !object_has_exact_keys(document, limits, limit_keys, 8u) ||
         !expect_u64(document, limits, "max_memory_regions", 256u) ||
@@ -523,7 +559,10 @@ static unsigned char *read_file(const char *path, size_t *size_out) {
     return bytes;
 }
 
-static int write_registry_source(FILE *output, const uint8_t digest[32]) {
+static int write_registry_source(
+    FILE *output,
+    const uint8_t digest[32],
+    const struct Aarch64UefiProductProfile *profile) {
     fputs("/* Generated by tools/generate_plugin_registry.py; do not edit. */\n"
           "#include <Ribon/plugin/registry.h>\n"
           "#include <Ribon/security/key_policy.h>\n"
@@ -533,8 +572,11 @@ static int write_registry_source(FILE *output, const uint8_t digest[32]) {
           "#include <Ribon/update/storage.h>\n\n\n"
           "extern const struct RibonPluginDescriptor ribon_arch_plugin_descriptor;\n"
           "extern const struct RibonPluginDescriptor ribon_uefi_app_environment_plugin_descriptor;\n"
-          "extern const struct RibonPluginDescriptor ribon_elf64_image_plugin_descriptor;\n"
-          "extern const struct RibonPluginDescriptor ribon_luca_protocol_plugin_descriptor;\n"
+          "extern const struct RibonPluginDescriptor ribon_elf64_image_plugin_descriptor;\n",
+          output);
+    fprintf(output, "extern const struct RibonPluginDescriptor %s;\n",
+            profile->protocol_symbol);
+    fputs(
           "extern const struct RibonServiceDescriptor ribon_port_diagnostic_sink_service_descriptor;\n"
           "extern const struct RibonServiceDescriptor ribon_uefi_app_boot_source_service_descriptor;\n"
           "extern const struct RibonServiceDescriptor ribon_uefi_app_environment_quiesce_service_descriptor;\n"
@@ -564,8 +606,10 @@ static int write_registry_source(FILE *output, const uint8_t digest[32]) {
           "static const struct RibonPluginDescriptor *const generated_plugins[] = {\n"
           "    &ribon_arch_plugin_descriptor,\n"
           "    &ribon_uefi_app_environment_plugin_descriptor,\n"
-          "    &ribon_elf64_image_plugin_descriptor,\n"
-          "    &ribon_luca_protocol_plugin_descriptor,\n"
+          "    &ribon_elf64_image_plugin_descriptor,\n",
+          output);
+    fprintf(output, "    &%s,\n", profile->protocol_symbol);
+    fputs(
           "};\n\n"
           "static const struct RibonPluginRegistry generated_registry = {\n"
           "    .size = sizeof(generated_registry),\n"
@@ -582,8 +626,12 @@ static int write_registry_source(FILE *output, const uint8_t digest[32]) {
           "    &ribon_uefi_app_storage_flush_service_descriptor,\n"
           "};\n\n\n\n"
           "static const struct RibonPluginSelection generated_plugin_selections[] = {\n"
-          "    { .kind = RIBON_PLUGIN_KIND_IMAGE_FORMAT, .id = \"image.elf64\" },\n"
-          "    { .kind = RIBON_PLUGIN_KIND_BOOT_PROTOCOL, .id = \"protocol.luca\" },\n"
+          "    { .kind = RIBON_PLUGIN_KIND_IMAGE_FORMAT, .id = \"image.elf64\" },\n",
+          output);
+    fprintf(output,
+          "    { .kind = RIBON_PLUGIN_KIND_BOOT_PROTOCOL, .id = \"%s\" },\n",
+          profile->protocol_plugin_id);
+    fputs(
           "};\n\n"
           "static const struct RibonServiceDirectory generated_service_directory = {\n"
           "    .size = sizeof(generated_service_directory),\n"
@@ -594,8 +642,10 @@ static int write_registry_source(FILE *output, const uint8_t digest[32]) {
           "static const struct RibonProductDescriptor generated_product = {\n"
           "    .magic = RIBON_PRODUCT_DESCRIPTOR_MAGIC,\n"
           "    .size = sizeof(generated_product),\n"
-          "    .abi_version = RIBON_CORE_ABI_VERSION,\n"
-          "    .id = \"bootmgr.aarch64-uefi-parus-fixture\",\n"
+          "    .abi_version = RIBON_CORE_ABI_VERSION,\n",
+          output);
+    fprintf(output, "    .id = \"%s\",\n", profile->product_id);
+    fputs(
           "    .kind = RIBON_PRODUCT_KIND_BOOTLOADER,\n"
           "    .architecture_mask = RIBON_ARCH_MASK_AARCH64,\n"
           "    .environment_mask = RIBON_ENV_MASK_UEFI,\n"
@@ -671,7 +721,11 @@ static void digest_hex(const uint8_t digest[32], char out[65]) {
     out[64] = '\0';
 }
 
-static int write_registry_report(FILE *output, const char *manifest, const uint8_t digest[32]) {
+static int write_registry_report(
+    FILE *output,
+    const char *manifest,
+    const uint8_t digest[32],
+    const struct Aarch64UefiProductProfile *profile) {
     const char *name = strrchr(manifest, '/');
     char hex[65];
     name = name == NULL ? manifest : name + 1;
@@ -696,7 +750,7 @@ static int write_registry_report(FILE *output, const char *manifest, const uint8
         "  \"boot_module_bundle\": null,\n"
         "  \"environment\": \"uefi\",\n"
         "  \"evidence\": {\n"
-        "    \"claim\": \"AArch64 UEFI application reads a config-selected ELF64 fixture from the ESP\",\n"
+        "    \"claim\": \"%s\",\n"
         "    \"class\": \"qemu-smoke\"\n"
         "  },\n"
         "  \"firmware_personality\": null,\n"
@@ -712,7 +766,7 @@ static int write_registry_report(FILE *output, const char *manifest, const uint8
         "    \"ribon.arch.aarch64\",\n"
         "    \"ribon.environment.uefi-app\",\n"
         "    \"ribon.image.elf64\",\n"
-        "    \"ribon.protocol.luca\"\n"
+        "    \"%s\"\n"
         "  ],\n"
         "  \"payload\": null,\n"
         "  \"plugin_selections\": [\n"
@@ -721,7 +775,7 @@ static int write_registry_report(FILE *output, const char *manifest, const uint8
         "      \"kind\": \"image-format\"\n"
         "    },\n"
         "    {\n"
-        "      \"id\": \"protocol.luca\",\n"
+        "      \"id\": \"%s\",\n"
         "      \"kind\": \"boot-protocol\"\n"
         "    }\n"
         "  ],\n"
@@ -729,10 +783,10 @@ static int write_registry_report(FILE *output, const char *manifest, const uint8
         "    \"arch.aarch64\",\n"
         "    \"environment.uefi-app\",\n"
         "    \"image.elf64\",\n"
-        "    \"protocol.luca\"\n"
+        "    \"%s\"\n"
         "  ],\n"
         "  \"port\": \"qemu-virt-aarch64\",\n"
-        "  \"product_id\": \"bootmgr.aarch64-uefi-parus-fixture\",\n"
+        "  \"product_id\": \"%s\",\n"
         "  \"product_kind\": \"bootloader\",\n"
         "  \"protected_state_domain_digests_sha256\": null,\n"
         "  \"protected_state_provider\": null,\n"
@@ -788,11 +842,17 @@ static int write_registry_report(FILE *output, const char *manifest, const uint8
         "  \"signature_provider\": null,\n"
         "  \"source_manifest\": \"%s\",\n"
         "  \"source_manifest_sha256\": \"%s\",\n"
-        "  \"target_id\": \"aarch64-uefi-parus-fixture\",\n"
+        "  \"target_id\": \"%s\",\n"
         "  \"update_storage\": null\n"
         "}\n",
+        profile->evidence_claim,
+        profile->protocol_package,
+        profile->protocol_plugin_id,
+        profile->protocol_plugin_id,
+        profile->product_id,
         name,
-        hex);
+        hex,
+        profile->target_id);
     return ferror(output) == 0;
 }
 
@@ -801,11 +861,19 @@ static int generate_registry(const char *manifest, const char *source_path, cons
     unsigned char *bytes = read_file(manifest, &size);
     struct JsonDocument document;
     uint8_t digest[32];
+    const struct Aarch64UefiProductProfile *profile = 0;
     FILE *source;
     FILE *report;
     int ok;
-    if (bytes == NULL || !parse_manifest((const char *)bytes, size, &document) ||
-        !validate_manifest(&document)) {
+    if (bytes != NULL && parse_manifest((const char *)bytes, size, &document)) {
+        if (expect_string(&document, 0u, "product_id", fixture_profile.product_id)) {
+            profile = &fixture_profile;
+        } else if (expect_string(
+                       &document, 0u, "product_id", direct_fdt_profile.product_id)) {
+            profile = &direct_fdt_profile;
+        }
+    }
+    if (bytes == NULL || profile == 0 || !validate_manifest(&document, profile)) {
         fprintf(stderr, "RIBON-AARCH64-UEFI-GEN-FAIL malformed-product-manifest\n");
         free(bytes);
         return 1;
@@ -824,7 +892,8 @@ static int generate_registry(const char *manifest, const char *source_path, cons
         free(bytes);
         return 1;
     }
-    ok = write_registry_source(source, digest) && write_registry_report(report, manifest, digest) &&
+    ok = write_registry_source(source, digest, profile) &&
+         write_registry_report(report, manifest, digest, profile) &&
          fclose(source) == 0 && fclose(report) == 0;
     free(bytes);
     return ok ? 0 : 1;
@@ -964,6 +1033,19 @@ static int generate_boot_config(const char *path) {
     return write_exact_file(path, config, sizeof(config) - 1u) ? 0 : 1;
 }
 
+static int generate_direct_fdt_boot_config(const char *path) {
+    static const char config[] =
+        "version=1\n"
+        "entry=primary\n"
+        "priority=100\n"
+        "protocol=protocol.luca-direct-fdt-dev\n"
+        "image=image.elf64\n"
+        "kernel=/RIBON/LUCA.ELF\n"
+        "init_image=/RIBON/WORLD.PKG\n"
+        "end\n";
+    return write_exact_file(path, config, sizeof(config) - 1u) ? 0 : 1;
+}
+
 static int generate_init_image(const char *path) {
     static const char prefix[] = "RIBON-OPAQUE-INITIAL-IMAGE-V1\n";
     unsigned char bytes[4096] = {0};
@@ -975,9 +1057,10 @@ static void usage(const char *program) {
     fprintf(stderr,
         "usage: %s registry MANIFEST OUTPUT_C REPORT_JSON\n"
         "       %s boot-config OUTPUT\n"
+        "       %s luca-direct-fdt-config OUTPUT\n"
         "       %s elf-fixture OUTPUT\n"
         "       %s init-image OUTPUT\n",
-        program, program, program, program);
+        program, program, program, program, program);
 }
 
 int main(int argc, char **argv) {
@@ -987,6 +1070,9 @@ int main(int argc, char **argv) {
     }
     if (argc == 3 && strcmp(argv[1], "boot-config") == 0) {
         return generate_boot_config(argv[2]);
+    }
+    if (argc == 3 && strcmp(argv[1], "luca-direct-fdt-config") == 0) {
+        return generate_direct_fdt_boot_config(argv[2]);
     }
     if (argc == 3 && strcmp(argv[1], "elf-fixture") == 0) {
         return generate_elf_fixture(argv[2]);
