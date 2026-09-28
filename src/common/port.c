@@ -12,6 +12,10 @@ int ribon_port_descriptor_is_valid(const struct RibonPortDescriptor *port) {
         port->environment < RIBON_ENVIRONMENT_HOST ||
         port->environment > RIBON_ENVIRONMENT_SBI ||
         port->timer_frequency_hz == 0u ||
+        ((port->post_exit_mmio_base == 0u) !=
+         (port->post_exit_mmio_size == 0u)) ||
+        (port->post_exit_mmio_size != 0u &&
+         port->post_exit_mmio_base > UINT64_MAX - port->post_exit_mmio_size) ||
         (port->machine_description != 0 &&
          !ribon_machine_description_service_operations_are_valid(
              port->machine_description)) ||

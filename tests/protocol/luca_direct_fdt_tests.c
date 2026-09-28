@@ -1,6 +1,7 @@
 #include <Ribon/boot/plan.h>
 #include <Ribon/plugin/descriptor.h>
 #include <Ribon/protocols/os/luca/direct_fdt.h>
+#include <Ribon/protocols/os/luca/rlh1.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -204,9 +205,10 @@ int main(void) {
         protocol->ops->prepare_terminal(
             &arch, &plan, &environment, &handoff, &terminal) !=
                 RIBON_PROTOCOL_STATUS_OK ||
-        terminal.direct_entry.argument_count != 1u ||
         terminal.direct_entry.arguments[0] != UINT64_C(0x60000000) ||
-        terminal.direct_entry.arguments[1] != 0u ||
+        terminal.direct_entry.argument_count != 2u ||
+        terminal.direct_entry.arguments[1] !=
+            RIBON_LUCA_ENTRY_FLAG_EL1_NORMALIZED ||
         terminal.direct_entry.translation != RIBON_ENTRY_TRANSLATION_DISABLED ||
         terminal.direct_entry.privilege != RIBON_ENTRY_PRIVILEGE_AARCH64_EL1) {
         fputs("luca_direct_fdt_tests: positive contract failed\n", stderr);

@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-09-13
+last_verified: 2026-09-28
 code_paths:
   - make/config.mk
   - make/model.mk
@@ -11,6 +11,8 @@ code_paths:
   - products/bootmgr/manifests/aarch64-uefi-parus-fixture.json
   - products/bootmgr/manifests/aarch64-uefi-luca-direct-fdt-dev.json
   - src/arch/aarch64/arch.c
+  - src/arch/aarch64/entry_state.c
+  - src/arch/aarch64/transition.S
   - src/environments/uefi-app/uefi_app.c
   - targets/uefi-app/entry.c
   - tools/host/aarch64_uefi_gen.c
@@ -74,6 +76,21 @@ pointer를 저장하지 않고 typed boot source, memory observation, persistent
 descriptor만 받는다. Final memory-map refresh와 bounded `ExitBootServices()`가 성공한
 뒤에는 firmware service를 다시 호출하지 않는다. Environment quiesce, cache sync와
 architecture transfer 순서는 바뀌지 않는다.
+
+AArch64 product는 firmware service를 사용할 수 있는 동안 live `CurrentEL`과 그 EL의
+`SCTLR`, `TCR`, `MAIR`, `TTBR0`, `VBAR`, stack과 DAIF만 관측한다. EL2에서 EL1 register
+bank를 firmware의 active translation이라고 추측하지 않는다. Handoff, 실행 image,
+post-exit stack, payload load range, module, DTB와 선택 port MMIO를 명시적으로 등록한 뒤
+최대 9 page의 39-bit TTBR0 bridge를 준비한다. 현재 leaf granularity는 2 MiB이며 등록되지
+않은 다른 L2 block은 invalid descriptor로 남는다. 이전처럼 낮은 512 GiB 전체를
+identity-map하지 않는다.
+
+Bridge, stack과 EL 전환은 `ExitBootServices()` 성공 callback에서만 활성화된다. Map-key
+재시도 또는 최종 실패 중에는 firmware stack과 active translation을 그대로 유지한다.
+성공 뒤 assembly는 EL1이면 bridge로 교체하고, EL2이면 VHE를 사용하지 않고 최소
+timer/trap state를 정규화한 뒤 EL1h로 `eret`한다. Continuation은 live
+`CurrentEL == EL1`, caller-owned stack과 masked DAIF를 다시 확인하는 경계다. LUCA
+protocol은 이 완료를 entry flag bit 5 `EL1_NORMALIZED`로 게시한다.
 
 `qemu-virt-aarch64` port는 UEFI environment identity와 AArch64 identity를 함께 선언하고
 PL011 diagnostic sink 및 selected payload placement window만 제공한다. 같은 common port

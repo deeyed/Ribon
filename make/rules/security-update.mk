@@ -468,6 +468,11 @@ $(ARCH_AARCH64_TEST): \
 	$(TEST_BUILD_DIR)/obj/src/arch/aarch64/arch.o
 	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
 
+$(AARCH64_ENTRY_STATE_TEST): \
+	$(TEST_BUILD_DIR)/obj/tests/arch/aarch64_entry_state_tests.o \
+	$(TEST_BUILD_DIR)/obj/src/arch/aarch64/entry_state.o
+	$(CC) $(CFLAGS) $(WARNFLAGS) $^ -o $@
+
 $(TEST_BUILD_DIR)/arch_ops_%_tests: \
 	$(TEST_BUILD_DIR)/obj/tests/arch/arch_ops_tests.o \
 	$(TEST_BUILD_DIR)/obj/src/arch/common.o \

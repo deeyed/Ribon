@@ -2,7 +2,7 @@
 doc_type: contract
 status: accepted
 authority: normative
-last_verified: 2026-08-14
+last_verified: 2026-09-28
 code_paths:
   - src/protocols/os/luca/
   - include/Ribon/protocol/
@@ -229,8 +229,16 @@ payload overlap, singleton duplication, required section 존재, section별 payl
 | RISC-V 64 | `a0` | `a1` |
 
 Entry flag bit 0은 `RLH1`, bit 1은 direct-DTB 예약, bit 2는 `ENTERED_HIGH`, bit 3은
-`DIRECT_HIGH`다. Normal LUCA protocol은 bit 0만 설정한다. Direct-high mode는 bit 0, 2,
-3을 함께 설정한다.
+`DIRECT_HIGH`, bit 5는 AArch64 `EL1_NORMALIZED`다. AArch64 normal LUCA protocol은
+bit 0과 bit 5를 함께 설정한다. AArch64 direct-high mode는 bit 0, 2, 3, 5를 함께
+설정한다. 다른 architecture는 bit 5를 설정하지 않는다.
+
+`EL1_NORMALIZED`는 UEFI service 종료가 성공한 뒤 Ribon의 bounded bridge가 활성화되고
+live `CurrentEL == EL1`을 확인했다는 producer 계약이다. Temporary table root와 firmware
+register snapshot을 wire ABI로 노출하지 않는다. RLH1의 memory map, reserved ranges,
+kernel image layout과 borrowed range가 영구 pmap 입력이며, LUCA EB3가 이를 독립적으로
+검증하고 영구 번역을 인수한다. LUCA AArch64 RLH1 adapter는 bit 5 누락, 알려지지 않은
+flag, 단독 high flag, nonzero `x2`/`x3`와 잘못 정렬된 pointer를 효과 전에 거부한다.
 
 Flag는 pointer와 CPU state 검증을 대체하지 않는다. Malformed RLH1을 DTB 또는 다른
 artifact로 재해석하지 않는다.

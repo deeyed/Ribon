@@ -79,6 +79,9 @@ static int luca_prepare_terminal(
     struct RibonTerminalRequest *out) {
     struct RibonEntryInvocation *entry;
     enum RibonRegisterAbi register_abi;
+    enum RibonEntryPrivilegeRequirement privilege =
+        RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR;
+    uint64_t entry_flags = RIBON_LUCA_ENTRY_FLAG_RLH1;
     enum RibonEntryTranslationRequirement translation =
         RIBON_ENTRY_TRANSLATION_PRESERVE_REACHABLE;
     (void)environment;
@@ -99,6 +102,8 @@ static int luca_prepare_terminal(
         break;
     case RIBON_ARCHITECTURE_AARCH64:
         register_abi = RIBON_REGISTER_ABI_AARCH64_X0_X1_X2_X3;
+        privilege = RIBON_ENTRY_PRIVILEGE_AARCH64_EL1;
+        entry_flags |= RIBON_LUCA_ENTRY_FLAG_EL1_NORMALIZED;
         break;
     case RIBON_ARCHITECTURE_RISCV64:
         register_abi = RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3;
@@ -116,10 +121,10 @@ static int luca_prepare_terminal(
         .argument_count = 2u,
         .arguments = {
             (uint64_t)(uintptr_t)handoff->data,
-            RIBON_LUCA_ENTRY_FLAG_RLH1,
+            entry_flags,
         },
         .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
-        .privilege = RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR,
+        .privilege = privilege,
         .translation = translation,
     };
     return RIBON_PROTOCOL_STATUS_OK;

@@ -70,6 +70,14 @@ class QemuTargetSmokeTests(unittest.TestCase):
             "iommu_platform=on,romfile=",
             command,
         )
+        args.expected_failure_stage = None
+        args.expected_payload_class = "kernel"
+        args.required_marker = ["LUCA:TERMINAL:v1:INPUT_READY"]
+        markers = load_harness_module().required_markers(args)
+        self.assertNotIn(b"RIBON-R4-UEFI-PAYLOAD-LOADED", markers)
+        self.assertNotIn(b"RIBON-R8-UEFI-ESP-PAYLOAD-OK", markers)
+        self.assertIn(b"RIBON-R4-UEFI-EXIT-BOOT-SERVICES-OK", markers)
+        self.assertIn(b"LUCA:TERMINAL:v1:INPUT_READY", markers)
 
     def test_data_disk_rejects_a_non_direct_lane(self) -> None:
         """A separate data fixture cannot silently change another target graph."""

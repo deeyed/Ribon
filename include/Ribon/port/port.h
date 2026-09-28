@@ -8,7 +8,7 @@
 #include <Ribon/service/directory.h>
 
 /** @brief Target composition이 선택한 machine port descriptor ABI다. */
-#define RIBON_PORT_ABI_VERSION 1u
+#define RIBON_PORT_ABI_VERSION 2u
 
 /**
  * @brief Firmware entry recipe가 소비하는 machine wiring aggregate다.
@@ -23,6 +23,8 @@ struct RibonPortDescriptor {
     enum RibonArchitectureId architecture; /**< Port ISA다. */
     enum RibonEnvironmentKind environment; /**< Native entry environment다. */
     uint64_t timer_frequency_hz; /**< Native counter frequency다. */
+    uint64_t post_exit_mmio_base; /**< Post-exit diagnostic MMIO 시작이며 0은 없음이다. */
+    uint64_t post_exit_mmio_size; /**< Post-exit에 필요한 exact MMIO byte 수다. */
     const struct RibonServiceDescriptor *diagnostic_sink; /**< Optional sink authority다. */
     const struct RibonServiceDescriptor *machine_description; /**< Optional native input authority다. */
     const struct RibonServiceDescriptor *payload_placement; /**< Optional payload window authority다. */

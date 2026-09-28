@@ -26,6 +26,13 @@ static int check_entry_contract(
         .version_major = 1u,
     };
     struct RibonTerminalRequest terminal = {0};
+    const uint64_t expected_flags = RIBON_LUCA_ENTRY_FLAG_RLH1 |
+        (architecture == RIBON_ARCHITECTURE_AARCH64 ?
+            RIBON_LUCA_ENTRY_FLAG_EL1_NORMALIZED : 0u);
+    const enum RibonEntryPrivilegeRequirement expected_privilege =
+        architecture == RIBON_ARCHITECTURE_AARCH64 ?
+            RIBON_ENTRY_PRIVILEGE_AARCH64_EL1 :
+            RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR;
 
     if (protocol->ops->prepare_terminal(
             &arch,
@@ -38,9 +45,9 @@ static int check_entry_contract(
         terminal.direct_entry.register_abi != expected_abi ||
         terminal.direct_entry.argument_count != 2u ||
         terminal.direct_entry.arguments[0] != (uint64_t)(uintptr_t)handoff.data ||
-        terminal.direct_entry.arguments[1] != RIBON_LUCA_ENTRY_FLAG_RLH1 ||
+        terminal.direct_entry.arguments[1] != expected_flags ||
         terminal.direct_entry.interrupts != RIBON_ENTRY_INTERRUPTS_MASKED ||
-        terminal.direct_entry.privilege != RIBON_ENTRY_PRIVILEGE_CURRENT_SUPERVISOR ||
+        terminal.direct_entry.privilege != expected_privilege ||
         terminal.direct_entry.translation != expected_translation) {
         return 0;
     }

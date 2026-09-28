@@ -549,6 +549,20 @@ def required_markers(args: argparse.Namespace) -> tuple[bytes, ...]:
     if args.expected_failure_stage is not None:
         return (TARGET_MARKERS[args.target][0],)
     candidates = TARGET_MARKERS[args.target]
+    if args.uefi_direct_fdt:
+        # The direct-FDT development path validates the source ELF before
+        # ExitBootServices, but copies its load segments only on the bounded
+        # post-exit bridge.  The two pre-exit placement receipts therefore do
+        # not belong to this path; its caller supplies the bridge and kernel
+        # entry receipts that replace them.
+        candidates = tuple(
+            marker
+            for marker in candidates
+            if marker not in (
+                b"RIBON-R4-UEFI-PAYLOAD-LOADED",
+                b"RIBON-R8-UEFI-ESP-PAYLOAD-OK",
+            )
+        )
     candidates += tuple(
         marker.encode("utf-8") for marker in args.required_marker
     )

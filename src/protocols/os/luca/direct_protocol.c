@@ -1,6 +1,7 @@
 #include <Ribon/boot/plan.h>
 #include <Ribon/plugin/descriptor.h>
 #include <Ribon/protocols/os/luca/direct_fdt.h>
+#include <Ribon/protocols/os/luca/rlh1.h>
 
 /** @brief Stable identifier의 exact byte equality를 검사한다. */
 static int luca_direct_streq(const char *lhs, const char *rhs) {
@@ -338,8 +339,13 @@ static int luca_direct_prepare_terminal(
             .abi_version = RIBON_ENTRY_INVOCATION_ABI_VERSION,
             .entry_address = plan->kernel_runtime_entry_address,
             .register_abi = RIBON_REGISTER_ABI_AARCH64_X0_X1_X2_X3,
-            .argument_count = 1u,
-            .arguments = {(uint64_t)(uintptr_t)handoff->data, 0u, 0u, 0u},
+            .argument_count = 2u,
+            .arguments = {
+                (uint64_t)(uintptr_t)handoff->data,
+                RIBON_LUCA_ENTRY_FLAG_EL1_NORMALIZED,
+                0u,
+                0u,
+            },
             .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
             .privilege = RIBON_ENTRY_PRIVILEGE_AARCH64_EL1,
             .translation = RIBON_ENTRY_TRANSLATION_DISABLED,

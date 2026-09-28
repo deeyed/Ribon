@@ -304,6 +304,8 @@ int main(void) {
     expect(RIBON_LUCA_ENTRY_FLAG_DIRECT_DTB == 0x2u, "direct DTB entry flag is bit 1");
     expect(RIBON_LUCA_ENTRY_FLAG_ENTERED_HIGH == 0x4u, "entered-high entry flag is bit 2");
     expect(RIBON_LUCA_ENTRY_FLAG_DIRECT_HIGH == 0x8u, "direct-high entry flag is bit 3");
+    expect(RIBON_LUCA_ENTRY_FLAG_EL1_NORMALIZED == 0x20u,
+           "EL1-normalized entry flag is bit 5");
     expect(build_fixture(valid, &artifact) == RIBON_PROTOCOL_HANDOFF_STATUS_OK, "builder accepts fixture");
     total_size = read_u32(valid, RIBON_LUCA_RLH1_HEADER_TOTAL_SIZE_OFFSET);
     table_offset = read_u32(valid, RIBON_LUCA_RLH1_HEADER_SECTION_TABLE_OFFSET);

@@ -125,6 +125,7 @@ enum RibonLucaEntryFlag {
     RIBON_LUCA_ENTRY_FLAG_DIRECT_DTB = 1ull << 1,
     RIBON_LUCA_ENTRY_FLAG_ENTERED_HIGH = 1ull << 2,
     RIBON_LUCA_ENTRY_FLAG_DIRECT_HIGH = 1ull << 3,
+    RIBON_LUCA_ENTRY_FLAG_EL1_NORMALIZED = 1ull << 5,
 };
 
 /** @brief LUCA Boot Protocol plugin descriptor다. */

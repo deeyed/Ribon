@@ -249,6 +249,7 @@ RAW_FDT_CAPACITY_TEST := $(TEST_BUILD_DIR)/raw_fdt_capacity_tests
 RLH1_TEST := $(TEST_BUILD_DIR)/rlh1_builder_tests
 ARCH_X86_64_TEST := $(TEST_BUILD_DIR)/x86_64_direct_high_tests
 ARCH_AARCH64_TEST := $(TEST_BUILD_DIR)/aarch64_direct_high_tests
+AARCH64_ENTRY_STATE_TEST := $(TEST_BUILD_DIR)/aarch64_entry_state_tests
 ARCH_OPS_TESTS := $(RIBON_ARCHES:%=$(TEST_BUILD_DIR)/arch_ops_%_tests)
 CORE_SERVICE_TEST := $(TEST_BUILD_DIR)/core_service_boundary_tests
 PORT_SERVICE_TEST := $(TEST_BUILD_DIR)/port_service_tests
@@ -589,6 +590,7 @@ AARCH64_UEFI_SRCS := \
 	src/common/drivers/serial/pl011.c \
 	src/arch/common.c \
 	src/arch/aarch64/arch.c \
+	src/arch/aarch64/entry_state.c \
 	src/modes/normal.c \
 	src/image-formats/elf64.c \
 	src/protocols/os/luca/protocol.c \
@@ -599,6 +601,7 @@ AARCH64_UEFI_SRCS := \
 	targets/uefi-app/entry.c
 AARCH64_UEFI_OBJS := \
 	$(AARCH64_UEFI_SRCS:%.c=$(AARCH64_UEFI_DIR)/obj/%.o) \
+	$(AARCH64_UEFI_DIR)/obj/src/arch/aarch64/transition.o \
 	$(AARCH64_UEFI_DIR)/obj/generated/plugin_registry.o
 
 AARCH64_UEFI_DIRECT_PRODUCT := aarch64-uefi-luca-direct-fdt-dev
@@ -637,6 +640,7 @@ AARCH64_UEFI_DIRECT_SRCS := \
 	src/common/drivers/serial/pl011.c \
 	src/arch/common.c \
 	src/arch/aarch64/arch.c \
+	src/arch/aarch64/entry_state.c \
 	src/modes/normal.c \
 	src/image-formats/elf64.c \
 	src/protocols/os/luca/direct_fdt.c \
@@ -646,6 +650,7 @@ AARCH64_UEFI_DIRECT_SRCS := \
 	targets/uefi-app/entry.c
 AARCH64_UEFI_DIRECT_OBJS := \
 	$(AARCH64_UEFI_DIRECT_SRCS:%.c=$(AARCH64_UEFI_DIRECT_DIR)/obj/%.o) \
+	$(AARCH64_UEFI_DIRECT_DIR)/obj/src/arch/aarch64/transition.o \
 	$(AARCH64_UEFI_DIRECT_DIR)/obj/generated/plugin_registry.o
 
 UEFI_EXTERNAL_REGISTRY_C := $(UEFI_EXTERNAL_DIR)/generated/plugin_registry.c

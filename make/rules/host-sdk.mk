@@ -24,8 +24,9 @@ check-rlh1: $(RLH1_TEST)
 check-arch-x86_64: $(ARCH_X86_64_TEST)
 	$(ARCH_X86_64_TEST)
 
-check-arch-aarch64: $(ARCH_AARCH64_TEST)
+check-arch-aarch64: $(ARCH_AARCH64_TEST) $(AARCH64_ENTRY_STATE_TEST)
 	$(ARCH_AARCH64_TEST)
+	$(AARCH64_ENTRY_STATE_TEST)
 
 check-arch-ops: $(ARCH_OPS_TESTS)
 	@for test_binary in $(ARCH_OPS_TESTS); do \

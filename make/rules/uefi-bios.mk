@@ -56,6 +56,11 @@ $(AARCH64_UEFI_DIR)/obj/%.o: %.c $(RIBON_MAKEFILES)
 	@mkdir -p $(@D)
 	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
 
+$(AARCH64_UEFI_DIR)/obj/src/arch/aarch64/transition.o: \
+	src/arch/aarch64/transition.S $(RIBON_MAKEFILES)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) -c $< -o $@
+
 $(AARCH64_UEFI_DIR)/obj/generated/plugin_registry.o: \
 	$(AARCH64_UEFI_REGISTRY_C)
 	@mkdir -p $(@D)
@@ -104,6 +109,11 @@ $(AARCH64_UEFI_DIRECT_CONFIG): $(AARCH64_UEFI_HOST_TOOL) $(RIBON_MAKEFILES)
 $(AARCH64_UEFI_DIRECT_DIR)/obj/%.o: %.c $(RIBON_MAKEFILES)
 	@mkdir -p $(@D)
 	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(AARCH64_UEFI_DIRECT_DIR)/obj/src/arch/aarch64/transition.o: \
+	src/arch/aarch64/transition.S $(RIBON_MAKEFILES)
+	@mkdir -p $(@D)
+	$(AARCH64_UEFI_CC) $(AARCH64_UEFI_FLAGS) -c $< -o $@
 
 $(AARCH64_UEFI_DIRECT_DIR)/obj/generated/plugin_registry.o: \
 	$(AARCH64_UEFI_DIRECT_REGISTRY_C)
@@ -160,7 +170,9 @@ aarch64-uefi-luca-direct-fdt-dev-smoke: aarch64-uefi-luca-direct-fdt-dev
 		--required-marker LUCA:BM:v0:05000100:KMAIN:ENTER:NONE \
 		--required-marker LUCA:SYSINIT:v0:ENTRY:OK:external-initial-user-runtime \
 		--required-marker LUCA:SYSINIT:v0:ENTRY:OK:system-running \
-		--required-marker LUCA:SHELL:v1:INPUT_READY \
+		--required-marker LUCA:TERMINAL:v1:INPUT_READY \
+		--required-marker-anywhere RIBON-R12-AARCH64-FIRMWARE-SOURCE-EL=0x0000000000000001 \
+		--required-marker-anywhere RIBON-R12-AARCH64-EL1-BRIDGE-SOURCE-EL=0x0000000000000001 \
 		--source-revision $$(git rev-parse HEAD) \
 		--log $(AARCH64_UEFI_DIRECT_DIR)/results/qemu.log \
 		--result $(AARCH64_UEFI_DIRECT_DIR)/results/qemu.json

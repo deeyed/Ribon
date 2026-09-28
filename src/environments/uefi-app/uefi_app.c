@@ -576,6 +576,8 @@ int ribon_uefi_app_initialize(
     }
     context->image_handle = image_handle;
     context->device_handle = 0;
+    context->image_base = 0;
+    context->image_size = 0u;
     context->system_table = system_table;
     context->boot_services = system_table->BootServices;
     context->file_system = 0;
@@ -595,10 +597,15 @@ int ribon_uefi_app_initialize(
         image_handle,
         &loaded_image_guid,
         (void **)&loaded_image);
-    if (EFI_ERROR(status) || loaded_image == 0 || loaded_image->DeviceHandle == 0) {
+    if (EFI_ERROR(status) || loaded_image == 0 || loaded_image->DeviceHandle == 0 ||
+        loaded_image->ImageBase == 0 || loaded_image->ImageSize == 0u ||
+        (uint64_t)loaded_image->ImageSize >
+            UINT64_MAX - (uint64_t)(uintptr_t)loaded_image->ImageBase) {
         return RIBON_UEFI_APP_STATUS_FIRMWARE_ERROR;
     }
     context->device_handle = loaded_image->DeviceHandle;
+    context->image_base = loaded_image->ImageBase;
+    context->image_size = (uint64_t)loaded_image->ImageSize;
     status = context->boot_services->HandleProtocol(
         loaded_image->DeviceHandle,
         &file_system_guid,

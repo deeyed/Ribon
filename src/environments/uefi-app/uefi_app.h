@@ -41,6 +41,8 @@ struct RibonUefiFileSource {
 struct RibonUefiAppContext {
     EFI_HANDLE image_handle; /**< UEFI가 전달한 image handle이다. */
     EFI_HANDLE device_handle; /**< Loaded image가 속한 volume device다. */
+    void *image_base; /**< Loaded-image protocol이 제공한 physical identity 후보다. */
+    uint64_t image_size; /**< Loaded PE/COFF image의 exact resident byte 수다. */
     EFI_SYSTEM_TABLE *system_table; /**< Boot Services lifetime의 borrowed table이다. */
     EFI_BOOT_SERVICES *boot_services; /**< ExitBootServices 전까지만 유효하다. */
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *file_system; /**< Loaded-image device의 borrowed file system이다. */
