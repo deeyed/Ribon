@@ -54,6 +54,51 @@ static int check_entry_contract(
     return 1;
 }
 
+/** @brief x86_64 direct-high plan이 high entry와 4-register tuple을 만드는지 검사한다. */
+static int check_x86_64_direct_high_contract(
+    const struct RibonBootProtocol *protocol) {
+    const unsigned char handoff_bytes[4] = {'R', 'L', 'H', '1'};
+    const struct RibonArchDescriptor arch = {
+        .size = sizeof(arch),
+        .abi_version = RIBON_ARCH_OPS_ABI_VERSION,
+        .id = RIBON_ARCHITECTURE_X86_64,
+    };
+    const struct RibonBootPlan plan = {
+        .kernel_runtime_entry_address = UINT64_C(0x400000),
+        .kernel_high_entry_virtual_address = UINT64_C(0xffffffff80200000),
+        .kernel_transition_root_physical = UINT64_C(0x300000),
+        .kernel_transition_bytes = UINT64_C(0xa000),
+    };
+    const struct RibonBootEnvironment environment = {0};
+    const struct RibonHandoffArtifact handoff = {
+        .data = handoff_bytes,
+        .size = sizeof(handoff_bytes),
+        .format = "rlh1",
+        .version_major = 1u,
+    };
+    struct RibonTerminalRequest terminal = {0};
+    const uint64_t expected_flags =
+        RIBON_LUCA_ENTRY_FLAG_RLH1 |
+        RIBON_LUCA_ENTRY_FLAG_ENTERED_HIGH |
+        RIBON_LUCA_ENTRY_FLAG_DIRECT_HIGH;
+    return protocol->ops->prepare_terminal(
+               &arch, &plan, &environment, &handoff, &terminal) ==
+               RIBON_PROTOCOL_STATUS_OK &&
+           terminal.kind == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+           terminal.direct_entry.entry_address ==
+               plan.kernel_high_entry_virtual_address &&
+           terminal.direct_entry.argument_count == 4u &&
+           terminal.direct_entry.arguments[0] ==
+               (uint64_t)(uintptr_t)handoff.data &&
+           terminal.direct_entry.arguments[1] == expected_flags &&
+           terminal.direct_entry.arguments[2] ==
+               plan.kernel_transition_root_physical &&
+           terminal.direct_entry.arguments[3] ==
+               plan.kernel_transition_bytes &&
+           terminal.direct_entry.translation ==
+               RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE;
+}
+
 int main(void) {
     const struct RibonBootProtocol *protocol =
         (const struct RibonBootProtocol *)
@@ -74,7 +119,8 @@ int main(void) {
             protocol,
             RIBON_ARCHITECTURE_RISCV64,
             RIBON_REGISTER_ABI_RISCV64_A0_A1_A2_A3,
-            RIBON_ENTRY_TRANSLATION_DISABLED)) {
+            RIBON_ENTRY_TRANSLATION_DISABLED) ||
+        !check_x86_64_direct_high_contract(protocol)) {
         fputs("luca_entry_contract_tests: entry contract mismatch\n", stderr);
         return 1;
     }

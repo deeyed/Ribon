@@ -15,6 +15,7 @@
 #define TEST_PRESENT (1ull << 0)
 #define TEST_WRITE (1ull << 1)
 #define TEST_LARGE (1ull << 7)
+#define TEST_NX (1ull << 63)
 #define TEST_ADDR_MASK 0x000ffffffffffff000ull
 
 static uint64_t test_table_desc(uint64_t physical) {
@@ -48,8 +49,8 @@ static struct RibonDirectLoadPlan make_direct_payload(struct RibonLoadSegment *s
         .flags = RIBON_LOAD_SEGMENT_READ | RIBON_LOAD_SEGMENT_EXECUTE,
     };
     segments[1] = (struct RibonLoadSegment){
-        .file_size = TEST_HIGH_SIZE,
-        .memory_size = TEST_HIGH_SIZE,
+        .file_size = TEST_LARGE_2M,
+        .memory_size = TEST_LARGE_2M,
         .virtual_address = TEST_HIGH_BASE,
         .linked_physical_address = TEST_HIGH_LOAD,
         .load_address = TEST_HIGH_LOAD,
@@ -57,10 +58,20 @@ static struct RibonDirectLoadPlan make_direct_payload(struct RibonLoadSegment *s
         .alignment = TEST_LARGE_2M,
         .flags = RIBON_LOAD_SEGMENT_READ | RIBON_LOAD_SEGMENT_EXECUTE,
     };
+    segments[2] = (struct RibonLoadSegment){
+        .file_size = TEST_LARGE_2M,
+        .memory_size = TEST_LARGE_2M,
+        .virtual_address = TEST_HIGH_BASE + TEST_LARGE_2M,
+        .linked_physical_address = TEST_HIGH_LOAD + TEST_LARGE_2M,
+        .load_address = TEST_HIGH_LOAD + TEST_LARGE_2M,
+        .runtime_address = TEST_HIGH_LOAD + TEST_LARGE_2M,
+        .alignment = TEST_PAGE_SIZE,
+        .flags = RIBON_LOAD_SEGMENT_READ | RIBON_LOAD_SEGMENT_WRITE,
+    };
     return (struct RibonDirectLoadPlan){
         .size = sizeof(struct RibonDirectLoadPlan),
         .abi_version = RIBON_DIRECT_LOAD_PLAN_ABI_VERSION,
-        .segment_count = 2,
+        .segment_count = 3,
         .load_plan_flags =
             RIBON_LOAD_PLAN_HAS_HIGHER_HALF |
             RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE |
@@ -81,20 +92,22 @@ static struct RibonDirectLoadPlan make_direct_payload(struct RibonLoadSegment *s
         .high_entry_virtual_address = TEST_HIGH_BASE,
         .high_entry_load_address = TEST_HIGH_LOAD,
         .segments = segments,
-        .segment_capacity = 2,
+        .segment_capacity = 3,
     };
 }
 
 static int test_prepare_direct_high_tables(void) {
-    struct RibonLoadSegment segments[2];
+    struct RibonLoadSegment segments[3];
     struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
-    uint64_t tables[8u * TEST_ENTRIES];
+    uint64_t tables[10u * TEST_ENTRIES];
     uint64_t *pml4 = tables;
     uint64_t *low_pdpt = tables + TEST_ENTRIES;
     uint64_t *low_pd0 = tables + TEST_ENTRIES * 2u;
     uint64_t *high_pdpt = tables + TEST_ENTRIES * 6u;
     uint64_t *high_pd = tables + TEST_ENTRIES * 7u;
+    uint64_t *high_pt0 = tables + TEST_ENTRIES * 8u;
+    uint64_t *high_pt1 = tables + TEST_ENTRIES * 9u;
     const uint32_t pml4_index = (uint32_t)((TEST_HIGH_BASE >> 39u) & 0x1ffu);
     const uint32_t pdpt_index = (uint32_t)((TEST_HIGH_BASE >> 30u) & 0x1ffu);
     const uint32_t pd_index = (uint32_t)((TEST_HIGH_BASE >> 21u) & 0x1ffu);
@@ -103,7 +116,7 @@ static int test_prepare_direct_high_tables(void) {
     failures += expect_u64(
         "direct high table pages",
         ribon_arch_direct_high_page_table_pages(&payload),
-        8);
+        10);
     if (ribon_arch_prepare_direct_high_entry(
             &payload,
             TEST_TABLE_BASE,
@@ -134,20 +147,32 @@ static int test_prepare_direct_high_tables(void) {
         "high pdpt",
         high_pdpt[pdpt_index],
         test_table_desc(TEST_TABLE_BASE + TEST_PAGE_SIZE * 7u));
-    failures += expect_u64("high pd first", high_pd[pd_index], test_large_desc(TEST_HIGH_LOAD));
+    failures += expect_u64(
+        "high pd first",
+        high_pd[pd_index],
+        test_table_desc(TEST_TABLE_BASE + TEST_PAGE_SIZE * 8u));
     failures += expect_u64(
         "high pd second",
         high_pd[pd_index + 1u],
-        test_large_desc(TEST_HIGH_LOAD + TEST_LARGE_2M));
+        test_table_desc(TEST_TABLE_BASE + TEST_PAGE_SIZE * 9u));
+    failures += expect_u64(
+        "high text first",
+        high_pt0[0],
+        (TEST_HIGH_LOAD & TEST_ADDR_MASK) | TEST_PRESENT);
+    failures += expect_u64(
+        "high data first",
+        high_pt1[0],
+        ((TEST_HIGH_LOAD + TEST_LARGE_2M) & TEST_ADDR_MASK) |
+            TEST_PRESENT | TEST_WRITE | TEST_NX);
 
     return failures;
 }
 
 static int test_rejects_missing_direct_candidate(void) {
-    struct RibonLoadSegment segments[2];
+    struct RibonLoadSegment segments[3];
     struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
-    uint64_t tables[8u * TEST_ENTRIES];
+    uint64_t tables[10u * TEST_ENTRIES];
     payload.load_plan_flags &= ~RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE;
 
     if (ribon_arch_direct_high_page_table_pages(&payload) != 0u) {
@@ -167,10 +192,10 @@ static int test_rejects_missing_direct_candidate(void) {
 }
 
 static int test_rejects_pdpt_crossing_range(void) {
-    struct RibonLoadSegment segments[2];
+    struct RibonLoadSegment segments[3];
     struct RibonDirectLoadPlan payload = make_direct_payload(segments);
     struct RibonArchDirectHighHandoff handoff;
-    uint64_t tables[8u * TEST_ENTRIES];
+    uint64_t tables[10u * TEST_ENTRIES];
     payload.linked_virtual_end = TEST_HIGH_BASE + 0x40200000ull;
 
     if (ribon_arch_prepare_direct_high_entry(
@@ -185,11 +210,29 @@ static int test_rejects_pdpt_crossing_range(void) {
     return 0;
 }
 
+static int test_rejects_writable_executable_segment(void) {
+    struct RibonLoadSegment segments[3];
+    struct RibonDirectLoadPlan payload = make_direct_payload(segments);
+    struct RibonArchDirectHighHandoff handoff;
+    uint64_t tables[10u * TEST_ENTRIES];
+    segments[2].flags |= RIBON_LOAD_SEGMENT_EXECUTE;
+
+    if (ribon_arch_direct_high_page_table_pages(&payload) != 0u ||
+        ribon_arch_prepare_direct_high_entry(
+            &payload, TEST_TABLE_BASE, tables, sizeof(tables), &handoff) !=
+            RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT) {
+        printf("writable executable segment was not rejected\n");
+        return 1;
+    }
+    return 0;
+}
+
 int main(void) {
     int failures = 0;
     failures += test_prepare_direct_high_tables();
     failures += test_rejects_missing_direct_candidate();
     failures += test_rejects_pdpt_crossing_range();
+    failures += test_rejects_writable_executable_segment();
     if (failures != 0) {
         return 1;
     }

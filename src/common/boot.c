@@ -231,6 +231,34 @@ static int boot_apply_relocatable_placement(
     return RIBON_BOOT_STATUS_OK;
 }
 
+/** @brief Direct-high table range가 normalized non-usable ownership 안에 있는지 검사한다. */
+static int boot_transition_range_is_reserved(
+    const struct RibonMutableMemoryMap *memory_map,
+    uint64_t base,
+    uint64_t size) {
+    uint64_t end;
+    if (memory_map == 0 || memory_map->regions == 0 || size == 0u ||
+        base > UINT64_MAX - size) {
+        return 0;
+    }
+    end = base + size;
+    for (uint32_t index = 0u; index < memory_map->region_count; ++index) {
+        const struct RibonMemoryRegion *region = &memory_map->regions[index];
+        uint64_t region_end;
+        if (ribon_memory_region_end(region, &region_end) !=
+                RIBON_MEMORY_STATUS_OK ||
+            region->kind == RIBON_MEMORY_REGION_USABLE ||
+            region->kind == RIBON_MEMORY_REGION_MMIO ||
+            region->kind == RIBON_MEMORY_REGION_FRAMEBUFFER) {
+            continue;
+        }
+        if (base >= region->base && end <= region_end) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /** @brief Frozen payload와 environment에서 protocol handoff plan을 bounded하게 만든다. */
 static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) {
     struct RibonBootDeadline deadline;
@@ -271,6 +299,47 @@ static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) 
         &transaction->payload,
         &transaction->validated_image,
         transaction->input.direct_load_plan);
+    const int transition_input_present =
+        transaction->input.transition_buffer != 0 ||
+        transaction->input.transition_buffer_physical_address != 0u ||
+        transaction->input.transition_buffer_capacity != 0u;
+    if (transition_input_present) {
+        struct RibonArchDirectHighHandoff direct_high = {0};
+        const uint64_t table_pages =
+            transaction->arch->direct_high_page_table_pages != 0 ?
+                transaction->arch->direct_high_page_table_pages(
+                    transaction->input.direct_load_plan) : 0u;
+        if (transaction->input.transition_buffer == 0 ||
+            transaction->input.transition_buffer_physical_address == 0u ||
+            transaction->input.transition_buffer_capacity == 0u ||
+            transaction->arch->prepare_direct_high_entry == 0 ||
+            table_pages == 0u ||
+            table_pages > UINT64_MAX / transaction->arch->descriptor->page_size ||
+            transaction->input.transition_buffer_capacity <
+                table_pages * transaction->arch->descriptor->page_size ||
+            !boot_transition_range_is_reserved(
+                transaction->input.normalized_memory_map,
+                transaction->input.transition_buffer_physical_address,
+                table_pages * transaction->arch->descriptor->page_size) ||
+            transaction->arch->prepare_direct_high_entry(
+                transaction->input.direct_load_plan,
+                transaction->input.transition_buffer_physical_address,
+                transaction->input.transition_buffer,
+                transaction->input.transition_buffer_capacity,
+                &direct_high) != RIBON_ARCH_DIRECT_HIGH_OK ||
+            direct_high.entry != candidate.kernel_high_entry_virtual_address ||
+            direct_high.translation_root !=
+                transaction->input.transition_buffer_physical_address) {
+            return boot_fail(
+                transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
+                RIBON_BOOT_FAILURE_PROTOCOL, transaction->arch->descriptor->canonical_name,
+                RIBON_BOOT_STATUS_INVALID_HANDOFF);
+        }
+        candidate.kernel_transition_root_physical =
+            direct_high.translation_root;
+        candidate.kernel_transition_bytes =
+            table_pages * transaction->arch->descriptor->page_size;
+    }
     if (transaction->protocol->terminal_execution ==
         RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY) {
         status = transaction->protocol->ops->prepare_handoff(
@@ -338,6 +407,22 @@ static int boot_prepare_protocol_plan(struct RibonBootTransaction *transaction) 
         return boot_fail(transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
                          RIBON_BOOT_FAILURE_PROTOCOL, transaction->protocol->id,
                          RIBON_BOOT_STATUS_UNSUPPORTED);
+    }
+    if (transaction->terminal_request.kind ==
+            RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
+        transaction->terminal_request.direct_entry.translation ==
+            RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE) {
+        if (candidate.kernel_transition_root_physical == 0u ||
+            candidate.kernel_transition_bytes == 0u) {
+            transaction->terminal_request = (struct RibonTerminalRequest){0};
+            transaction->prepared_entry = (struct RibonPreparedEntry){0};
+            return boot_fail(
+                transaction, RIBON_BOOT_STAGE_PREPARE_PROTOCOL,
+                RIBON_BOOT_FAILURE_PROTOCOL, transaction->protocol->id,
+                RIBON_BOOT_STATUS_INVALID_HANDOFF);
+        }
+        transaction->prepared_entry.translation_root =
+            candidate.kernel_transition_root_physical;
     }
     transaction->plan = candidate;
     transaction->consumed_output_bytes += candidate.handoff_artifact_size;
@@ -415,6 +500,12 @@ int ribon_boot_transaction_prepare(
         input->source == 0 || input->source_size == 0u || input->payload_buffer == 0 ||
         input->payload_buffer_capacity < input->source_size || input->source_name == 0 ||
         input->validated_image == 0 ||
+        ((input->transition_buffer != 0 ||
+          input->transition_buffer_physical_address != 0u ||
+          input->transition_buffer_capacity != 0u) &&
+         (input->transition_buffer == 0 ||
+          input->transition_buffer_physical_address == 0u ||
+          input->transition_buffer_capacity == 0u)) ||
         (transaction->protocol->terminal_execution == RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY &&
          (input->direct_load_plan == 0 || input->handoff_buffer == 0 ||
           input->handoff_buffer_capacity == 0u || input->handoff_artifact == 0)) ||

@@ -81,6 +81,9 @@ struct RibonBootTransactionInput {
     void *handoff_buffer; /**< Protocol handoff 출력 buffer다. */
     uint64_t handoff_buffer_capacity; /**< Handoff buffer byte 상한이다. */
     struct RibonHandoffArtifact *handoff_artifact; /**< Protocol handoff 결과다. */
+    void *transition_buffer; /**< Architecture direct-high table용 caller-owned buffer다. */
+    uint64_t transition_buffer_physical_address; /**< Buffer의 physical 시작 주소다. */
+    uint64_t transition_buffer_capacity; /**< Buffer byte 상한이다. */
 };
 
 /** @brief Prepare가 caller-owned storage와 borrowed views로 만드는 immutable boot plan이다. */
@@ -123,6 +126,8 @@ struct RibonBootPlan {
     uint64_t kernel_linked_physical_end;
     uint64_t kernel_high_entry_virtual_address;
     uint64_t kernel_high_entry_load_address;
+    uint64_t kernel_transition_root_physical;
+    uint64_t kernel_transition_bytes;
     const struct RibonLoadSegment *kernel_load_segments;
     uint32_t expectations;
 };

@@ -99,6 +99,16 @@ static int luca_prepare_terminal(
     switch (arch->id) {
     case RIBON_ARCHITECTURE_X86_64:
         register_abi = RIBON_REGISTER_ABI_X86_64_RDI_RSI_RDX_RCX;
+        if (plan->kernel_transition_root_physical != 0u) {
+            if (plan->kernel_transition_bytes == 0u ||
+                plan->kernel_high_entry_virtual_address == 0u) {
+                *out = (struct RibonTerminalRequest){0};
+                return RIBON_PROTOCOL_STATUS_BAD_ENTRY_CONTRACT;
+            }
+            entry_flags |= RIBON_LUCA_ENTRY_FLAG_ENTERED_HIGH |
+                           RIBON_LUCA_ENTRY_FLAG_DIRECT_HIGH;
+            translation = RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE;
+        }
         break;
     case RIBON_ARCHITECTURE_AARCH64:
         register_abi = RIBON_REGISTER_ABI_AARCH64_X0_X1_X2_X3;
@@ -116,12 +126,17 @@ static int luca_prepare_terminal(
     *entry = (struct RibonEntryInvocation){
         .size = sizeof(*entry),
         .abi_version = RIBON_ENTRY_INVOCATION_ABI_VERSION,
-        .entry_address = plan->kernel_runtime_entry_address,
+        .entry_address = translation == RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE
+            ? plan->kernel_high_entry_virtual_address
+            : plan->kernel_runtime_entry_address,
         .register_abi = register_abi,
-        .argument_count = 2u,
+        .argument_count = translation == RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE
+            ? 4u : 2u,
         .arguments = {
             (uint64_t)(uintptr_t)handoff->data,
             entry_flags,
+            plan->kernel_transition_root_physical,
+            plan->kernel_transition_bytes,
         },
         .interrupts = RIBON_ENTRY_INTERRUPTS_MASKED,
         .privilege = privilege,

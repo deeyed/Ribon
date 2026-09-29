@@ -10,8 +10,13 @@
 #define RIBON_X86_64_PTE_PRESENT (1ull << 0)
 #define RIBON_X86_64_PTE_WRITE (1ull << 1)
 #define RIBON_X86_64_PTE_LARGE (1ull << 7)
+#define RIBON_X86_64_PTE_NO_EXECUTE (1ull << 63)
 #define RIBON_X86_64_ADDR_MASK 0x000FFFFFFFFFF000ull
-#define RIBON_X86_64_DIRECT_HIGH_TABLE_PAGES 8ull
+#define RIBON_X86_64_DIRECT_HIGH_BASE_TABLE_PAGES 8ull
+#define RIBON_X86_64_HIGH_CANONICAL_MIN 0xffff800000000000ull
+#define RIBON_X86_64_LOAD_SEGMENT_FLAGS \
+    (RIBON_LOAD_SEGMENT_READ | RIBON_LOAD_SEGMENT_WRITE | \
+     RIBON_LOAD_SEGMENT_EXECUTE)
 
 static const struct RibonArchDescriptor x86_64_arch = {
     .size = sizeof(x86_64_arch),
@@ -101,17 +106,59 @@ static int find_runtime_for_virtual_entry(
     return 0;
 }
 
-/** @brief x86_64 direct-high bridge가 요구하는 고정 table page 수를 반환한다. */
+/** @brief High segment permission과 page alignment가 4 KiB bridge로 표현 가능한지 검사한다. */
+static int high_segment_valid(const struct RibonLoadSegment *segment) {
+    uint64_t virtual_end;
+    if (segment == 0 || segment->memory_size == 0u ||
+        (segment->flags & ~RIBON_X86_64_LOAD_SEGMENT_FLAGS) != 0u ||
+        (segment->flags & RIBON_LOAD_SEGMENT_READ) == 0u ||
+        ((segment->flags & RIBON_LOAD_SEGMENT_WRITE) != 0u &&
+         (segment->flags & RIBON_LOAD_SEGMENT_EXECUTE) != 0u) ||
+        segment->virtual_address < RIBON_X86_64_HIGH_CANONICAL_MIN ||
+        segment->virtual_address > UINT64_MAX - segment->memory_size) {
+        return 0;
+    }
+    virtual_end = segment->virtual_address + segment->memory_size;
+    return virtual_end > segment->virtual_address &&
+           (segment->virtual_address & (RIBON_X86_64_PAGE_SIZE - 1u)) ==
+               (segment->runtime_address & (RIBON_X86_64_PAGE_SIZE - 1u));
+}
+
+/** @brief x86_64 direct-high bridge가 요구하는 W^X table page 수를 반환한다. */
 uint64_t ribon_arch_direct_high_page_table_pages(const struct RibonDirectLoadPlan *payload) {
+    uint64_t high_start;
+    uint64_t high_end;
     if (payload == 0 ||
         (payload->load_plan_flags & RIBON_LOAD_PLAN_DIRECT_HIGH_ENTRY_CANDIDATE) == 0u ||
         payload->high_entry_virtual_address == 0u ||
-        payload->linked_virtual_end <= payload->high_entry_virtual_address ||
+        payload->linked_virtual_base < RIBON_X86_64_HIGH_CANONICAL_MIN ||
+        payload->linked_virtual_end <= payload->linked_virtual_base ||
         payload->segment_count == 0u ||
         payload->segments == 0) {
         return 0;
     }
-    return RIBON_X86_64_DIRECT_HIGH_TABLE_PAGES;
+    high_start = align_down_u64(
+        payload->linked_virtual_base, RIBON_X86_64_LARGE_2M);
+    if (!align_up_u64(
+            payload->linked_virtual_end, RIBON_X86_64_LARGE_2M,
+            &high_end) ||
+        high_end <= high_start ||
+        (((high_end - 1u) >> 30u) & 0x1ffu) !=
+            ((high_start >> 30u) & 0x1ffu) ||
+        ((high_start >> 21u) & 0x1ffu) +
+                ((high_end - high_start) / RIBON_X86_64_LARGE_2M) >
+            RIBON_X86_64_ENTRIES) {
+        return 0;
+    }
+    for (uint32_t index = 0u; index < payload->segment_count; ++index) {
+        const struct RibonLoadSegment *segment = &payload->segments[index];
+        if (segment->virtual_address >= RIBON_X86_64_HIGH_CANONICAL_MIN &&
+            !high_segment_valid(segment)) {
+            return 0;
+        }
+    }
+    return RIBON_X86_64_DIRECT_HIGH_BASE_TABLE_PAGES +
+           (high_end - high_start) / RIBON_X86_64_LARGE_2M;
 }
 
 int ribon_arch_prepare_direct_high_entry(
@@ -123,8 +170,9 @@ int ribon_arch_prepare_direct_high_entry(
     uint64_t high_start;
     uint64_t high_end;
     uint64_t high_entry_runtime = 0;
-    uint64_t high_load_start;
-    uint64_t high_load_end;
+    uint64_t high_load_start = UINT64_MAX;
+    uint64_t high_load_end = 0u;
+    uint64_t table_pages;
     uint64_t *tables;
     uint64_t *pml4;
     uint64_t *low_pdpt;
@@ -139,33 +187,23 @@ int ribon_arch_prepare_direct_high_entry(
         return RIBON_ARCH_DIRECT_HIGH_BAD_ARGUMENT;
     }
     *out = (struct RibonArchDirectHighHandoff){0};
-    if (ribon_arch_direct_high_page_table_pages(payload) == 0u ||
+    table_pages = ribon_arch_direct_high_page_table_pages(payload);
+    if (table_pages == 0u ||
         page_table_physical_address == 0u ||
         (page_table_physical_address & (RIBON_X86_64_PAGE_SIZE - 1u)) != 0u ||
-        page_table_size < RIBON_X86_64_DIRECT_HIGH_TABLE_PAGES * RIBON_X86_64_PAGE_SIZE ||
+        page_table_size < table_pages * RIBON_X86_64_PAGE_SIZE ||
         !find_runtime_for_virtual_entry(payload, payload->high_entry_virtual_address, &high_entry_runtime)) {
         return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
     }
 
-    high_start = align_down_u64(payload->high_entry_virtual_address, RIBON_X86_64_LARGE_2M);
+    high_start = align_down_u64(payload->linked_virtual_base, RIBON_X86_64_LARGE_2M);
     if (!align_up_u64(payload->linked_virtual_end, RIBON_X86_64_LARGE_2M, &high_end) ||
         high_end <= high_start ||
         (((high_end - 1u) >> 30u) & 0x1ffu) != ((high_start >> 30u) & 0x1ffu)) {
         return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
     }
-    if (payload->high_entry_virtual_address < high_start ||
-        high_entry_runtime < payload->high_entry_virtual_address - high_start) {
-        return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
-    }
-    high_load_start = high_entry_runtime - (payload->high_entry_virtual_address - high_start);
-    if ((high_load_start & (RIBON_X86_64_LARGE_2M - 1u)) != 0u ||
-        high_load_start > UINT64_MAX - (high_end - high_start)) {
-        return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
-    }
-    high_load_end = high_load_start + (high_end - high_start);
-
     tables = (uint64_t *)page_table_buffer;
-    zero_u64_table(tables, RIBON_X86_64_DIRECT_HIGH_TABLE_PAGES * RIBON_X86_64_ENTRIES);
+    zero_u64_table(tables, table_pages * RIBON_X86_64_ENTRIES);
 
     pml4 = tables;
     low_pdpt = tables + RIBON_X86_64_ENTRIES;
@@ -192,11 +230,90 @@ int ribon_arch_prepare_direct_high_entry(
     pd_index = (uint32_t)((high_start >> 21u) & 0x1ffu);
     pml4[pml4_index] = table_descriptor(page_table_physical_address + RIBON_X86_64_PAGE_SIZE * 6u);
     high_pdpt[pdpt_index] = table_descriptor(page_table_physical_address + RIBON_X86_64_PAGE_SIZE * 7u);
-    for (uint64_t va = high_start; va < high_end; va += RIBON_X86_64_LARGE_2M) {
+    for (uint64_t va = high_start; va < high_end;
+         va += RIBON_X86_64_LARGE_2M) {
         if (pd_index >= RIBON_X86_64_ENTRIES) {
             return RIBON_ARCH_DIRECT_HIGH_OUT_OF_CAPACITY;
         }
-        high_pd[pd_index++] = large_descriptor(high_load_start + (va - high_start));
+        const uint64_t pt_page = RIBON_X86_64_DIRECT_HIGH_BASE_TABLE_PAGES +
+            (va - high_start) / RIBON_X86_64_LARGE_2M;
+        high_pd[pd_index++] = table_descriptor(
+            page_table_physical_address +
+            pt_page * RIBON_X86_64_PAGE_SIZE);
+    }
+
+    for (uint32_t segment_index = 0u;
+         segment_index < payload->segment_count; ++segment_index) {
+        const struct RibonLoadSegment *segment =
+            &payload->segments[segment_index];
+        uint64_t segment_end;
+        uint64_t map_start;
+        uint64_t map_end;
+        uint64_t physical_start;
+        if (segment->virtual_address < RIBON_X86_64_HIGH_CANONICAL_MIN) {
+            continue;
+        }
+        if (!high_segment_valid(segment) ||
+            !align_up_u64(segment->virtual_address + segment->memory_size,
+                          RIBON_X86_64_PAGE_SIZE, &segment_end)) {
+            return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
+        }
+        map_start = align_down_u64(
+            segment->virtual_address, RIBON_X86_64_PAGE_SIZE);
+        map_end = segment_end;
+        physical_start = segment->runtime_address -
+            (segment->virtual_address - map_start);
+        if (physical_start < high_load_start) {
+            high_load_start = physical_start;
+        }
+        if (physical_start > UINT64_MAX - (map_end - map_start) ||
+            physical_start + (map_end - map_start) > high_load_end) {
+            high_load_end = physical_start + (map_end - map_start);
+        }
+        for (uint64_t va = map_start; va < map_end;
+             va += RIBON_X86_64_PAGE_SIZE) {
+            const uint64_t chunk =
+                (va - high_start) / RIBON_X86_64_LARGE_2M;
+            const uint64_t pt_index =
+                (va >> 12u) & (RIBON_X86_64_ENTRIES - 1u);
+            uint64_t *pt = tables +
+                (RIBON_X86_64_DIRECT_HIGH_BASE_TABLE_PAGES + chunk) *
+                    RIBON_X86_64_ENTRIES;
+            uint64_t descriptor =
+                (physical_start + (va - map_start)) &
+                    RIBON_X86_64_ADDR_MASK;
+            descriptor |= RIBON_X86_64_PTE_PRESENT;
+            if ((segment->flags & RIBON_LOAD_SEGMENT_WRITE) != 0u) {
+                descriptor |= RIBON_X86_64_PTE_WRITE;
+            }
+            if ((segment->flags & RIBON_LOAD_SEGMENT_EXECUTE) == 0u) {
+                descriptor |= RIBON_X86_64_PTE_NO_EXECUTE;
+            }
+            if (pt[pt_index] != 0u && pt[pt_index] != descriptor) {
+                return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
+            }
+            pt[pt_index] = descriptor;
+        }
+    }
+    if (high_load_start == UINT64_MAX || high_load_end <= high_load_start) {
+        return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
+    }
+    if (payload->high_entry_virtual_address < high_start ||
+        payload->high_entry_virtual_address >= high_end) {
+        return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
+    }
+    const uint64_t entry_chunk =
+        (payload->high_entry_virtual_address - high_start) /
+        RIBON_X86_64_LARGE_2M;
+    const uint64_t entry_pt_index =
+        (payload->high_entry_virtual_address >> 12u) &
+        (RIBON_X86_64_ENTRIES - 1u);
+    const uint64_t *entry_pt = tables +
+        (RIBON_X86_64_DIRECT_HIGH_BASE_TABLE_PAGES + entry_chunk) *
+            RIBON_X86_64_ENTRIES;
+    if ((entry_pt[entry_pt_index] & RIBON_X86_64_PTE_PRESENT) == 0u ||
+        (entry_pt[entry_pt_index] & RIBON_X86_64_PTE_NO_EXECUTE) != 0u) {
+        return RIBON_ARCH_DIRECT_HIGH_BAD_LAYOUT;
     }
 
     out->entry = payload->high_entry_virtual_address;
@@ -209,6 +326,44 @@ int ribon_arch_prepare_direct_high_entry(
     return RIBON_ARCH_DIRECT_HIGH_OK;
 }
 
+/** @brief NXE와 supervisor write protection을 켜고 readback한다. */
+#if defined(__x86_64__) || defined(_M_X64)
+static int x86_64_enable_page_protection(void) {
+    uint32_t eax = 0x80000000u;
+    uint32_t ebx = 0u;
+    uint32_t ecx = 0u;
+    uint32_t edx = 0u;
+    __asm__ __volatile__("cpuid"
+                         : "+a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx));
+    if (eax < 0x80000001u) {
+        return 0;
+    }
+    eax = 0x80000001u;
+    __asm__ __volatile__("cpuid"
+                         : "+a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx));
+    if ((edx & (1u << 20u)) == 0u) {
+        return 0;
+    }
+    uint32_t efer_low = 0u;
+    uint32_t efer_high = 0u;
+    __asm__ __volatile__("rdmsr"
+                         : "=a"(efer_low), "=d"(efer_high)
+                         : "c"(0xc0000080u));
+    efer_low |= 1u << 11u;
+    __asm__ __volatile__("wrmsr"
+                         :
+                         : "a"(efer_low), "d"(efer_high),
+                           "c"(0xc0000080u)
+                         : "memory");
+    uint64_t cr0 = 0u;
+    __asm__ __volatile__("movq %%cr0, %0" : "=r"(cr0));
+    cr0 |= 1ull << 16u;
+    __asm__ __volatile__("movq %0, %%cr0" : : "r"(cr0) : "memory");
+    __asm__ __volatile__("movq %%cr0, %0" : "=r"(cr0));
+    return (cr0 & (1ull << 16u)) != 0u;
+}
+#endif
+
 _Noreturn void ribon_arch_transfer_prepared(
     const struct RibonPreparedEntry *prepared) {
 #if defined(__x86_64__) || defined(_M_X64)
@@ -219,7 +374,8 @@ _Noreturn void ribon_arch_transfer_prepared(
     const uint64_t argument3 = prepared->invocation.arguments[3];
     if (prepared->translation_root != 0u &&
         prepared->invocation.translation ==
-            RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE) {
+            RIBON_ENTRY_TRANSLATION_DIRECT_HIGH_BRIDGE &&
+        x86_64_enable_page_protection()) {
         __asm__ __volatile__(
             "cli\n"
             "cld\n"

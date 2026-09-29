@@ -15,6 +15,8 @@
 #if defined(__aarch64__)
 #define RIBON_UEFI_POST_EXIT_BRIDGE_BYTES RIBON_AARCH64_BRIDGE_TABLE_BYTES
 #define RIBON_UEFI_POST_EXIT_STACK_BYTES (64u * 1024u)
+#elif defined(__x86_64__)
+#define RIBON_UEFI_DIRECT_HIGH_TABLE_BYTES (64u * 4096u)
 #endif
 #define RIBON_UEFI_HANDOFF_CAPACITY 65536u
 #define RIBON_UEFI_ARENA_CAPACITY (256u * 1024u)
@@ -38,6 +40,9 @@ static _Alignas(4096) unsigned char
     post_exit_bridge_tables[RIBON_UEFI_POST_EXIT_BRIDGE_BYTES];
 static _Alignas(16) unsigned char
     post_exit_stack[RIBON_UEFI_POST_EXIT_STACK_BYTES];
+#elif defined(__x86_64__)
+static _Alignas(4096) unsigned char
+    direct_high_tables[RIBON_UEFI_DIRECT_HIGH_TABLE_BYTES];
 #endif
 static _Alignas(4096) unsigned char handoff_buffer[RIBON_UEFI_HANDOFF_CAPACITY];
 static _Alignas(16) unsigned char arena_storage[RIBON_UEFI_ARENA_CAPACITY];
@@ -636,6 +641,18 @@ EFI_STATUS EFIAPI efi_main(
                         handoff_storage_capacity : 0u,
             .handoff_artifact = protocol->terminal_execution ==
                     RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ? &handoff : 0,
+#if defined(__x86_64__)
+            .transition_buffer = protocol->terminal_execution ==
+                    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ?
+                        direct_high_tables : 0,
+            .transition_buffer_physical_address =
+                protocol->terminal_execution ==
+                    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ?
+                        (uint64_t)(uintptr_t)direct_high_tables : 0u,
+            .transition_buffer_capacity = protocol->terminal_execution ==
+                    RIBON_TERMINAL_EXECUTION_DIRECT_ENTRY ?
+                        sizeof(direct_high_tables) : 0u,
+#endif
         });
     if (status != RIBON_BOOT_STATUS_OK) {
         return uefi_transaction_fail(&transaction);
